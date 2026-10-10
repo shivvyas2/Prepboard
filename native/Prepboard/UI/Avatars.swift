@@ -10,15 +10,15 @@ struct AvatarSpec {
         .init(bg: 0x1F4FD8, skin: 0xF2D3B3, hair: 0x2B2410, style: .fringe, shirt: 0xF7C744),
         .init(bg: 0xF7C744, skin: 0xD9A47A, hair: 0x1D1A16, style: .bun, shirt: 0x1F4FD8),
         .init(bg: 0xE5EBFB, skin: 0xA86B45, hair: 0x1D1A16, style: .curly, shirt: 0x1F4FD8),
-        .init(bg: 0xFDF2CF, skin: 0xF2D3B3, hair: 0xC2410C, style: .long, shirt: 0x2F7D4F),
+        .init(bg: 0xEBDCAF, skin: 0xF2D3B3, hair: 0xC2410C, style: .long, shirt: 0x2F7D4F),
         .init(bg: 0x1D1A16, skin: 0xD9A47A, hair: 0xF7C744, style: .short, shirt: 0xE5EBFB),
         .init(bg: 0xEFE9DF, skin: 0x6E4630, hair: 0x1D1A16, style: .bald, shirt: 0xF7C744),
         .init(bg: 0x2F7D4F, skin: 0xF2D3B3, hair: 0x8A6D1F, style: .short, shirt: 0xFFFDF9),
         .init(bg: 0xF7C744, skin: 0xA86B45, hair: 0x1D1A16, style: .long, shirt: 0xC2410C),
-        .init(bg: 0x1F4FD8, skin: 0x6E4630, hair: 0x1D1A16, style: .curly, shirt: 0xFDF2CF),
+        .init(bg: 0x1F4FD8, skin: 0x6E4630, hair: 0x1D1A16, style: .curly, shirt: 0xEBDCAF),
         .init(bg: 0xE5EBFB, skin: 0xD9A47A, hair: 0x4F4A42, style: .bald, shirt: 0x1D1A16),
-        .init(bg: 0xC2410C, skin: 0xF2D3B3, hair: 0x1D1A16, style: .bun, shirt: 0xFDF2CF),
-        .init(bg: 0xFDF2CF, skin: 0x6E4630, hair: 0x1D1A16, style: .fringe, shirt: 0x1F4FD8),
+        .init(bg: 0xC2410C, skin: 0xF2D3B3, hair: 0x1D1A16, style: .bun, shirt: 0xEBDCAF),
+        .init(bg: 0xEBDCAF, skin: 0x6E4630, hair: 0x1D1A16, style: .fringe, shirt: 0x1F4FD8),
     ]
 }
 
@@ -277,6 +277,7 @@ struct ProfileSheet: View {
                     .accessibilityLabel("Avatar \(i + 1)")
                 }
             }
+            TimeFormatSection()
             #if os(macOS)
             claudeSection
             DeviceBridgeSection()
@@ -508,3 +509,27 @@ struct DeviceBridgeSection: View {
     }
 }
 #endif
+
+/// Profile → Time format: 24-hour (19:00) or 12-hour (7:00 PM). Applies everywhere in the app on this device.
+struct TimeFormatSection: View {
+    @State private var prefs = TimePrefs.shared
+
+    var body: some View {
+        HStack(spacing: 16) {
+            Text("Time format").pbLabelStyle()
+            Spacer(minLength: 0)
+            option("24-hour", sample: "19:00", is24: true)
+            option("12-hour", sample: "7:00 PM", is24: false)
+        }
+    }
+
+    private func option(_ title: String, sample: String, is24: Bool) -> some View {
+        Toggle(isOn: Binding(get: { prefs.use24h == is24 }, set: { if $0 { prefs.use24h = is24 } })) {
+            HStack(spacing: 4) {
+                Text(title).font(.system(size: 13, weight: .medium))
+                Text(sample).font(.system(size: 12, design: .monospaced)).foregroundStyle(PB.muted)
+            }
+        }
+        .toggleStyle(CheckboxToggleStyle())
+    }
+}

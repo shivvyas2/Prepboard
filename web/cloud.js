@@ -472,7 +472,7 @@
     return `<div class="np-plan">
       <div class="label">Your plan</div>
       <h3>${esc(p.role.company)} — ${esc(p.role.title)}</h3>
-      <div class="muted">${p.role.interview_at ? esc(new Date(p.role.interview_at).toLocaleString(undefined, { weekday: "long", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })) + " · " : ""}${esc(p.role.interview_note || "")}</div>
+      <div class="muted">${p.role.interview_at ? esc(new Date(p.role.interview_at).toLocaleString(undefined, { weekday: "long", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: localStorage.getItem("prepboard.time24") === "0" })) + " · " : ""}${esc(p.role.interview_note || "")}</div>
       <p style="margin:0;line-height:1.55">${esc(p.summary)}</p>
       <div class="grid"><div><span class="label">Days</span><b>${days}</b></div><div><span class="label">Sessions</span><b>${work.length}</b></div><div><span class="label">Prep hours</span><b>${hours.toFixed(1)}</b></div></div>
       <div><div class="label" style="margin-bottom:6px">Study guides</div><ul>${p.docs.map((d) => `<li>${esc(d.title)}</li>`).join("")}</ul></div>

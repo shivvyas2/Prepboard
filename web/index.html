@@ -31,7 +31,7 @@
   --cobalt-2: #1a43b8;
   --cobalt-soft: #e5ebfb;
   --sun: #f7c744;
-  --sun-soft: #fdf2cf;
+  --sun-soft: #ebdcaf;
   --on-sun: #2b2410;
   --now: var(--cobalt);
   --shadow: 0 1px 0 rgba(60,45,20,.03), 0 10px 28px rgba(60,45,20,.07);
@@ -99,7 +99,7 @@ main { padding: 20px 24px 60px 4px; min-width: 0; }
 .dash > * { min-width: 0; }
 .hero { display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: end; }
 .countdown { display: flex; gap: 10px; }
-.cd-cell { background: var(--sun-soft); border: 1px solid #f3dfa0; border-radius: var(--r-lg); padding: 12px 14px; min-width: 74px; text-align: center; }
+.cd-cell { background: var(--sun-soft); border: 1px solid #d9c38c; border-radius: var(--r-lg); padding: 12px 14px; min-width: 74px; text-align: center; }
 .cd-cell b { display: block; font-size: 28px; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
 .cd-cell span { font-size: 11px; color: var(--muted); }
 .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
@@ -369,7 +369,11 @@ dialog::backdrop { background: rgba(43,36,16,.25); backdrop-filter: blur(4px); }
 .home .hero { align-self: stretch; }
 .home .upnext { align-self: stretch; }
 .timeleft { display: grid; gap: 8px; justify-items: end; }
-.stat.warn { background: var(--sun-soft); border-color: #f3dfa0; }
+.time-opt { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; cursor: pointer; }
+.time-opt input { appearance: none; width: 16px; height: 16px; border: 1.5px solid var(--line-2, #d9cfbf); border-radius: 4px; background: var(--card); margin: 0; display: grid; place-items: center; }
+.time-opt input:checked { background: var(--cobalt); border-color: var(--cobalt); }
+.time-opt input:checked::after { content: "✓"; color: #fff; font-size: 11px; font-weight: 800; line-height: 1; }
+.stat.warn { background: var(--sun-soft); border-color: #d9c38c; }
 .strip-wrap { overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
 .strip { position: relative; min-width: 720px; }
 .strip-grid { position: relative; height: 18px; margin-bottom: 6px; }
@@ -533,6 +537,11 @@ dialog::backdrop { background: rgba(43,36,16,.25); backdrop-filter: blur(4px); }
         <input name="headline" placeholder="Headline, e.g. iOS engineer · New York" style="border:0;outline:0;background:transparent;padding:0;color:var(--ink-2);min-width:0">
       </div>
     </div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <span class="label" style="margin-right:auto">Time format</span>
+      <label class="time-opt"><input type="radio" name="timefmt" value="24"> 24-hour <span class="muted">19:00</span></label>
+      <label class="time-opt"><input type="radio" name="timefmt" value="12"> 12-hour <span class="muted">7:00 PM</span></label>
+    </div>
     <div class="label">Choose an avatar</div>
     <div class="avatar-grid" id="avatarGrid"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -609,7 +618,13 @@ dialog::backdrop { background: rgba(43,36,16,.25); backdrop-filter: blur(4px); }
   const workFor = (roleId) => sessionsFor(roleId).filter((t) => !isBreak(t));
   const progress = (roleId) => { const w = workFor(roleId); return w.length ? Math.round(100 * w.filter((x) => x.done).length / w.length) : 0; };
   const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  const hm = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  // Display times follow Profile → Time format (24-hour "19:00" or 12-hour "7:00 PM"); form inputs always use hm24.
+  const TIME_KEY = "prepboard.time24";
+  let use24 = true;
+  try { use24 = localStorage.getItem(TIME_KEY) !== "0"; } catch (_) {}
+  const hm24 = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const hm = (d) => use24 ? hm24(d) : `${d.getHours() % 12 || 12}:${pad(d.getMinutes())} ${d.getHours() < 12 ? "AM" : "PM"}`;
+  const hourLabel = (h) => use24 ? `${pad(h)}:00` : `${h % 12 || 12} ${h < 12 || h === 24 ? "AM" : "PM"}`;
   const state = (t, now = new Date()) => t.done ? "done" : (tStart(t) <= now && now < tEnd(t)) ? "current" : tEnd(t) <= now ? "missed" : "upcoming";
   const dur = (t) => { const m = Math.round((tEnd(t) - tStart(t)) / 6e4); return m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? " " + (m % 60) + "m" : ""}` : `${m}m`; };
   const docNum = (d) => pad(Math.min(d?.order ?? 0, 99));
@@ -628,7 +643,7 @@ dialog::backdrop { background: rgba(43,36,16,.25); backdrop-filter: blur(4px); }
 
   function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 1600); }
   function fmtDate(d, opts = { month: "short", day: "numeric" }) { d = new Date(d); return isNaN(d) ? "" : d.toLocaleDateString(undefined, opts); }
-  function fmtDateTime(iso) { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }); }
+  function fmtDateTime(iso) { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: localStorage.getItem("prepboard.time24") === "0", timeZoneName: "short" }); }
   function relative(iso) {
     const d = new Date(iso); if (isNaN(d)) return "";
     const s = (Date.now() - d) / 1000;
@@ -810,7 +825,7 @@ dialog::backdrop { background: rgba(43,36,16,.25); backdrop-filter: blur(4px); }
     const nowH = now.getHours() + now.getMinutes() / 60;
     const nowMark = nowH >= startH && nowH <= endH ? `<div class="strip-now" style="left:${pos(now)}%"><span>${hm(now)}</span></div>` : "";
     const ticks = Array.from({ length: (endH - startH) / 2 + 1 }, (_, i) => startH + i * 2)
-      .map((h) => `<span style="left:${(h - startH) / (endH - startH) * 100}%">${pad(h)}:00</span>`).join("");
+      .map((h) => `<span style="left:${(h - startH) / (endH - startH) * 100}%">${hourLabel(h)}</span>`).join("");
     return `<div class="strip-wrap"><div class="strip">
       <div class="strip-grid">${ticks}</div>
       <div class="strip-lane">${blocks || `<div class="muted" style="padding:18px 4px">Nothing scheduled today.</div>`}${iv}${nowMark}</div>
@@ -925,7 +940,7 @@ dialog::backdrop { background: rgba(43,36,16,.25); backdrop-filter: blur(4px); }
     const si = STAGES.indexOf(r.stage);
     const now = new Date();
     const docs = db.docs.filter((d) => d.roleId === r.id).sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
-    const toLocalInput = (iso) => { if (!iso) return ""; const d = new Date(iso); return isNaN(d) ? "" : `${dayKey(d)}T${hm(d)}`; };
+    const toLocalInput = (iso) => { if (!iso) return ""; const d = new Date(iso); return isNaN(d) ? "" : `${dayKey(d)}T${hm24(d)}`; };
     const byDay = {};
     workFor(r.id).forEach((t) => (byDay[dayKey(tStart(t))] ||= []).push(t));
     return `<div class="stack">
@@ -1080,15 +1095,15 @@ dialog::backdrop { background: rgba(43,36,16,.25); backdrop-filter: blur(4px); }
     { bg: "#1f4fd8", skin: "#f2d3b3", hair: "#2b2410", style: "fringe", shirt: "#f7c744" },
     { bg: "#f7c744", skin: "#d9a47a", hair: "#1d1a16", style: "bun", shirt: "#1f4fd8" },
     { bg: "#e5ebfb", skin: "#a86b45", hair: "#1d1a16", style: "curly", shirt: "#1f4fd8" },
-    { bg: "#fdf2cf", skin: "#f2d3b3", hair: "#c2410c", style: "long", shirt: "#2f7d4f" },
+    { bg: "#ebdcaf", skin: "#f2d3b3", hair: "#c2410c", style: "long", shirt: "#2f7d4f" },
     { bg: "#1d1a16", skin: "#d9a47a", hair: "#f7c744", style: "short", shirt: "#e5ebfb" },
     { bg: "#efe9df", skin: "#6e4630", hair: "#1d1a16", style: "bald", shirt: "#f7c744" },
     { bg: "#2f7d4f", skin: "#f2d3b3", hair: "#8a6d1f", style: "short", shirt: "#fffdf9" },
     { bg: "#f7c744", skin: "#a86b45", hair: "#1d1a16", style: "long", shirt: "#c2410c" },
-    { bg: "#1f4fd8", skin: "#6e4630", hair: "#1d1a16", style: "curly", shirt: "#fdf2cf" },
+    { bg: "#1f4fd8", skin: "#6e4630", hair: "#1d1a16", style: "curly", shirt: "#ebdcaf" },
     { bg: "#e5ebfb", skin: "#d9a47a", hair: "#4f4a42", style: "bald", shirt: "#1d1a16" },
-    { bg: "#c2410c", skin: "#f2d3b3", hair: "#1d1a16", style: "bun", shirt: "#fdf2cf" },
-    { bg: "#fdf2cf", skin: "#6e4630", hair: "#1d1a16", style: "fringe", shirt: "#1f4fd8" },
+    { bg: "#c2410c", skin: "#f2d3b3", hair: "#1d1a16", style: "bun", shirt: "#ebdcaf" },
+    { bg: "#ebdcaf", skin: "#6e4630", hair: "#1d1a16", style: "fringe", shirt: "#1f4fd8" },
   ];
   function hairSVG(a) {
     const h = a.hair;
@@ -1154,6 +1169,15 @@ dialog::backdrop { background: rgba(43,36,16,.25); backdrop-filter: blur(4px); }
   }
 
   function autoGrow(t) { t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }
+  document.querySelectorAll('input[name="timefmt"]').forEach((r) => {
+    r.checked = r.value === (use24 ? "24" : "12");
+    r.addEventListener("change", () => {
+      use24 = r.value === "24";
+      try { localStorage.setItem(TIME_KEY, use24 ? "1" : "0"); } catch (_) {}
+      render();
+    });
+  });
+
   function render() {
     document.querySelectorAll("[data-view]").forEach((b) => {
       if (b.closest("#view")) return;
@@ -1211,8 +1235,8 @@ dialog::backdrop { background: rgba(43,36,16,.25); backdrop-filter: blur(4px); }
     $("#sessionDelete").hidden = !t;
     sForm.elements.title.value = t?.title || "";
     sForm.elements.day.value = t ? dayKey(tStart(t)) : (dayKeyStr || dayKey(new Date()));
-    sForm.elements.start.value = t ? hm(tStart(t)) : "10:00";
-    sForm.elements.end.value = t ? hm(tEnd(t)) : "11:00";
+    sForm.elements.start.value = t ? hm24(tStart(t)) : "10:00";
+    sForm.elements.end.value = t ? hm24(tEnd(t)) : "11:00";
     sForm.elements.kind.innerHTML = Object.entries(KINDS).map(([k, l]) => `<option value="${k}" ${(t?.kind || "study") === k ? "selected" : ""}>${l}</option>`).join("");
     sForm.elements.roleId.innerHTML = db.roles.map((r) => `<option value="${r.id}" ${r.id === roleId ? "selected" : ""}>${esc(r.company)} — ${esc(r.title)}</option>`).join("");
     const linked = new Set((t?.refs || []).map((r) => r.doc));

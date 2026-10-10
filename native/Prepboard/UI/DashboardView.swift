@@ -258,7 +258,7 @@ struct DashboardView: View {
                     ZStack(alignment: .topLeading) {
                         ForEach(Array(stride(from: Int(startH), through: Int(endH), by: 2)), id: \.self) { h in
                             let px = CGFloat(Double(h) - startH) / CGFloat(endH - startH) * w
-                            Text(String(format: "%02d:00", h)).font(.system(size: 11, design: .monospaced)).foregroundStyle(PB.muted)
+                            Text(TimeFmt.hour(h)).font(.system(size: 11, design: .monospaced)).foregroundStyle(PB.muted)
                                 .fixedSize()
                                 .position(x: min(max(px, 20), w - 20), y: 8)
                             Rectangle().fill(PB.line).frame(width: 1, height: 74).position(x: px, y: 24 + 37)

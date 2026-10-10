@@ -45,8 +45,29 @@ struct KindLabel: View {
     }
 }
 
+/// Profile → Time format. Observable, so every view showing a time redraws when it changes.
+@MainActor
+@Observable
+final class TimePrefs {
+    static let shared = TimePrefs()
+    var use24h: Bool = UserDefaults.standard.object(forKey: "time.use24h") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(use24h, forKey: "time.use24h") }
+    }
+}
+
+@MainActor
 enum TimeFmt {
-    static func hm(_ d: Date) -> String { d.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits)) }
+    /// "19:00" or "7:00 PM", per Profile → Time format.
+    static func hm(_ d: Date) -> String {
+        let c = Calendar.current.dateComponents([.hour, .minute], from: d)
+        let h = c.hour ?? 0, m = c.minute ?? 0
+        return TimePrefs.shared.use24h ? String(format: "%02d:%02d", h, m)
+            : String(format: "%d:%02d %@", h % 12 == 0 ? 12 : h % 12, m, h < 12 ? "AM" : "PM")
+    }
+    /// Hour ruler label: "19:00" or "7 PM".
+    static func hour(_ h: Int) -> String {
+        TimePrefs.shared.use24h ? String(format: "%02d:00", h) : "\(h % 12 == 0 ? 12 : h % 12) \(h < 12 || h == 24 ? "AM" : "PM")"
+    }
     static func duration(_ minutes: Int) -> String {
         minutes >= 60 ? "\(minutes / 60)h" + (minutes % 60 > 0 ? " \(minutes % 60)m" : "") : "\(minutes)m"
     }

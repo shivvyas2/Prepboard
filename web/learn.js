@@ -288,7 +288,7 @@
           <div class="card">
             <div class="card-head"><h3>History</h3></div>
             <div class="hist">${quizzes.slice(0, 20).map((a) => `<button data-review-quiz="${esc(a.id)}"><span><span class="ht" style="font-weight:600">${esc(a.topic)}</span>
-              <span class="muted" style="display:block;font-size:12px">${esc(new Date(a.created_at).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }))}</span></span>
+              <span class="muted" style="display:block;font-size:12px">${esc(new Date(a.created_at).toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: localStorage.getItem("prepboard.time24") === "0" }))}</span></span>
               <span class="lb-pct" style="align-self:center">${a.score}/${a.total}</span></button>`).join("")}</div>
           </div>
         </div>

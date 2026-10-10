@@ -54,7 +54,10 @@ struct PrepboardApp: App {
                 #endif
                 #if os(macOS)
                 .environment(deviceBridge)
-                .task { deviceBridge.attach(claude) }
+                .task {
+                    await claude.checkConnection()   // picks up an installed, signed-in Claude Code on launch
+                    deviceBridge.attach(claude)
+                }
                 .frame(minWidth: 1000, minHeight: 680)
                 #endif
         }

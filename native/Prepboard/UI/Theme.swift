@@ -23,7 +23,7 @@ enum PB {
     static let cobalt = Color(hex: 0x1F4FD8)
     static let cobaltSoft = Color(hex: 0xE5EBFB)
     static let sun = Color(hex: 0xF7C744)
-    static let sunSoft = Color(hex: 0xFDF2CF)
+    static let sunSoft = Color(hex: 0xEBDCAF)   // sand yellow
     static let onSun = Color(hex: 0x2B2410)
     static let red = Color(hex: 0xC2410C)
 
@@ -179,5 +179,7 @@ struct PBTextField: View {
 extension Date {
     var pbShort: String { formatted(.dateTime.month(.abbreviated).day()) }
     var pbDay: String { formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) }
-    var pbFull: String { formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute().timeZone()) }
+    @MainActor var pbFull: String {
+        "\(formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())), \(TimeFmt.hm(self)) \(formatted(.dateTime.timeZone()))"
+    }
 }

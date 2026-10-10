@@ -22,8 +22,8 @@ final class ClaudeCode {
 
     enum Connection: Equatable { case unknown, checking, notInstalled, signedOut, connected(String) }
 
-    /// The user's choice to use their own Claude Code inside Prepboard (off until they connect).
-    var enabled: Bool = UserDefaults.standard.bool(forKey: "claude.enabled") {
+    /// Use the Claude Code already on this Mac automatically; only off if the user chose Disconnect.
+    var enabled: Bool = UserDefaults.standard.object(forKey: "claude.enabled") as? Bool ?? true {
         didSet { UserDefaults.standard.set(enabled, forKey: "claude.enabled") }
     }
     var connection: Connection = .unknown
@@ -53,12 +53,29 @@ final class ClaudeCode {
         NSWorkspace.shared.open(url)
     }
 
+    /// PATH for running `claude`: the usual install folders first, then the login shell's PATH.
+    /// Apps opened from Finder don't read ~/.zshrc, which is where many installs (e.g. ~/.local/bin) add themselves.
+    nonisolated static var searchPath: String {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        var dirs = ["\(home)/.local/bin", "\(home)/.claude/local", "/opt/homebrew/bin", "/usr/local/bin",
+                    "\(home)/.npm-global/bin", "\(home)/.bun/bin", "\(home)/.volta/bin", "\(home)/.asdf/shims"]
+        let nvm = "\(home)/.nvm/versions/node"
+        if let versions = try? FileManager.default.contentsOfDirectory(atPath: nvm) {
+            dirs += versions.sorted().reversed().map { "\(nvm)/\($0)/bin" }
+        }
+        return (dirs + [ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"]).joined(separator: ":")
+    }
+
     /// Runs a command in a login shell and returns stdout+stderr.
     nonisolated static func shell(_ command: String, stdin: String? = nil) async -> String {
         await withCheckedContinuation { cont in
             let p = Process()
             p.executableURL = URL(fileURLWithPath: "/bin/zsh")
-            p.arguments = ["-lc", command]
+            // Prepend the install folders after the login profile runs, so a profile can't hide them.
+            p.arguments = ["-lc", "export PATH=\"$PB_PATH:$PATH\"; " + command]
+            var env = ProcessInfo.processInfo.environment
+            env["PB_PATH"] = searchPath
+            p.environment = env
             let out = Pipe(), inp = Pipe()
             p.standardOutput = out; p.standardError = out; p.standardInput = inp
             p.terminationHandler = { _ in
@@ -135,11 +152,12 @@ final class ClaudeCode {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/zsh")
         p.arguments = ["-lc", #"""
-        cd "$PB_DIR" && exec claude -p --output-format stream-json --verbose --include-partial-messages \
+        export PATH="$PB_PATH:$PATH"; cd "$PB_DIR" && exec claude -p --output-format stream-json --verbose --include-partial-messages \
           --allowedTools $=PB_TOOLS ${PB_RESUME:+--resume} ${PB_RESUME:+"$PB_RESUME"}
         """#]
         var env = ProcessInfo.processInfo.environment
         env["PB_DIR"] = workingDirectory.path
+        env["PB_PATH"] = Self.searchPath
         env["PB_TOOLS"] = Self.allowedTools
         if let sessionId { env["PB_RESUME"] = sessionId }
         p.environment = env
