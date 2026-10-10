@@ -106,7 +106,9 @@ final class Cloud {
 
     init() {
         if CloudConfig.isConfigured, let url = URL(string: CloudConfig.url) {
-            client = SupabaseClient(supabaseURL: url, supabaseKey: CloudConfig.anonKey)
+            // Implicit flow: reset links open the web app, which must finish them without a PKCE verifier from this device.
+            client = SupabaseClient(supabaseURL: url, supabaseKey: CloudConfig.anonKey,
+                                    options: .init(auth: .init(flowType: .implicit)))
         } else {
             client = nil
             ready = true
@@ -141,16 +143,24 @@ final class Cloud {
         try await client?.auth.signIn(email: email, password: password)
     }
 
-    /// Returns true when the account still needs email confirmation.
-    func signUp(name: String, email: String, password: String) async throws -> Bool {
-        guard let client else { return false }
-        let res = try await client.auth.signUp(email: email, password: password, data: ["name": .string(name)])
-        if case .user = res { return true }
-        return false
+    /// Emails a 6-digit code. Works for new and existing accounts (the account is created on first verify).
+    func sendCode(email: String) async throws {
+        try await client?.auth.signInWithOTP(email: email, shouldCreateUser: true)
     }
 
-    func resetPassword(email: String) async throws {
-        try await client?.auth.resetPasswordForEmail(email)
+    func verifyCode(email: String, code: String) async throws {
+        guard let client else { return }
+        do {
+            try await client.auth.verifyOTP(email: email, token: code, type: .email)
+        } catch {
+            // A brand-new account's first code is a signup confirmation.
+            try await client.auth.verifyOTP(email: email, token: code, type: .signup)
+        }
+    }
+
+    /// The reset link opens the web app, which sets the new password; then sign in here.
+    func sendResetLink(email: String) async throws {
+        try await client?.auth.resetPasswordForEmail(email, redirectTo: URL(string: "https://prepboard.shivvyas.com/"))
     }
 
     func signOut() async {

@@ -5,7 +5,9 @@
   const PB = window.PB;
   const cfg = window.PREPBOARD_CONFIG || {};
   const configured = !!(cfg.supabaseUrl && cfg.supabaseAnonKey && window.supabase?.createClient);
-  const sb = configured ? window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey) : null;
+  const sb = configured ? window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
+    auth: { flowType: "implicit", detectSessionInUrl: true, persistSession: true, autoRefreshToken: true },
+  }) : null;
   const esc = PB.esc;
 
   // ---------- styles ----------
@@ -201,11 +203,59 @@
   }
 
   // ---------- auth screen ----------
+  // Email steps use the 6-digit codes Supabase sends (the project's email templates send codes, not links),
+  // so they work the same on web, Mac, iPad and iPhone without deep links.
+  //   signin  → email + password, or "email me a code"
+  //   signup  → name, email, password → verify (type "signup")
+  //   code    → email → verify (type "email")            passwordless sign-in
+  //   forgot  → email → verify (type "email") → newpass   reset password
+  //   verify  → enter the 6-digit code (with resend)
+  //   newpass → choose a new password (also reached from a password-reset link)
   let authMode = "signin";
+  const authCtx = { email: "", type: "email", reset: false, name: "" };
+  let needsNewPassword = false;
+  let resendAt = 0;
+  const redirectTo = () => location.origin + location.pathname;
+
+  const TITLES = {
+    signin: "Welcome back", signup: "Create your account", code: "Sign in with a code",
+    forgot: "Reset your password", verify: "Check your email", newpass: "Choose a new password",
+  };
+
   function showAuth(message) {
     let el = document.getElementById("auth");
     if (!el) { el = document.createElement("div"); el.id = "auth"; el.className = "auth"; document.body.appendChild(el); }
     const faces = [0, 1, 2, 3, 4].map((i) => `<span class="avatar">${window.PBAvatar ? window.PBAvatar(i) : ""}</span>`).join("");
+    const m = authMode;
+    const emailField = `<label class="field"><span class="label">Email</span><input name="email" type="email" autocomplete="email" required value="${esc(authCtx.email)}"></label>`;
+    const pwField = (label, ac) => `<label class="field"><span class="label">${label}</span><input name="password" type="password" autocomplete="${ac}" minlength="8" required placeholder="At least 8 characters"></label>`;
+    let fields = "", submit = "", links = "", sub = "";
+    if (m === "signin") {
+      fields = emailField + pwField("Password", "current-password"); submit = "Sign in";
+      links = `<span>New here? <button type="button" class="auth-switch" data-mode="signup">Create an account</button></span>
+        <span style="display:flex;gap:14px"><button type="button" class="auth-switch" data-mode="code">Email me a code</button><button type="button" class="auth-switch" data-mode="forgot">Forgot password?</button></span>`;
+    } else if (m === "signup") {
+      fields = `<label class="field"><span class="label">Name</span><input name="name" autocomplete="name" required value="${esc(authCtx.name)}"></label>` + emailField + pwField("Password", "new-password");
+      submit = "Create account";
+      links = `<span>Have an account? <button type="button" class="auth-switch" data-mode="signin">Sign in</button></span>`;
+    } else if (m === "code" || m === "forgot") {
+      sub = m === "forgot" ? "We'll email you a reset link. Open it on any device to choose a new password." : "We'll email you a 6-digit code to sign in, no password needed.";
+      fields = emailField; submit = m === "forgot" ? "Email me a reset link" : "Email me a code";
+      links = `<span><button type="button" class="auth-switch" data-mode="signin">Back to sign in</button></span>`;
+    } else if (m === "verify") {
+      sub = `Enter the 6-digit code we sent to <b>${esc(authCtx.email)}</b>. It may take a minute; check spam too.`;
+      fields = `<label class="field"><span class="label">Code</span><input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="10" required
+        style="font-family:var(--mono);font-size:26px;letter-spacing:.35em;text-align:center" placeholder="••••••"></label>`;
+      submit = authCtx.reset ? "Verify and continue" : "Verify";
+      const wait = Math.max(0, Math.ceil((resendAt - Date.now()) / 1000));
+      links = `<span><button type="button" class="auth-switch" data-resend ${wait ? "disabled" : ""}>${wait ? `Resend code in ${wait}s` : "Resend code"}</button></span>
+        <span><button type="button" class="auth-switch" data-mode="signin">Use a different email</button></span>`;
+    } else if (m === "newpass") {
+      sub = "Choose a new password for your account. You'll use it to sign in on the web, Mac, iPad and iPhone.";
+      fields = pwField("New password", "new-password") + `<label class="field"><span class="label">Confirm password</span><input name="password2" type="password" autocomplete="new-password" minlength="8" required></label>`;
+      submit = "Save password";
+      links = `<span><button type="button" class="auth-switch" data-skip-newpass>Skip for now</button></span>`;
+    }
     el.innerHTML = `<div class="auth-card">
       <div class="auth-art">
         <span class="auth-pill"><img src="logo.svg" alt="">PrepBoard</span>
@@ -214,46 +264,113 @@
         <div class="auth-faces">${faces}</div>
       </div>
       <form class="auth-form" id="authForm" novalidate>
-        <h2>${authMode === "signup" ? "Create your account" : authMode === "reset" ? "Reset your password" : "Welcome back"}</h2>
+        <h2>${TITLES[m]}</h2>
+        ${sub ? `<p class="muted" style="margin:-4px 0 0;font-size:14px;line-height:1.5">${sub}</p>` : ""}
         ${message ? `<div class="auth-msg ${message.type}">${esc(message.text)}</div>` : ""}
-        ${authMode === "signup" ? `<label class="field"><span class="label">Name</span><input name="name" autocomplete="name" required></label>` : ""}
-        <label class="field"><span class="label">Email</span><input name="email" type="email" autocomplete="email" required></label>
-        ${authMode !== "reset" ? `<label class="field"><span class="label">Password</span><input name="password" type="password" autocomplete="${authMode === "signup" ? "new-password" : "current-password"}" minlength="8" required></label>` : ""}
-        <button class="btn-primary" type="submit" style="justify-content:center">${authMode === "signup" ? "Create account" : authMode === "reset" ? "Send reset link" : "Sign in"}</button>
-        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px">
-          ${authMode === "signin" ? `<span>New here? <button type="button" class="auth-switch" data-mode="signup">Create an account</button></span><button type="button" class="auth-switch" data-mode="reset">Forgot password?</button>`
-            : `<span>Have an account? <button type="button" class="auth-switch" data-mode="signin">Sign in</button></span>`}
-        </div>
+        ${fields}
+        <button class="btn-primary" type="submit" style="justify-content:center">${submit}</button>
+        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px">${links}</div>
       </form>
     </div>`;
     el.hidden = false;
-    el.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => { authMode = b.dataset.mode; showAuth(); }));
+    el.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => { authMode = b.dataset.mode; authCtx.reset = false; showAuth(); }));
+    el.querySelector("[data-resend]")?.addEventListener("click", resendCode);
+    el.querySelector("[data-skip-newpass]")?.addEventListener("click", finishNewPassword);
     el.querySelector("#authForm").addEventListener("submit", onAuthSubmit);
     setTimeout(() => el.querySelector("input")?.focus(), 30);
+    if (m === "verify" && resendAt > Date.now()) setTimeout(() => { if (authMode === "verify" && !el.hidden) { const b = el.querySelector("[data-resend]"); const w = Math.max(0, Math.ceil((resendAt - Date.now()) / 1000)); if (b) { b.disabled = !!w; b.textContent = w ? `Resend code in ${w}s` : "Resend code"; } } }, 1000);
   }
   function hideAuth() { const el = document.getElementById("auth"); if (el) el.hidden = true; }
+
+  async function sendEmailCode(email) {
+    const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false, emailRedirectTo: redirectTo() } });
+    if (error) throw error;
+    resendAt = Date.now() + 60_000;
+  }
+
+  async function resendCode() {
+    try {
+      if (authCtx.type === "signup") {
+        const { error } = await sb.auth.resend({ type: "signup", email: authCtx.email, options: { emailRedirectTo: redirectTo() } });
+        if (error) throw error;
+        resendAt = Date.now() + 60_000;
+      } else await sendEmailCode(authCtx.email);
+      showAuth({ type: "ok", text: "A new code is on its way." });
+    } catch (err) { showAuth({ type: "err", text: friendly(err) }); }
+  }
+
+  function friendly(err) {
+    const msg = err?.message || String(err || "");
+    if (/rate limit|security purposes|only request this after/i.test(msg)) return "Please wait a minute before asking for another code.";
+    if (/token has expired|invalid/i.test(msg) && authMode === "verify") return "That code is wrong or has expired. Check the latest email, or resend.";
+    if (/Signups not allowed for otp|User not found/i.test(msg)) return "No account uses that email yet. Create one instead.";
+    if (/Email not confirmed/i.test(msg)) return "Confirm your email first: we've sent you a 6-digit code.";
+    return msg || "Something went wrong.";
+  }
+
+  function finishNewPassword() {
+    needsNewPassword = false;
+    authCtx.reset = false;
+    sb.auth.getSession().then(({ data }) => { if (data.session) startSession(data.session); });
+  }
 
   async function onAuthSubmit(e) {
     e.preventDefault();
     const f = e.target.elements;
-    const email = f.email.value.trim(), password = f.password?.value || "";
     const btn = e.target.querySelector("button[type=submit]");
     btn.disabled = true;
     try {
-      if (authMode === "signup") {
-        const { data, error } = await sb.auth.signUp({ email, password, options: { data: { name: f.name.value.trim() }, emailRedirectTo: location.origin + location.pathname } });
+      if (authMode === "signin") {
+        const email = f.email.value.trim();
+        authCtx.email = email;
+        const { error } = await sb.auth.signInWithPassword({ email, password: f.password.value });
+        if (error && /Email not confirmed/i.test(error.message)) {
+          await sb.auth.resend({ type: "signup", email, options: { emailRedirectTo: redirectTo() } }).catch(() => {});
+          authCtx.type = "signup"; resendAt = Date.now() + 60_000; authMode = "verify";
+          showAuth({ type: "ok", text: "Your email isn't confirmed yet. We sent a 6-digit code." }); return;
+        }
         if (error) throw error;
-        if (!data.session) { authMode = "signin"; showAuth({ type: "ok", text: "Check your email to confirm your account, then sign in." }); return; }
-      } else if (authMode === "reset") {
-        const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+      } else if (authMode === "signup") {
+        const email = f.email.value.trim(), name = f.name.value.trim();
+        Object.assign(authCtx, { email, name, type: "signup", reset: false });
+        if (f.password.value.length < 8) throw new Error("Use at least 8 characters for your password.");
+        const { data, error } = await sb.auth.signUp({ email, password: f.password.value, options: { data: { name }, emailRedirectTo: redirectTo() } });
         if (error) throw error;
-        authMode = "signin"; showAuth({ type: "ok", text: "If that email has an account, a reset link is on its way." }); return;
-      } else {
-        const { error } = await sb.auth.signInWithPassword({ email, password });
+        if (!data.session) { resendAt = Date.now() + 60_000; authMode = "verify"; showAuth(); return; }
+      } else if (authMode === "forgot") {
+        // The reset email contains a link. It always opens the PrepBoard web app (any device),
+        // which shows "Choose a new password" (PASSWORD_RECOVERY below).
+        const email = f.email.value.trim();
+        authCtx.email = email;
+        const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: "https://prepboard.shivvyas.com/" });
         if (error) throw error;
+        authMode = "signin";
+        showAuth({ type: "ok", text: "Check your email for a reset link. Open it on any device to choose a new password, then sign in here." }); return;
+      } else if (authMode === "code") {
+        const email = f.email.value.trim();
+        Object.assign(authCtx, { email, type: "email", reset: false });
+        await sendEmailCode(email);
+        authMode = "verify"; showAuth(); return;
+      } else if (authMode === "verify") {
+        const token = f.code.value.replace(/\D/g, "");
+        if (token.length < 6) throw new Error("Enter the 6-digit code from the email.");
+        if (authCtx.reset) needsNewPassword = true;   // hold the app until a new password is chosen
+        const { error } = await sb.auth.verifyOtp({ email: authCtx.email, token, type: authCtx.type });
+        if (error) { needsNewPassword = false; throw error; }
+        if (authCtx.reset) { authMode = "newpass"; showAuth(); }
+        return;
+      } else if (authMode === "newpass") {
+        if (f.password.value.length < 8) throw new Error("Use at least 8 characters.");
+        if (f.password.value !== f.password2.value) throw new Error("The two passwords don't match.");
+        const { error } = await sb.auth.updateUser({ password: f.password.value });
+        if (error) throw error;
+        PB.toast("Password updated. Use it to sign in on any device.");
+        history.replaceState(null, "", location.pathname);
+        finishNewPassword();
+        return;
       }
     } catch (err) {
-      showAuth({ type: "err", text: err.message || "Something went wrong." });
+      showAuth({ type: "err", text: friendly(err) });
     } finally { btn.disabled = false; }
   }
 
@@ -433,8 +550,15 @@
     try { await push(); const remote = await pull(); PB.setDb(remote); synced = snapshot(PB.db); setStatus("ok"); } catch (_) {}
   });
   sb.auth.onAuthStateChange((event, session) => {
-    if (event === "SIGNED_OUT") stopSession();
-    else if (session && (!user || user.id !== session.user.id)) setTimeout(() => startSession(session), 0);
+    if (event === "SIGNED_OUT") { needsNewPassword = false; stopSession(); return; }
+    if (event === "PASSWORD_RECOVERY") {        // opened a password-reset link
+      needsNewPassword = true; authMode = "newpass"; showAuth(); return;
+    }
+    if (needsNewPassword) { if (authMode !== "newpass") { authMode = "newpass"; showAuth(); } return; }
+    if (session && (!user || user.id !== session.user.id)) setTimeout(() => startSession(session), 0);
   });
+  // A reset/confirm link that has expired comes back with an error in the URL.
+  const hashErr = new URLSearchParams(location.hash.slice(1)).get("error_description");
+  if (hashErr) { history.replaceState(null, "", location.pathname); showAuth({ type: "err", text: hashErr.replace(/\+/g, " ") + ". Request a new code below." }); }
   sb.auth.getSession().then(({ data }) => { if (!data.session) showAuth(); });
 })();
