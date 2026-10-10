@@ -27,6 +27,8 @@
   .auth-form h2 { margin: 0; font-size: 24px; letter-spacing: -.02em; }
   .auth-msg { font-size: 13px; padding: 10px 12px; border-radius: 12px; }
   .auth-msg.err { background: #fbe4d8; color: #9a3412; } .auth-msg.ok { background: var(--cobalt-soft); color: var(--cobalt); }
+  .auth-brand { display: none; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; margin-bottom: 18px; }
+  .auth-brand img { width: 36px; height: 36px; border-radius: 10px; }
   .auth-switch { border: 0; background: transparent; color: var(--cobalt); font-weight: 600; padding: 0; }
   .sync-pill { height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); white-space: nowrap; }
   .sync-pill i { width: 8px; height: 8px; border-radius: 50%; background: #2f7d4f; }
@@ -58,8 +60,13 @@
   .np-send { width: 42px; height: 42px; border-radius: 50%; border: 0; background: var(--cobalt); color: #fff; font-size: 18px; flex: none; }
   .np-send:disabled { opacity: .4; }
   @media (max-width: 760px) {
-    .auth-card { grid-template-columns: minmax(0, 1fr); }
-    .auth-art { padding: 26px; } .auth-form { padding: 26px; }
+    /* Phones: just the form. No marketing panel, top-aligned so the keyboard never covers it. */
+    .auth { place-items: start center; padding: 20px 16px; background: var(--card); }
+    .auth-card { grid-template-columns: minmax(0, 1fr); border: 0; box-shadow: none; border-radius: 0; background: transparent; }
+    .auth-art { display: none; }
+    .auth-form { padding: 8px 4px 24px; align-content: start; }
+    .auth-brand { display: flex !important; }
+    .auth-form input { font-size: 16px; }   /* keeps iOS Safari from zooming in on focus */
     .np-plan .grid { grid-template-columns: minmax(0, 1fr); }
   }`;
   document.head.appendChild(css);
@@ -265,6 +272,7 @@
         <div class="auth-faces">${faces}</div>
       </div>
       <form class="auth-form" id="authForm" novalidate>
+        <div class="auth-brand"><img src="logo.svg" alt="">PrepBoard</div>
         <h2>${TITLES[m]}</h2>
         ${sub ? `<p class="muted" style="margin:-4px 0 0;font-size:14px;line-height:1.5">${sub}</p>` : ""}
         ${message ? `<div class="auth-msg ${message.type}">${esc(message.text)}</div>` : ""}
