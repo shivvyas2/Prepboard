@@ -38,12 +38,14 @@
 		57528548A6A157C9F0F5BDBD /* DocumentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38795E006267302A5600E7F9 /* DocumentsView.swift */; };
 		5805B8D78C5062A7E5B05B1C /* Brand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 086CF94B83674AF95AC590A7 /* Brand.swift */; };
 		582D199A13C80757F18FD7CE /* DeviceBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E6D89C3F190EB4E44310FC5 /* DeviceBridge.swift */; };
+		60ABA3799EB40AEE89FDA4DA /* EssentialsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 863595FE71E5D6B79DB81E8B /* EssentialsView.swift */; };
 		64FE37B053DF759D0A45312C /* Transfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0CFBC3448067B5F781BF89 /* Transfer.swift */; };
 		6E71916771134F0651F48F90 /* PrepboardApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 351E33EDB990739C7D995D23 /* PrepboardApp.swift */; };
 		6E8E7C915218716C3B2CF128 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7680513B119FE9D73EC93F5B /* Keychain.swift */; };
 		7377543A6CF61603C147AB4B /* Practice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B209C3AE9C59D4538BB7F70 /* Practice.swift */; };
 		75F989CCCE7C56055041DF0B /* MacBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC34C8528365ECCD58D9852 /* MacBridge.swift */; };
 		7E1B01F0D9DB36B25A0A7B8F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D5A22B3E3CDDECC8B7D281BA /* Assets.xcassets */; };
+		854E512FCDDBBE633249ED1F /* EssentialsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 863595FE71E5D6B79DB81E8B /* EssentialsView.swift */; };
 		85E174DE9B0DE79BDD585C4B /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = C8E722470B85C18A600A5BAA /* SwiftTerm */; };
 		9194350FF0CD45498CD29074 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D5A22B3E3CDDECC8B7D281BA /* Assets.xcassets */; };
 		9258A319E668D1008D056D2F /* LearnViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB8E4C959CF417900DFFC346 /* LearnViews.swift */; };
@@ -54,12 +56,14 @@
 		A02E31B78B594D2B8BEAFD6E /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EC03837C9B766275F4AE786 /* AppState.swift */; };
 		A4D59312DF82A1E45270AD98 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4E1D6952B06D2384BCBEBBD /* Theme.swift */; };
 		A68254699A41AD80B40C3B02 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC754F719792244FD3C57AC4 /* AuthView.swift */; };
+		A9E40F7AD888D8D86D8283E9 /* TextClean.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F3F85AEB7443FD9579A22E0 /* TextClean.swift */; };
 		AB96521CB18B51F737A936C5 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = B73BFD19624466AB957B8B72 /* Models.swift */; };
 		AC53B5797598656B1BB7FEE3 /* Practice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B209C3AE9C59D4538BB7F70 /* Practice.swift */; };
 		B32BE904B3B91DA420C56A27 /* ClaudeCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA84D9C3ECFFFF00DCDB21C1 /* ClaudeCode.swift */; };
 		B44B1D5ED20ED385CF2CC9C0 /* ClaudePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECC76875631FCA668A14AE13 /* ClaudePanel.swift */; };
 		B84175618128F07C8E1EAB21 /* Learning.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB9073FEB4AD369E9018B0DD /* Learning.swift */; };
 		B9E0A3BA1365E39A7831F8C7 /* MarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 854854AA1F340A335592DD89 /* MarkdownView.swift */; };
+		C65E7E59B27C42246189F8D6 /* TextClean.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F3F85AEB7443FD9579A22E0 /* TextClean.swift */; };
 		CA8659DC0A096365222A099D /* Learning.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB9073FEB4AD369E9018B0DD /* Learning.swift */; };
 		CBAF4E46FA6085154FF96B96 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6835F58BDD8C6B80BFB23B64 /* RootView.swift */; };
 		D1D13F5B11A8D252E719D4B5 /* MacBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC34C8528365ECCD58D9852 /* MacBridge.swift */; };
@@ -95,7 +99,9 @@
 		7680513B119FE9D73EC93F5B /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		7BC5297DFE0F267A5635C878 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
 		7E6D89C3F190EB4E44310FC5 /* DeviceBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceBridge.swift; sourceTree = "<group>"; };
+		7F3F85AEB7443FD9579A22E0 /* TextClean.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextClean.swift; sourceTree = "<group>"; };
 		854854AA1F340A335592DD89 /* MarkdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownView.swift; sourceTree = "<group>"; };
+		863595FE71E5D6B79DB81E8B /* EssentialsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EssentialsView.swift; sourceTree = "<group>"; };
 		9E1CC0FAAB100F95D87884E0 /* ClaudeTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTerminalView.swift; sourceTree = "<group>"; };
 		A4E1D6952B06D2384BCBEBBD /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		B73BFD19624466AB957B8B72 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
@@ -155,6 +161,7 @@
 				7BC5297DFE0F267A5635C878 /* Components.swift */,
 				2B116C2CC40AD6A20444100E /* DashboardView.swift */,
 				38795E006267302A5600E7F9 /* DocumentsView.swift */,
+				863595FE71E5D6B79DB81E8B /* EssentialsView.swift */,
 				BB8E4C959CF417900DFFC346 /* LearnViews.swift */,
 				854854AA1F340A335592DD89 /* MarkdownView.swift */,
 				6C2237C2FE9593FEE15E0D76 /* MediaViews.swift */,
@@ -201,6 +208,7 @@
 				FAC34C8528365ECCD58D9852 /* MacBridge.swift */,
 				B73BFD19624466AB957B8B72 /* Models.swift */,
 				1B209C3AE9C59D4538BB7F70 /* Practice.swift */,
+				7F3F85AEB7443FD9579A22E0 /* TextClean.swift */,
 				BC0CFBC3448067B5F781BF89 /* Transfer.swift */,
 			);
 			path = Model;
@@ -331,6 +339,7 @@
 				E8C0F0C55171374A3A028D60 /* DashboardView.swift in Sources */,
 				E31797C4DD9505448D921C50 /* DeviceBridge.swift in Sources */,
 				57528548A6A157C9F0F5BDBD /* DocumentsView.swift in Sources */,
+				60ABA3799EB40AEE89FDA4DA /* EssentialsView.swift in Sources */,
 				F87CA30ED64246DF8B4946C3 /* Keychain.swift in Sources */,
 				3B86AF6CACAAF8144625707F /* LearnViews.swift in Sources */,
 				CA8659DC0A096365222A099D /* Learning.swift in Sources */,
@@ -345,6 +354,7 @@
 				DCDA9A4BB6FAAA8D4DC26E03 /* RolesView.swift in Sources */,
 				CBAF4E46FA6085154FF96B96 /* RootView.swift in Sources */,
 				1A3EBEF4782C9479A7053560 /* SearchView.swift in Sources */,
+				C65E7E59B27C42246189F8D6 /* TextClean.swift in Sources */,
 				A4D59312DF82A1E45270AD98 /* Theme.swift in Sources */,
 				454D906927D158A44AAF2099 /* TimelineView.swift in Sources */,
 				E34BE1F0E640EFCF9A23B971 /* Transfer.swift in Sources */,
@@ -369,6 +379,7 @@
 				2166638E5EA8352CDC98E214 /* DashboardView.swift in Sources */,
 				582D199A13C80757F18FD7CE /* DeviceBridge.swift in Sources */,
 				D8BC01DD6F66C2135E9C5EFA /* DocumentsView.swift in Sources */,
+				854E512FCDDBBE633249ED1F /* EssentialsView.swift in Sources */,
 				6E8E7C915218716C3B2CF128 /* Keychain.swift in Sources */,
 				9258A319E668D1008D056D2F /* LearnViews.swift in Sources */,
 				B84175618128F07C8E1EAB21 /* Learning.swift in Sources */,
@@ -383,6 +394,7 @@
 				D603F61B60BDA4622982A67E /* RolesView.swift in Sources */,
 				15EF66572198B463544C9213 /* RootView.swift in Sources */,
 				5589EF6DC5389E19055FFD28 /* SearchView.swift in Sources */,
+				A9E40F7AD888D8D86D8283E9 /* TextClean.swift in Sources */,
 				2785839BA6299D47FC207CCC /* Theme.swift in Sources */,
 				5567A6BCB0A41DF8F1D58E2C /* TimelineView.swift in Sources */,
 				64FE37B053DF759D0A45312C /* Transfer.swift in Sources */,

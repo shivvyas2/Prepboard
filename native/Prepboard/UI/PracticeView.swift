@@ -89,7 +89,11 @@ struct PracticeView: View {
     @State private var code = ""
     @State private var output = ""
     @State private var running = false
-    @State private var pane = 0                   // compact: 0 problem · 1 code · 2 output · 3 AI
+    @State private var pane = 0                   // compact: 0 problem · 1 code · 2 output · 3 AI · 4 list
+    @AppStorage("practice.library") private var showLibrary = true
+    @State private var libFilter = "All"          // All · To do · Solved
+    @State private var libDifficulty = "Any"
+    @State private var libSearch = ""
     @State private var leftTab = 0                // wide: 0 problem · 1 AI
     @State private var aiMessages: [PlannerMessage] = []
     @State private var aiInput = ""
@@ -124,6 +128,9 @@ struct PracticeView: View {
 
     private func wide(_ p: Problem, width: CGFloat) -> some View {
         HStack(alignment: .top, spacing: 14) {
+            if showLibrary && width >= 1000 {
+                library.frame(width: 260).frame(maxHeight: .infinity).pbCard(padding: 0, radius: PB.rXL)
+            }
             VStack(spacing: 0) {
                 if aiAllowed {
                     Picker("", selection: $leftTab) { Text("Problem").tag(0); Text("AI assistant").tag(1) }
@@ -132,7 +139,7 @@ struct PracticeView: View {
                 }
                 if leftTab == 1 && aiAllowed { assistant(p) } else { statement(p) }
             }
-            .frame(width: min(460, width * 0.4))
+            .frame(width: min(440, width * (showLibrary && width >= 1000 ? 0.32 : 0.4)))
             .frame(maxHeight: .infinity)
             .pbCard(padding: 0, radius: PB.rXL)
 
@@ -150,7 +157,7 @@ struct PracticeView: View {
     private func compact(_ p: Problem) -> some View {
         VStack(spacing: 10) {
             Picker("", selection: $pane) {
-                Text("Problem").tag(0); Text("Code").tag(1); Text("Output").tag(2)
+                Text("All").tag(4); Text("Problem").tag(0); Text("Code").tag(1); Text("Output").tag(2)
                 if aiAllowed { Text("AI").tag(3) }
             }
             .pickerStyle(.segmented).labelsHidden()
@@ -159,6 +166,7 @@ struct PracticeView: View {
                 case 1: CodeEditor(text: $code)
                 case 2: console
                 case 3 where aiAllowed: assistant(p)
+                case 4: library
                 default: statement(p)
                 }
             }
@@ -169,6 +177,9 @@ struct PracticeView: View {
 
     private func toolbar(_ p: Problem, compact: Bool) -> some View {
         HStack(spacing: 8) {
+            if !compact {
+                CircleIconButton(systemImage: "sidebar.left", size: 36, active: showLibrary, label: "All problems") { showLibrary.toggle() }
+            }
             Menu {
                 Button("New problem…") { showNew = true }
                 Divider()
@@ -207,6 +218,60 @@ struct PracticeView: View {
             .help(lang.runsHere ? "Run the file, including its tests (⌘↩)" : "\(lang.label) runs in the Mac app")
             if aiAllowed {
                 Button("Review") { review(p) }.buttonStyle(PillButtonStyle(filled: false, compact: true)).disabled(aiThinking)
+            }
+        }
+    }
+
+    /// Every coding problem in one place: filter by status and difficulty, search titles and topics.
+    private var library: some View {
+        let q = libSearch.trimmingCharacters(in: .whitespaces).lowercased()
+        let list = problems.filter { p in
+            (libFilter == "All" || (libFilter == "Solved") == p.solved)
+                && (libDifficulty == "Any" || p.difficulty == libDifficulty)
+                && (q.isEmpty || p.title.lowercased().contains(q) || p.topics.contains { $0.lowercased().contains(q) })
+        }
+        return VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Problems").font(.system(size: 15, weight: .semibold))
+                    Text("\(problems.filter(\.solved).count)/\(problems.count) solved").font(.system(size: 12)).foregroundStyle(PB.muted)
+                    Spacer(minLength: 0)
+                    CircleIconButton(systemImage: "plus", size: 30, label: "New problem") { showNew = true }
+                }
+                TextField("Search title or topic", text: $libSearch).textFieldStyle(.plain).font(.system(size: 13))
+                    .padding(.horizontal, 12).frame(height: 32)
+                    .background(Capsule().fill(PB.surface)).overlay(Capsule().strokeBorder(PB.line))
+                Picker("", selection: $libFilter) { ForEach(["All", "To do", "Solved"], id: \.self) { Text($0).tag($0) } }
+                    .pickerStyle(.segmented).labelsHidden()
+                Picker("", selection: $libDifficulty) { ForEach(["Any", "Easy", "Medium", "Hard"], id: \.self) { Text($0).tag($0) } }
+                    .pickerStyle(.segmented).labelsHidden()
+            }
+            .padding(12)
+            Divider()
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(list) { q in
+                        Button { save(); selectedID = q.id; if pane == 4 { pane = 0 } } label: {
+                            HStack(alignment: .top, spacing: 10) {
+                                Image(systemName: q.solved ? "checkmark.square.fill" : "square")
+                                    .foregroundStyle(q.solved ? PB.cobalt : PB.muted).font(.system(size: 15))
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(q.title).font(.system(size: 13, weight: .semibold)).multilineTextAlignment(.leading).lineLimit(2)
+                                    Text(([q.difficulty] + q.topics.prefix(2)).joined(separator: " · "))
+                                        .font(.system(size: 11)).foregroundStyle(PB.muted).lineLimit(1)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, 12).padding(.vertical, 10)
+                            .background(q.id == problem?.id ? PB.cobaltSoft : Color.clear)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if list.isEmpty {
+                        Text("No problems match.").font(.system(size: 13)).foregroundStyle(PB.muted).padding(20)
+                    }
+                }
             }
         }
     }

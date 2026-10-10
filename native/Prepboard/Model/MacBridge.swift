@@ -85,7 +85,7 @@ final class ClaudeCode {
         }
         if let e = reply.error { throw Learning.Failure.message(e) }
         if reply.is_error == true { throw Learning.Failure.message(reply.result ?? "Claude Code returned an error.") }
-        return (reply.result ?? "", reply.session_id)
+        return ((reply.result ?? "").withoutEmoji, reply.session_id)
     }
 
     /// Runs a one-shot prompt on the Mac and decodes the JSON in its reply.

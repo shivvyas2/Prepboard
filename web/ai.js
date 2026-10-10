@@ -19,11 +19,18 @@
   }
   const useClaudeCode = () => state.prefer && state.bridge?.ok;
 
+  // PrepBoard's content standard: no emoji. Keeps ✓ ✗ ★ • — → © ® ™ and code indentation; "1️⃣" becomes "1".
+  const EMOJI = /[\p{Extended_Pictographic}\u{1F3FB}-\u{1F3FF}\u{E0020}-\u{E007F}\uFE0F\u20E3\u200D]+ ?/gu;
+  const KEEP = /^[\u00A9\u00AE\u2122\u2190-\u21FF]/u;
+  const stripEmoji = (s) => String(s).replace(EMOJI, (m, i, all) => KEEP.test(m) ? m : (m.endsWith(" ") && !(i === 0 || all[i - 1] === " " || all[i - 1] === "\n") ? " " : ""));
+  window.PBStripEmoji = stripEmoji;
+
   async function bridgeRun(prompt, tools = "Read", resume = null) {
     const r = await fetch(`${BRIDGE}/run`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt, tools, resume }) });
     const data = await r.json();
     if (!r.ok || data.error) throw new Error(data.error || "Claude Code bridge error");
     if (data.is_error) throw new Error(data.result || "Claude Code returned an error");
+    data.result = stripEmoji(data.result || "");
     return data;
   }
   function extractJSON(text) {

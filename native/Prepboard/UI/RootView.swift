@@ -42,6 +42,7 @@ struct RootView: View {
         case .roles: RolesView()
         case .documents: DocumentsView()
         case .practice: PracticeView()
+        case .essentials: EssentialsView()
         case .scores: ScoresView()
         case .browse: BrowserView()
         case .search: SearchView()

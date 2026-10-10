@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -278,6 +279,7 @@ struct ProfileSheet: View {
                 }
             }
             TimeFormatSection()
+            EmojiCleanupSection()
             #if os(macOS)
             claudeSection
             DeviceBridgeSection()
@@ -531,5 +533,46 @@ struct TimeFormatSection: View {
             }
         }
         .toggleStyle(CheckboxToggleStyle())
+    }
+}
+
+/// Profile → "Remove emoji": cleans existing documents, sessions, roles and problems to the app's no-emoji standard.
+/// New AI content is already filtered; this is for content made before, or pasted in.
+struct EmojiCleanupSection: View {
+    @Environment(\.modelContext) private var context
+    @State private var result: String?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Remove emoji").font(.system(size: 14, weight: .semibold))
+                Text(result ?? "Clean every document, session, role and problem. Syncs to all your devices.")
+                    .font(.system(size: 12)).foregroundStyle(result == nil ? PB.muted : PB.cobalt).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            Button("Clean up") { clean() }.buttonStyle(PillButtonStyle(filled: false, compact: true))
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 16).fill(PB.surface))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(PB.line))
+    }
+
+    private func clean() {
+        var changed = 0
+        func fix(_ s: inout String) { let c = s.withoutEmoji; if c != s { s = c; changed += 1 } }
+        for d in (try? context.fetch(FetchDescriptor<Doc>())) ?? [] {
+            fix(&d.title); fix(&d.body)
+        }
+        for t in (try? context.fetch(FetchDescriptor<PrepTask>())) ?? [] {
+            fix(&t.title)
+            let refs = t.refs.map { r -> DocRef in var h = r.heading; fix(&h); return DocRef(docId: r.docId, heading: h) }
+            if refs != t.refs { t.refs = refs }
+        }
+        for r in (try? context.fetch(FetchDescriptor<Role>())) ?? [] { fix(&r.notes); fix(&r.interviewNote); fix(&r.title) }
+        for p in (try? context.fetch(FetchDescriptor<Problem>())) ?? [] {
+            fix(&p.title); fix(&p.statement); fix(&p.notes)
+        }
+        try? context.save()
+        result = changed == 0 ? "No emoji found. Everything is clean." : "Cleaned \(changed) item\(changed == 1 ? "" : "s")."
     }
 }

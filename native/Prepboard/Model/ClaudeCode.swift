@@ -245,6 +245,7 @@ final class ClaudeCode {
             let hint = stderr.contains("command not found") ? "The `claude` command wasn't found. Install Claude Code and make sure it works in Terminal." : stderr
             error = hint.isEmpty ? "Claude Code exited with code \(code)." : String(hint.suffix(400))
         }
+        if let i = messages.indices.last, messages[i].role == .assistant { messages[i].text = messages[i].text.withoutEmoji }
         if let last = messages.last, last.role == .assistant, last.text.isEmpty { messages.removeLast() }
     }
 }

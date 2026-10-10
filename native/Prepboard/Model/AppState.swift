@@ -3,7 +3,7 @@ import Observation
 import SwiftData
 
 enum Section: String, CaseIterable, Identifiable {
-    case dashboard = "Home", timeline = "Timeline", roles = "Roles", documents = "Documents", practice = "Practice", scores = "Scores", browse = "Browse", search = "Search"
+    case dashboard = "Home", timeline = "Timeline", roles = "Roles", documents = "Documents", practice = "Coding", essentials = "Essentials", scores = "Scores", browse = "Browse", search = "Search"
     var id: String { rawValue }
     var icon: String {
         switch self {
@@ -12,6 +12,7 @@ enum Section: String, CaseIterable, Identifiable {
         case .roles: "briefcase"
         case .documents: "doc.text"
         case .practice: "chevron.left.forwardslash.chevron.right"
+        case .essentials: "person.3"
         case .scores: "trophy"
         case .browse: "safari"
         case .search: "magnifyingglass"
