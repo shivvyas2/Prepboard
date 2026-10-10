@@ -47,6 +47,8 @@ Native SwiftUI, iPad-first: it uses the full display in both orientations, with 
 |---|---|---|
 | ![iPad Home](docs/screenshots/ipad-dashboard.png) | ![iPad Timeline](docs/screenshots/ipad-timeline.png) | ![iPhone Home](docs/screenshots/iphone-dashboard.png) |
 
+**Use your Claude account on iPhone and iPad (optional).** On the Mac, open PrepBoard → Profile and check *Let my iPhone and iPad use Claude Code*. It shows the Mac's address and a pairing code. On the iPhone or iPad, go to Profile → *Claude Code on my Mac* and enter both. The planner, study guides, quizzes and videos then run on your Mac's Claude Code while PrepBoard is open there, over the same Wi-Fi or anywhere with [Tailscale](https://tailscale.com). When the Mac can't be reached, the app uses your Anthropic key.
+
 Distribution is through TestFlight; see [Releases](https://github.com/shivvyas2/Prepboard/releases) for the current status.
 
 ## Mac
@@ -70,7 +72,7 @@ brand/      App icon sources
 - **Data:** Supabase Postgres. Every table is owner-only through Row Level Security. PDFs live in a private storage bucket, with one folder per user.
 - **AI:** the `prep-chat` Edge Function (planner, study guides, quizzes, YouTube search) uses the Claude API with tool use and structured outputs. It requires a signed-in user.
 - **Your API key:** keys are validated, encrypted with AES-GCM on the server and stored in a table that clients can't read. The app only ever shows the last four characters.
-- **Claude Code:** the Mac app runs `claude -p` with read-only and web tools. The web app can use the same thing through `bridge/claude-bridge.mjs`, which listens on 127.0.0.1 only and accepts requests only from the Prepboard web origins.
+- **Claude Code:** the Mac app runs `claude -p` with read-only and web tools. Sharing it with your iPhone/iPad is off by default; when on, the Mac app listens on port 8788 and requires a 16-character pairing code (kept in the Keychain on both devices), refuses browser requests, and locks out an address after 10 wrong codes. *New code* unpairs every device. The web app can use the same thing through `bridge/claude-bridge.mjs`, which listens on 127.0.0.1 only and accepts requests only from the Prepboard web origins.
 
 ## Run it yourself
 

@@ -242,9 +242,7 @@ struct AIKeySection: View {
 struct ProfileSheet: View {
     @Environment(Profile.self) private var profile
     @Environment(Cloud.self) private var cloud
-    #if os(macOS)
     @Environment(ClaudeCode.self) private var claude
-    #endif
     @Environment(\.dismiss) private var dismiss
     @State private var importing = false
 
@@ -281,6 +279,9 @@ struct ProfileSheet: View {
             }
             #if os(macOS)
             claudeSection
+            DeviceBridgeSection()
+            #else
+            MacBridgeSection()
             #endif
             AIKeySection()
             accountSection
@@ -385,3 +386,125 @@ struct ProfileSheet: View {
         #endif
     }
 }
+
+#if os(iOS)
+/// Optional: use the Claude Code on your Mac from iPhone / iPad (home Wi-Fi or Tailscale).
+struct MacBridgeSection: View {
+    @Environment(ClaudeCode.self) private var claude
+    @State private var address = ""
+    @State private var code = ""
+    @State private var busy = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                ClaudeMark().frame(width: 22, height: 22)
+                    .padding(7).background(Circle().fill(Color(hex: 0xF5EDE4)))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Claude Code on my Mac").font(.system(size: 14, weight: .semibold))
+                    Text(statusText).font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                if claude.connection == .checking { ProgressView().controlSize(.small) }
+            }
+            if claude.paired {
+                HStack(spacing: 8) {
+                    Button(claude.enabled ? "Turn off" : "Turn on") {
+                        claude.enabled.toggle()
+                        if claude.enabled { Task { await claude.checkConnection() } }
+                    }
+                    .buttonStyle(PillButtonStyle(filled: !claude.enabled, compact: true))
+                    Button("Check again") { Task { await claude.checkConnection() } }.buttonStyle(PillButtonStyle(filled: false, compact: true))
+                    Button("Unpair") { claude.unpair() }.buttonStyle(PillButtonStyle(filled: false, compact: true))
+                }
+            } else {
+                Text("Optional. On your Mac, run node bridge/claude-bridge.mjs --remote, then enter the address and code it prints. Works on the same Wi-Fi, or anywhere with Tailscale.")
+                    .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
+                input("Mac address, e.g. 100.64.0.5:8787", text: $address, keyboard: .URL)
+                input("Pairing code, XXXX-XXXX-XXXX-XXXX", text: $code, keyboard: .asciiCapable)
+                Button(busy ? "Pairing…" : "Pair") {
+                    busy = true
+                    Task { await claude.pair(address: address, code: code); busy = false; if claude.isReady { code = "" } }
+                }
+                .buttonStyle(PillButtonStyle(compact: true))
+                .disabled(busy || address.isEmpty || code.filter { $0.isLetter || $0.isNumber }.count != 16)
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 16).fill(PB.surface))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(PB.line))
+        .task { if claude.paired, claude.connection == .unknown { await claude.checkConnection() } }
+    }
+
+    private func input(_ placeholder: String, text: Binding<String>, keyboard: UIKeyboardType) -> some View {
+        TextField(placeholder, text: text)
+            .textFieldStyle(.plain)
+            .keyboardType(keyboard)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .font(.system(size: 15, design: .monospaced))
+            .padding(.horizontal, 10).frame(minHeight: 44)
+            .background(RoundedRectangle(cornerRadius: 10).fill(PB.card))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(PB.line))
+    }
+
+    private var statusText: String {
+        guard claude.paired else { return "Use your Claude account from this device, through your Mac." }
+        switch claude.connection {
+        case .unknown, .checking: return "Checking your Mac at \(claude.address)…"
+        case .unreachable: return "Can't reach \(claude.address). Is the Mac awake, with the bridge running? Using your Anthropic key meanwhile."
+        case .signedOut: return "Reached your Mac, but Claude Code isn't signed in there. Run claude auth login on the Mac."
+        case .connected(let v): return claude.enabled ? "Connected · \(v). Planner, quizzes and videos use your Claude account." : "Paired, turned off. Using your Anthropic key."
+        }
+    }
+}
+#endif
+
+#if os(macOS)
+/// Optional: let the user's own iPhone / iPad use this Mac's Claude Code while PrepBoard is open.
+struct DeviceBridgeSection: View {
+    @Environment(DeviceBridge.self) private var bridge
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle(isOn: Binding(get: { bridge.enabled }, set: { bridge.setEnabled($0) })) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Let my iPhone and iPad use Claude Code").font(.system(size: 14, weight: .semibold))
+                    Text("Works while PrepBoard is open on this Mac, over the same Wi-Fi or Tailscale.")
+                        .font(.system(size: 12)).foregroundStyle(PB.muted)
+                }
+            }
+            .toggleStyle(CheckboxToggleStyle())
+            if bridge.enabled {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("On iPhone or iPad: Profile → Claude Code on my Mac, then enter").font(.system(size: 12)).foregroundStyle(PB.ink2)
+                    ForEach(bridge.addresses, id: \.ip) { a in
+                        row("Address", "\(a.ip):\(DeviceBridgeConfig.port)", note: a.tailscale ? "Tailscale · works away from home" : "This Wi-Fi only")
+                    }
+                    if bridge.addresses.isEmpty { Text("No network address. Connect to Wi-Fi or Tailscale.").font(.system(size: 12)).foregroundStyle(PB.red) }
+                    row("Code", bridge.displayCode, note: nil)
+                    HStack(spacing: 8) {
+                        Text(bridge.lastError ?? (bridge.running ? (bridge.lastUsed.map { "Listening · last used \($0.pbFull)" } ?? "Listening") : "Starting…"))
+                            .font(.system(size: 12)).foregroundStyle(bridge.lastError == nil ? PB.muted : PB.red)
+                        Spacer()
+                        Button("New code") { bridge.resetCode() }.buttonStyle(PillButtonStyle(filled: false, compact: true))
+                            .help("Unpairs every device; enter the new code on each one")
+                    }
+                }
+                .padding(.leading, 34)
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 16).fill(PB.surface))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(PB.line))
+    }
+
+    private func row(_ label: String, _ value: String, note: String?) -> some View {
+        HStack(spacing: 10) {
+            Text(label).pbLabelStyle().frame(width: 60, alignment: .leading)
+            Text(value).font(.system(size: 14, weight: .semibold, design: .monospaced)).textSelection(.enabled)
+            if let note { Text(note).font(.system(size: 11)).foregroundStyle(PB.muted) }
+        }
+    }
+}
+#endif

@@ -11,9 +11,7 @@ struct SessionLearnRow: View {
     @Environment(AppState.self) private var app
     @Environment(Cloud.self) private var cloud
     @Environment(\.openURL) private var openURL
-    #if os(macOS)
     @Environment(ClaudeCode.self) private var claude
-    #endif
     @Query private var roles: [Role]
     @State private var searching = false
     @State private var error: String?
@@ -57,11 +55,7 @@ struct SessionLearnRow: View {
         Task {
             defer { searching = false }
             do {
-                #if os(macOS)
                 let c: AnyObject? = claude
-                #else
-                let c: AnyObject? = nil
-                #endif
                 let vids = try await Learning.videos(topic: topic, context: role.map { "\($0.company) \($0.title) interview prep" } ?? "interview prep",
                                                      claude: c, cloud: cloud)
                 task.videos = vids
@@ -106,9 +100,7 @@ struct QuizSheet: View {
     @Environment(\.modelContext) private var context
     @Environment(AppState.self) private var app
     @Environment(Cloud.self) private var cloud
-    #if os(macOS)
     @Environment(ClaudeCode.self) private var claude
-    #endif
     @Query private var tasks: [PrepTask]
     @Query private var docs: [Doc]
     @Query private var attempts: [QuizAttempt]
@@ -216,11 +208,7 @@ struct QuizSheet: View {
         topic = task.title
         phase = .loading
         do {
-            #if os(macOS)
             let c: AnyObject? = claude
-            #else
-            let c: AnyObject? = nil
-            #endif
             let (payload, src) = try await Learning.quiz(topic: task.title, material: Learning.material(for: task, docs: docs), claude: c, cloud: cloud)
             guard !payload.questions.isEmpty else { throw Learning.Failure.message("No questions came back. Try again.") }
             questions = payload.questions; source = src; index = 0; answers = [:]

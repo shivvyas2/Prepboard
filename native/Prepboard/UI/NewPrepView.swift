@@ -51,12 +51,8 @@ struct NewPrepView: View {
     @State private var plan: Plan?
     @State private var claudeSession: String?
     @FocusState private var focused: Bool
-    #if os(macOS)
     @Environment(ClaudeCode.self) private var claude
     private var usingClaudeCode: Bool { claude.isReady }
-    #else
-    private var usingClaudeCode: Bool { false }
-    #endif
 
     private let suggestions = [
         "I have a Google L5 Android interview in 2 weeks",
@@ -209,7 +205,6 @@ struct NewPrepView: View {
         Task {
             defer { thinking = false }
             do {
-                #if os(macOS)
                 if usingClaudeCode {
                     let first = claudeSession == nil
                     let prompt = first ? PlannerPrompt.rules(now: DateCoding.string(.now), timezone: TimeZone.current.identifier) + "\n\nUser: \(t)" : t
@@ -223,7 +218,6 @@ struct NewPrepView: View {
                     }
                     return
                 }
-                #endif
                 let res: ChatResponse = try await cloud.invoke(ChatRequest(messages: messages, now: DateCoding.string(.now), timezone: TimeZone.current.identifier))
                 if let err = res.error { throw NSError(domain: "Planner", code: 0, userInfo: [NSLocalizedDescriptionKey: err]) }
                 messages.append(.init(role: "assistant", content: res.reply ?? "…"))
@@ -262,20 +256,15 @@ struct NewPrepView: View {
 
         // Write the study guides in parallel and fill them in as they arrive.
         let cloud = cloud
-        #if os(macOS)
         let claude: ClaudeCode? = usingClaudeCode ? self.claude : nil
-        #endif
         Task { @MainActor in
             await withTaskGroup(of: (String, String?).self) { group in
                 for (doc, d) in created {
                     let id = doc.id
                     group.addTask { @MainActor in
-                        #if os(macOS)
-                        if let claude {
-                            let text = try? await claude.runText(PlannerPrompt.docPrompt(role: p.role, doc: d), tools: "Read WebFetch").text
+                        if let claude, let text = try? await claude.runText(PlannerPrompt.docPrompt(role: p.role, doc: d), tools: "Read WebFetch").text {
                             return (id, text)
                         }
-                        #endif
                         let res: DocResponse? = try? await cloud.invoke(DocRequest(role: p.role, doc: d, now: DateCoding.string(.now),
                                                                                    timezone: TimeZone.current.identifier))
                         return (id, res?.body)

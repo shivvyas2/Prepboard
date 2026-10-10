@@ -35,8 +35,11 @@
 		5589EF6DC5389E19055FFD28 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3010B879EF992187C633DB93 /* SearchView.swift */; };
 		57528548A6A157C9F0F5BDBD /* DocumentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38795E006267302A5600E7F9 /* DocumentsView.swift */; };
 		5805B8D78C5062A7E5B05B1C /* Brand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 086CF94B83674AF95AC590A7 /* Brand.swift */; };
+		582D199A13C80757F18FD7CE /* DeviceBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E6D89C3F190EB4E44310FC5 /* DeviceBridge.swift */; };
 		64FE37B053DF759D0A45312C /* Transfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0CFBC3448067B5F781BF89 /* Transfer.swift */; };
 		6E71916771134F0651F48F90 /* PrepboardApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 351E33EDB990739C7D995D23 /* PrepboardApp.swift */; };
+		6E8E7C915218716C3B2CF128 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7680513B119FE9D73EC93F5B /* Keychain.swift */; };
+		75F989CCCE7C56055041DF0B /* MacBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC34C8528365ECCD58D9852 /* MacBridge.swift */; };
 		7E1B01F0D9DB36B25A0A7B8F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D5A22B3E3CDDECC8B7D281BA /* Assets.xcassets */; };
 		9194350FF0CD45498CD29074 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D5A22B3E3CDDECC8B7D281BA /* Assets.xcassets */; };
 		9258A319E668D1008D056D2F /* LearnViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB8E4C959CF417900DFFC346 /* LearnViews.swift */; };
@@ -53,14 +56,17 @@
 		B9E0A3BA1365E39A7831F8C7 /* MarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 854854AA1F340A335592DD89 /* MarkdownView.swift */; };
 		CA8659DC0A096365222A099D /* Learning.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB9073FEB4AD369E9018B0DD /* Learning.swift */; };
 		CBAF4E46FA6085154FF96B96 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6835F58BDD8C6B80BFB23B64 /* RootView.swift */; };
+		D1D13F5B11A8D252E719D4B5 /* MacBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC34C8528365ECCD58D9852 /* MacBridge.swift */; };
 		D603F61B60BDA4622982A67E /* RolesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E02443C80B213288CCA76C4 /* RolesView.swift */; };
 		D8BC01DD6F66C2135E9C5EFA /* DocumentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38795E006267302A5600E7F9 /* DocumentsView.swift */; };
 		D9208C24612868E1BC17D711 /* PrepboardApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 351E33EDB990739C7D995D23 /* PrepboardApp.swift */; };
 		DCDA9A4BB6FAAA8D4DC26E03 /* RolesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E02443C80B213288CCA76C4 /* RolesView.swift */; };
+		E31797C4DD9505448D921C50 /* DeviceBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E6D89C3F190EB4E44310FC5 /* DeviceBridge.swift */; };
 		E34BE1F0E640EFCF9A23B971 /* Transfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0CFBC3448067B5F781BF89 /* Transfer.swift */; };
 		E4D535FC0E50C7A7C8882DB9 /* Brand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 086CF94B83674AF95AC590A7 /* Brand.swift */; };
 		E8C0F0C55171374A3A028D60 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B116C2CC40AD6A20444100E /* DashboardView.swift */; };
 		ECC11F2A5615B638B3D8078A /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BC5297DFE0F267A5635C878 /* Components.swift */; };
+		F87CA30ED64246DF8B4946C3 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7680513B119FE9D73EC93F5B /* Keychain.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -78,7 +84,9 @@
 		6A4A493B86B1E3BAC90CEF43 /* Cloud.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Cloud.swift; sourceTree = "<group>"; };
 		6C2237C2FE9593FEE15E0D76 /* MediaViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaViews.swift; sourceTree = "<group>"; };
 		6E02443C80B213288CCA76C4 /* RolesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RolesView.swift; sourceTree = "<group>"; };
+		7680513B119FE9D73EC93F5B /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		7BC5297DFE0F267A5635C878 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
+		7E6D89C3F190EB4E44310FC5 /* DeviceBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceBridge.swift; sourceTree = "<group>"; };
 		854854AA1F340A335592DD89 /* MarkdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownView.swift; sourceTree = "<group>"; };
 		A4E1D6952B06D2384BCBEBBD /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		B73BFD19624466AB957B8B72 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
@@ -92,6 +100,7 @@
 		DD39A0E9AB7F074D92994A4A /* BrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserView.swift; sourceTree = "<group>"; };
 		ECC76875631FCA668A14AE13 /* ClaudePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudePanel.swift; sourceTree = "<group>"; };
 		F1011E204D4362832B715B72 /* NewPrepView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewPrepView.swift; sourceTree = "<group>"; };
+		FAC34C8528365ECCD58D9852 /* MacBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacBridge.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -173,7 +182,10 @@
 				0EC03837C9B766275F4AE786 /* AppState.swift */,
 				CA84D9C3ECFFFF00DCDB21C1 /* ClaudeCode.swift */,
 				6A4A493B86B1E3BAC90CEF43 /* Cloud.swift */,
+				7E6D89C3F190EB4E44310FC5 /* DeviceBridge.swift */,
+				7680513B119FE9D73EC93F5B /* Keychain.swift */,
 				CB9073FEB4AD369E9018B0DD /* Learning.swift */,
+				FAC34C8528365ECCD58D9852 /* MacBridge.swift */,
 				B73BFD19624466AB957B8B72 /* Models.swift */,
 				BC0CFBC3448067B5F781BF89 /* Transfer.swift */,
 			);
@@ -300,9 +312,12 @@
 				2CC5C178D9E49DAD3A6D580D /* Cloud.swift in Sources */,
 				329DAC5A24BEABCF0EA4C439 /* Components.swift in Sources */,
 				E8C0F0C55171374A3A028D60 /* DashboardView.swift in Sources */,
+				E31797C4DD9505448D921C50 /* DeviceBridge.swift in Sources */,
 				57528548A6A157C9F0F5BDBD /* DocumentsView.swift in Sources */,
+				F87CA30ED64246DF8B4946C3 /* Keychain.swift in Sources */,
 				3B86AF6CACAAF8144625707F /* LearnViews.swift in Sources */,
 				CA8659DC0A096365222A099D /* Learning.swift in Sources */,
+				75F989CCCE7C56055041DF0B /* MacBridge.swift in Sources */,
 				B9E0A3BA1365E39A7831F8C7 /* MarkdownView.swift in Sources */,
 				0D5C26B865FFF8841BAAFA07 /* MediaViews.swift in Sources */,
 				2D8F40774A3CBE0D418AF486 /* Models.swift in Sources */,
@@ -332,9 +347,12 @@
 				98A27C8C015DFFF7FC1D5352 /* Cloud.swift in Sources */,
 				ECC11F2A5615B638B3D8078A /* Components.swift in Sources */,
 				2166638E5EA8352CDC98E214 /* DashboardView.swift in Sources */,
+				582D199A13C80757F18FD7CE /* DeviceBridge.swift in Sources */,
 				D8BC01DD6F66C2135E9C5EFA /* DocumentsView.swift in Sources */,
+				6E8E7C915218716C3B2CF128 /* Keychain.swift in Sources */,
 				9258A319E668D1008D056D2F /* LearnViews.swift in Sources */,
 				B84175618128F07C8E1EAB21 /* Learning.swift in Sources */,
+				D1D13F5B11A8D252E719D4B5 /* MacBridge.swift in Sources */,
 				4D283A845401B746B8700E39 /* MarkdownView.swift in Sources */,
 				28BF1BC3998A822335E85FF4 /* MediaViews.swift in Sources */,
 				AB96521CB18B51F737A936C5 /* Models.swift in Sources */,
@@ -456,6 +474,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = "Prepboard-iOS-Info.plist";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "PrepBoard connects to Claude Code on your Mac when you pair them in Profile.";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -475,6 +495,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = "Prepboard-iOS-Info.plist";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "PrepBoard connects to Claude Code on your Mac when you pair them in Profile.";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";

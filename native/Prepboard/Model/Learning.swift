@@ -45,7 +45,6 @@ enum Learning {
 
     @MainActor
     static func quiz(topic: String, material: String, claude: AnyObject?, cloud: Cloud) async throws -> (QuizPayload, String) {
-        #if os(macOS)
         if let claude = claude as? ClaudeCode, claude.isReady {
             let prompt = """
             Write a 6-question multiple-choice interview-prep quiz on: \(topic)
@@ -59,7 +58,6 @@ enum Learning {
             let payload: QuizPayload = try await claude.runJSON(prompt, tools: "Read")
             return (validated(payload), "claude-code")
         }
-        #endif
         guard cloud.configured else { throw Failure.unavailable }
         let res: QuizResponse = try await cloud.invoke(QuizRequest(topic: topic, material: material, count: 6,
                                                                    now: DateCoding.string(.now), timezone: TimeZone.current.identifier))
@@ -77,7 +75,6 @@ enum Learning {
     @MainActor
     static func videos(topic: String, context: String, claude: AnyObject?, cloud: Cloud) async throws -> [Video] {
         var raw: [VideoPayload] = []
-        #if os(macOS)
         if let claude = claude as? ClaudeCode, claude.isReady {
             let prompt = """
             Use web search to find 3-4 high-quality YouTube videos that explain: \(topic)
@@ -88,7 +85,6 @@ enum Learning {
             """
             raw = try await claude.runJSON(prompt, tools: "WebSearch WebFetch")
         }
-        #endif
         if raw.isEmpty {
             guard cloud.configured else { throw Failure.unavailable }
             let res: VideosResponse = try await cloud.invoke(VideosRequest(topic: topic, context: context,

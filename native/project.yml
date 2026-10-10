@@ -52,5 +52,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.shivvyas.prepboard
         TARGETED_DEVICE_FAMILY: "1,2"
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: "PrepBoard connects to Claude Code on your Mac when you pair them in Profile."
+        # Plain HTTP only to local-network / private addresses (the paired Mac); everything else stays HTTPS.
+        INFOPLIST_FILE: Prepboard-iOS-Info.plist
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"

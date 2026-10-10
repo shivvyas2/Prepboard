@@ -7,8 +7,12 @@ struct PrepboardApp: App {
     @State private var profile = Profile()
     @State private var cloud = Cloud()
     @State private var browser = BrowserModel()
-    #if os(macOS)
     @State private var claude = ClaudeCode()
+    #if os(macOS)
+    @State private var deviceBridge = DeviceBridge()
+    #endif
+    #if os(iOS)
+    @Environment(\.scenePhase) private var scenePhase
     #endif
     let container: ModelContainer
 
@@ -33,8 +37,24 @@ struct PrepboardApp: App {
                 .environment(browser)
                 .task { cloud.attach(container: container, profile: profile) }
                 .preferredColorScheme(.light)
-                #if os(macOS)
                 .environment(claude)
+                #if os(iOS)
+                // Re-check the paired Mac when the app comes back, so AI requests go to the right place.
+                .onChange(of: scenePhase) { if scenePhase == .active, claude.paired { Task { await claude.checkConnection() } } }
+                #if DEBUG
+                // `-PrepboardBridgeTest address,code`: pair at launch and log the result (local testing only).
+                .task {
+                    if let t = UserDefaults.standard.string(forKey: "PrepboardBridgeTest")?.split(separator: ","), t.count == 2 {
+                        await claude.pair(address: String(t[0]), code: String(t[1]))
+                        print("PrepboardBridgeTest:", claude.connection)
+                        if claude.isReady { print("PrepboardBridgeTest run:", (try? await claude.runText("Reply with exactly: PONG", tools: "Read").text) ?? "failed") }
+                    }
+                }
+                #endif
+                #endif
+                #if os(macOS)
+                .environment(deviceBridge)
+                .task { deviceBridge.attach(claude) }
                 .frame(minWidth: 1000, minHeight: 680)
                 #endif
         }
