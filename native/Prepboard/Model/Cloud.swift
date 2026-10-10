@@ -116,6 +116,8 @@ final class Cloud {
     private var pushTask: Task<Void, Never>?
     private var pushing = false
     private var applyingRemote = false
+    private var refreshing = false
+    private var lastPull = Date.distantPast
 
     var configured: Bool { client != nil }
 
@@ -138,6 +140,13 @@ final class Cloud {
             Task { @MainActor in self?.schedulePush() }
         }
         guard let client else { return }
+        // Pull other devices' changes every minute while the app is open.
+        Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(60))
+                self?.refreshIfStale(after: 50)
+            }
+        }
         Task {
             for await (event, session) in client.auth.authStateChanges {
                 switch event {
@@ -201,11 +210,12 @@ final class Cloud {
                 needsOnboarding = true
             } else {
                 applyingRemote = true
-                try remote.apply(to: context, profile: profile)
+                try remote.merge(into: context, profile: profile)
                 applyingRemote = false
                 synced = SyncSnapshot(context: context, profile: profile)
                 status = .synced
             }
+            lastPull = .now
         } catch {
             applyingRemote = false
             report(error)
@@ -222,6 +232,7 @@ final class Cloud {
             try? context.delete(model: Doc.self)
             try? context.delete(model: PrepTask.self)
             try? context.delete(model: QuizAttempt.self)
+            try? context.delete(model: Problem.self)
             try? context.save()
         }
     }
@@ -238,17 +249,28 @@ final class Cloud {
         }
     }
 
+    /// Sends local changes, then brings in changes from other devices (merged in place).
     func refresh() async {
-        guard user != nil, let context = container?.mainContext else { return }
+        guard user != nil, synced != nil, !refreshing, let context = container?.mainContext else { return }
+        refreshing = true
+        defer { refreshing = false }
         await push()
         do {
             let remote = try await pull()
             applyingRemote = true
-            try remote.apply(to: context, profile: profile)
+            try remote.merge(into: context, profile: profile)
             applyingRemote = false
             synced = SyncSnapshot(context: context, profile: profile)
             status = .synced
+            lastError = nil
+            lastPull = .now
         } catch { applyingRemote = false; report(error) }
+    }
+
+    /// Called when the app comes to the foreground and every minute while it's open.
+    func refreshIfStale(after seconds: TimeInterval = 20) {
+        guard user != nil, Date.now.timeIntervalSince(lastPull) > seconds else { return }
+        Task { await refresh() }
     }
 
     private func pull() async throws -> RemoteData {
@@ -433,6 +455,90 @@ struct SyncSnapshot {
 struct RemoteData {
     let roles: [RoleRow], docs: [CloudDocRow], sessions: [SessionRow], quizzes: [QuizRow], problems: [ProblemRow], profile: ProfileRow?
     var isEmpty: Bool { roles.isEmpty && docs.isEmpty && sessions.isEmpty && quizzes.isEmpty && problems.isEmpty }
+
+    /// Makes the local store match the account, in place: changed records are updated field by field,
+    /// new ones inserted, removed ones deleted, and untouched ones left alone. Open documents and code
+    /// keep working while another device's changes arrive.
+    @MainActor
+    func merge(into context: ModelContext, profile: Profile?) throws {
+        func existing<M: PersistentModel>(_ type: M.Type, keep ids: Set<String>, id: (M) -> String) throws -> [String: M] {
+            var out: [String: M] = [:]
+            for m in try context.fetch(FetchDescriptor<M>()) {
+                let k = id(m)
+                if ids.contains(k), out[k] == nil { out[k] = m } else { context.delete(m) }
+            }
+            return out
+        }
+        func set<M, V: Equatable>(_ m: M, _ kp: ReferenceWritableKeyPath<M, V>, _ v: V) { if m[keyPath: kp] != v { m[keyPath: kp] = v } }
+
+        let localRoles = try existing(Role.self, keep: Set(roles.map(\.id))) { $0.id }
+        for r in roles {
+            guard let m = localRoles[r.id] else {
+                context.insert(Role(id: r.id, company: r.company, title: r.title, team: r.team, location: r.location, roleNumber: r.role_number,
+                                    salary: r.salary, link: r.link, stage: Stage(rawValue: r.stage) ?? .saved, interviewAt: Stamp.date(r.interview_at),
+                                    interviewNote: r.interview_note, notes: r.notes, createdAt: Stamp.date(r.created_at) ?? .now))
+                continue
+            }
+            set(m, \.company, r.company); set(m, \.title, r.title); set(m, \.team, r.team); set(m, \.location, r.location)
+            set(m, \.roleNumber, r.role_number); set(m, \.salary, r.salary); set(m, \.link, r.link); set(m, \.stageRaw, r.stage)
+            set(m, \.interviewAt, Stamp.date(r.interview_at)); set(m, \.interviewNote, r.interview_note); set(m, \.notes, r.notes)
+        }
+
+        let localDocs = try existing(Doc.self, keep: Set(docs.map(\.id))) { $0.id }
+        for d in docs {
+            let m = localDocs[d.id] ?? {
+                let n = Doc(id: d.id, roleId: d.role_id, title: d.title, body: d.body, tags: d.tags,
+                            updatedAt: Stamp.date(d.updated_at) ?? .now, order: d.sort_order)
+                context.insert(n); return n
+            }()
+            set(m, \.roleId, d.role_id); set(m, \.title, d.title); set(m, \.body, d.body); set(m, \.tags, d.tags)
+            set(m, \.order, d.sort_order); set(m, \.fileType, d.file_type ?? "md"); set(m, \.filePath, d.file_path ?? "")
+        }
+
+        let localTasks = try existing(PrepTask.self, keep: Set(sessions.compactMap { Stamp.date($0.start_at) == nil ? nil : $0.id })) { $0.id }
+        for s in sessions {
+            guard let start = Stamp.date(s.start_at), let end = Stamp.date(s.end_at) else { continue }
+            let refs = s.refs.map { DocRef(docId: $0.doc, heading: $0.heading) }
+            guard let m = localTasks[s.id] else {
+                let t = PrepTask(id: s.id, roleId: s.role_id, title: s.title, start: start, end: end,
+                                 kind: SessionKind(rawValue: s.kind) ?? .study, refs: refs, done: s.done)
+                t.videos = s.videos
+                context.insert(t)
+                continue
+            }
+            set(m, \.roleId, s.role_id); set(m, \.title, s.title); set(m, \.start, start); set(m, \.end, end)
+            set(m, \.kindRaw, s.kind); set(m, \.done, s.done)
+            if m.refs != refs { m.refs = refs }
+            if m.videos != s.videos { m.videos = s.videos }
+        }
+
+        let localQuizzes = try existing(QuizAttempt.self, keep: Set(quizzes.map(\.id))) { $0.id }
+        for q in quizzes where localQuizzes[q.id] == nil {
+            context.insert(QuizAttempt(id: q.id, roleId: q.role_id, sessionId: q.session_id, topic: q.topic, items: q.items,
+                                       source: q.source, createdAt: Stamp.date(q.created_at) ?? .now))
+        }
+
+        let localProblems = try existing(Problem.self, keep: Set(problems.map(\.id))) { $0.id }
+        for p in problems {
+            guard let m = localProblems[p.id] else {
+                let n = Problem(id: p.id, roleId: p.role_id, title: p.title, difficulty: p.difficulty, topics: p.topics, statement: p.statement,
+                                starters: p.starters, code: p.code, language: p.language, solved: p.solved, notes: p.notes,
+                                createdAt: Stamp.date(p.created_at) ?? .now, updatedAt: Stamp.date(p.updated_at) ?? .now)
+                n.videos = p.videos ?? []
+                context.insert(n)
+                continue
+            }
+            set(m, \.roleId, p.role_id); set(m, \.title, p.title); set(m, \.difficulty, p.difficulty); set(m, \.topics, p.topics)
+            set(m, \.statement, p.statement); set(m, \.starters, p.starters); set(m, \.code, p.code); set(m, \.language, p.language)
+            set(m, \.solved, p.solved); set(m, \.notes, p.notes)
+            if m.videos != (p.videos ?? []) { m.videos = p.videos ?? [] }
+        }
+
+        try context.save()
+        if let p = self.profile, let profile {
+            profile.applyRemote(name: p.name, headline: p.headline, avatar: p.avatar, photoDataURL: p.photo)
+        }
+    }
 
     /// Replaces the local store with the account's data.
     @MainActor

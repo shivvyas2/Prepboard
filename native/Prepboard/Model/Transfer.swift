@@ -14,6 +14,7 @@ struct Snapshot: Codable {
     struct DocDTO: Codable {
         var id: String
         var roleId: String?, title: String?, body: String?, tags: [String]?, updatedAt: String?, order: Int?
+        var fileType: String?
     }
     struct RefDTO: Codable { var doc: String; var heading: String? }
     struct TaskDTO: Codable {
@@ -76,8 +77,10 @@ enum Transfer {
                                 notes: r.notes ?? "", createdAt: DateCoding.date(r.createdAt) ?? .now))
         }
         for d in snap.docs where replace || !existingDocs.contains(d.id) {
-            context.insert(Doc(id: d.id, roleId: d.roleId ?? "", title: d.title ?? "", body: d.body ?? "",
-                               tags: d.tags ?? [], updatedAt: DateCoding.date(d.updatedAt) ?? .now, order: d.order ?? 999))
+            let doc = Doc(id: d.id, roleId: d.roleId ?? "", title: d.title ?? "", body: d.body ?? "",
+                          tags: d.tags ?? [], updatedAt: DateCoding.date(d.updatedAt) ?? .now, order: d.order ?? 999)
+            if let t = d.fileType { doc.fileType = t }
+            context.insert(doc)
         }
         for t in snap.tasks ?? [] where replace || !existingTasks.contains(t.id) {
             let start = DateCoding.date(t.start)

@@ -160,6 +160,12 @@ struct DocEditorView: View {
     @State private var blocks: [MDBlock] = []
     @Environment(Cloud.self) private var cloud
     @Query private var allDocs: [Doc]
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    private var sidePad: CGFloat { sizeClass == .compact ? 16 : 40 }
+    #else
+    private let sidePad: CGFloat = 40
+    #endif
 
     /// Formatted copy ↔ original PDF (planner attachments are saved as both).
     private var originalID: String? { doc.tags.first { $0.hasPrefix("original:") }.map { String($0.dropFirst(9)) } }
@@ -170,13 +176,17 @@ struct DocEditorView: View {
         let schedule = tasks.filter { $0.refs.contains { $0.docId == doc.id } }
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Picker("", selection: $app.docEditing) {
-                    Text("Read").tag(false)
-                    Text("Edit").tag(true)
+                if doc.isPDF {
+                    Label("PDF", systemImage: "doc.richtext").font(.system(size: 12, weight: .semibold)).foregroundStyle(PB.muted)
+                } else {
+                    Picker("", selection: $app.docEditing) {
+                        Text("Read").tag(false)
+                        Text("Edit").tag(true)
+                    }
+                    .pickerStyle(.segmented).labelsHidden().frame(width: 140)
+                    Text("\(doc.body.split(whereSeparator: \.isWhitespace).count) words · edited \(doc.updatedAt.formatted(.relative(presentation: .named)))")
+                        .font(.system(size: 12)).foregroundStyle(PB.muted).lineLimit(1)
                 }
-                .pickerStyle(.segmented).labelsHidden().frame(width: 140)
-                Text("\(doc.body.split(whereSeparator: \.isWhitespace).count) words · edited \(doc.updatedAt.formatted(.relative(presentation: .named)))")
-                    .font(.system(size: 12)).foregroundStyle(PB.muted).lineLimit(1)
                 Spacer(minLength: 0)
                 if let id = originalID, allDocs.contains(where: { $0.id == id }) {
                     Button { app.openDoc(id, heading: nil) } label: { Label("Original PDF", systemImage: "doc.richtext") }
@@ -200,6 +210,15 @@ struct DocEditorView: View {
             .padding(.horizontal, 16).padding(.vertical, 12)
             .overlay(alignment: .bottom) { Rectangle().fill(PB.line).frame(height: 1) }
 
+            if doc.isPDF {
+                // PDFs get the full height with their own scrolling and pinch-zoom (no nested scroll views).
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(doc.title).font(.system(size: 22, weight: .bold)).kerning(-0.4).lineLimit(2)
+                    PDFDocView(doc: doc).frame(maxHeight: .infinity)
+                }
+                .padding(.horizontal, sidePad).padding(.vertical, 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            } else {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
@@ -225,9 +244,7 @@ struct DocEditorView: View {
 
                         if !schedule.isEmpty { scheduleCard(schedule) }
 
-                        if doc.isPDF {
-                            PDFDocView(doc: doc)
-                        } else if app.docEditing {
+                        if app.docEditing {
                             TextEditor(text: $doc.body)
                                 .font(.system(size: 13, design: .monospaced))
                                 .scrollContentBackground(.hidden)
@@ -239,13 +256,14 @@ struct DocEditorView: View {
                             MarkdownView(blocks: blocks).frame(maxWidth: 820, alignment: .leading)
                         }
                     }
-                    .padding(.horizontal, 40).padding(.vertical, 32)
+                    .padding(.horizontal, sidePad).padding(.vertical, sidePad == 16 ? 16 : 32)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .onAppear { blocks = parsedBody(); scrollToHeading(proxy) }
                 .onChange(of: app.docEditing) { if !app.docEditing { blocks = parsedBody() } }
                 .onChange(of: doc.body) { if !app.docEditing { blocks = parsedBody() } }
                 .onChange(of: app.docScrollHeading) { scrollToHeading(proxy) }
+            }
             }
         }
         .background(RoundedRectangle(cornerRadius: PB.rXL, style: .continuous).fill(PB.card))

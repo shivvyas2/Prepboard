@@ -26,7 +26,8 @@ final class AppState {
     /// `-PrepboardSection timeline` opens a specific section at launch (handy for testing).
     var section: Section = UserDefaults.standard.string(forKey: "PrepboardSection").flatMap { k in Section.allCases.first { "\($0)" == k } } ?? .dashboard
     var selectedRoleID: String?
-    var selectedDocID: String?
+    /// `-PrepboardOpenDoc <id>` opens a document at launch (testing).
+    var selectedDocID: String? = UserDefaults.standard.string(forKey: "PrepboardOpenDoc")
     var docEditing = false
     var docFilter: String = "all"            // "all", "none", or a role id
     var searchText = ""

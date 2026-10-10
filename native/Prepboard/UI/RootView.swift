@@ -53,6 +53,9 @@ struct RootView: View {
 
     private var wideShell: some View {
         HStack(alignment: .top, spacing: 0) {
+            // The rail scrolls when the window is short (iPad landscape, small Mac windows), so nothing is cut off.
+            GeometryReader { railGeo in
+            ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 12) {
                 PrepBoardLogo(size: 48).help("PrepBoard").padding(.bottom, 8)
                 Button { app.showProfile = true } label: {
@@ -87,10 +90,15 @@ struct RootView: View {
                 CircleIconButton(systemImage: "square.and.arrow.up", size: 48, label: "Export JSON") { app.prepareExport(context) }
             }
             .padding(.vertical, 24)
-            .frame(width: 80)
             #if os(macOS)
             .padding(.top, 16)
             #endif
+            .frame(width: 80)
+            .frame(minHeight: railGeo.size.height)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            }
+            .frame(width: 80)
 
             VStack(alignment: .leading, spacing: 24) {
                 topBar

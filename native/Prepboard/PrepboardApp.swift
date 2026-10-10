@@ -11,9 +11,7 @@ struct PrepboardApp: App {
     #if os(macOS)
     @State private var deviceBridge = DeviceBridge()
     #endif
-    #if os(iOS)
     @Environment(\.scenePhase) private var scenePhase
-    #endif
     let container: ModelContainer
 
     init() {
@@ -38,6 +36,8 @@ struct PrepboardApp: App {
                 .task { cloud.attach(container: container, profile: profile) }
                 .preferredColorScheme(.light)
                 .environment(claude)
+                // Bring in other devices' changes whenever the app comes back to the front.
+                .onChange(of: scenePhase) { if scenePhase == .active { cloud.refreshIfStale() } }
                 #if os(iOS)
                 // Re-check the paired Mac when the app comes back, so AI requests go to the right place.
                 .onChange(of: scenePhase) { if scenePhase == .active, claude.paired { Task { await claude.checkConnection() } } }

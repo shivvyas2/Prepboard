@@ -1,5 +1,6 @@
 import PDFKit
 import SwiftUI
+import UniformTypeIdentifiers
 import WebKit
 
 // MARK: - PDF (PDFKit)
@@ -15,8 +16,10 @@ struct PDFKitView: NSViewRepresentable {
         return v
     }
     func updateNSView(_ v: PDFView, context: Context) {
-        if v.document?.dataRepresentation() != data { v.document = PDFDocument(data: data) }
+        if context.coordinator.loaded != data.count { context.coordinator.loaded = data.count; v.document = PDFDocument(data: data) }
     }
+    func makeCoordinator() -> Loaded { Loaded() }
+    final class Loaded { var loaded = -1 }
 }
 #else
 struct PDFKitView: UIViewRepresentable {
@@ -25,12 +28,21 @@ struct PDFKitView: UIViewRepresentable {
         let v = PDFView()
         v.autoScales = true
         v.displayMode = .singlePageContinuous
+        v.displayDirection = .vertical
+        v.pageShadowsEnabled = true
         v.backgroundColor = UIColor(PB.surface)
         return v
     }
     func updateUIView(_ v: PDFView, context: Context) {
-        if v.document?.dataRepresentation() != data { v.document = PDFDocument(data: data) }
+        if context.coordinator.loaded != data.count {
+            context.coordinator.loaded = data.count
+            v.document = PDFDocument(data: data)
+            // Fit the page width to the screen, then allow pinch-zoom from there.
+            DispatchQueue.main.async { v.minScaleFactor = v.scaleFactorForSizeToFit; v.maxScaleFactor = 5; v.scaleFactor = v.scaleFactorForSizeToFit }
+        }
     }
+    func makeCoordinator() -> Loaded { Loaded() }
+    final class Loaded { var loaded = -1 }
 }
 #endif
 
@@ -40,14 +52,45 @@ struct PDFDocView: View {
     @Environment(Cloud.self) private var cloud
     @State private var data: Data?
     @State private var error: String?
+    @State private var fullScreen = false
 
     var body: some View {
         Group {
             if let data {
-                PDFKitView(data: data)
-                    .frame(minHeight: 600)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(PB.line))
+                VStack(alignment: .trailing, spacing: 8) {
+                    HStack(spacing: 8) {
+                        Spacer(minLength: 0)
+                        ShareLink(item: PDFFile(data: data, name: doc.title), preview: SharePreview(doc.title)) {
+                            Label("Share", systemImage: "square.and.arrow.up").font(.system(size: 13, weight: .medium))
+                        }
+                        .buttonStyle(PillButtonStyle(filled: false, compact: true))
+                        Button { fullScreen = true } label: {
+                            Label("Full screen", systemImage: "arrow.up.left.and.arrow.down.right").font(.system(size: 13, weight: .medium))
+                        }
+                        .buttonStyle(PillButtonStyle(filled: false, compact: true))
+                    }
+                    PDFKitView(data: data)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(PB.line))
+                }
+                #if os(iOS)
+                .fullScreenCover(isPresented: $fullScreen) {
+                    NavigationStack {
+                        PDFKitView(data: data).ignoresSafeArea(edges: .bottom)
+                            .navigationTitle(doc.title).navigationBarTitleDisplayMode(.inline)
+                            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { fullScreen = false } } }
+                    }
+                }
+                #else
+                .sheet(isPresented: $fullScreen) {
+                    VStack(spacing: 0) {
+                        HStack { Text(doc.title).font(.headline); Spacer(); Button("Done") { fullScreen = false }.keyboardShortcut(.cancelAction) }.padding(16)
+                        PDFKitView(data: data)
+                    }
+                    .frame(minWidth: 900, minHeight: 700)
+                }
+                #endif
             } else if let error {
                 Text(error).foregroundStyle(PB.muted).frame(maxWidth: .infinity).padding(40)
             } else {
@@ -181,5 +224,15 @@ struct VideoPlayerSheet: View {
         #if os(macOS)
         .frame(minWidth: 760, idealWidth: 900)
         #endif
+    }
+}
+
+/// A PDF for the share sheet (Save to Files, AirDrop, Mail…), named after the document.
+struct PDFFile: Transferable {
+    let data: Data
+    let name: String
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(exportedContentType: .pdf) { $0.data }
+            .suggestedFileName { $0.name + ".pdf" }
     }
 }
