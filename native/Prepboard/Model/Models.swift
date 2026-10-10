@@ -195,6 +195,7 @@ final class Problem {
     var language: String
     var solved: Bool
     var notes: String
+    var videos: [Video] = []        // YouTube explanations for this problem
     var createdAt: Date
     var updatedAt: Date
 

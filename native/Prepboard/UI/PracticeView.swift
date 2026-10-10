@@ -161,12 +161,18 @@ struct PracticeView: View {
                 library.frame(width: 260).frame(maxHeight: .infinity).pbCard(padding: 0, radius: PB.rXL)
             }
             VStack(spacing: 0) {
-                if aiAllowed {
-                    Picker("", selection: $leftTab) { Text("Problem").tag(0); Text("AI assistant").tag(1) }
-                        .pickerStyle(.segmented).labelsHidden().padding(12)
-                    Divider()
+                Picker("", selection: $leftTab) {
+                    Text("Problem").tag(0)
+                    Text(p.videos.isEmpty ? "Videos" : "Videos (\(p.videos.count))").tag(2)
+                    if aiAllowed { Text("AI assistant").tag(1) }
                 }
-                if leftTab == 1 && aiAllowed { assistant(p) } else { statement(p) }
+                .pickerStyle(.segmented).labelsHidden().padding(12)
+                Divider()
+                switch leftTab {
+                case 1 where aiAllowed: assistant(p)
+                case 2: ProblemVideos(problem: p)
+                default: statement(p)
+                }
             }
             .frame(width: min(440, width * (showLibrary && width >= 1000 ? 0.32 : 0.4)))
             .frame(maxHeight: .infinity)
@@ -196,7 +202,12 @@ struct PracticeView: View {
                 case 2: console
                 case 3 where aiAllowed: assistant(p)
                 case 4: library
-                default: statement(p)
+                default:
+                    VStack(spacing: 0) {
+                        ProblemVideos(problem: p, compact: true)
+                        Divider()
+                        statement(p)
+                    }
                 }
             }
             .frame(maxHeight: .infinity)
@@ -598,6 +609,116 @@ struct NewProblemSheet: View {
                 try? context.save()
                 onCreate(p.id)
                 dismiss()
+            } catch { self.error = error.localizedDescription }
+        }
+    }
+}
+
+// MARK: - Videos
+
+/// Video walkthroughs for a problem, played right beside the code. Found with Claude Code (or the
+/// Anthropic key), saved on the problem and synced.
+struct ProblemVideos: View {
+    @Bindable var problem: Problem
+    var compact = false
+    @Environment(Cloud.self) private var cloud
+    @Environment(ClaudeCode.self) private var claude
+    @Environment(\.modelContext) private var context
+    @Environment(\.openURL) private var openURL
+    @State private var playing: Video?
+    @State private var searching = false
+    @State private var error: String?
+    @State private var expanded = false
+
+    var body: some View {
+        if compact && !expanded && playing == nil {
+            // iPhone: a slim bar above the problem; opens the full list on tap.
+            Button { expanded = true } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "play.rectangle").foregroundStyle(PB.cobalt)
+                    Text(problem.videos.isEmpty ? "Find video explanations" : "Videos (\(problem.videos.count))")
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(PB.ink)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.down").font(.system(size: 12)).foregroundStyle(PB.muted)
+                }
+                .padding(.horizontal, 16).frame(minHeight: 44).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                if let v = playing {
+                    VStack(alignment: .leading, spacing: 8) {
+                        YouTubePlayer(video: v).id(v.id).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        HStack(alignment: .top, spacing: 8) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(v.title).font(.system(size: 14, weight: .semibold)).lineLimit(2)
+                                Text(v.channel).font(.system(size: 12)).foregroundStyle(PB.muted)
+                            }
+                            Spacer(minLength: 0)
+                            CircleIconButton(systemImage: "arrow.up.right.square", size: 32, label: "Open on YouTube") { openURL(v.watchURL) }
+                            CircleIconButton(systemImage: "xmark", size: 32, label: "Close video") { playing = nil }
+                        }
+                    }
+                }
+                HStack(spacing: 8) {
+                    Text(problem.videos.isEmpty ? "Video explanations" : "\(problem.videos.count) videos").font(.system(size: 14, weight: .semibold))
+                    Spacer(minLength: 0)
+                    if compact { CircleIconButton(systemImage: "chevron.up", size: 32, label: "Hide videos") { expanded = false; playing = nil } }
+                    Button(searching ? "Searching…" : (problem.videos.isEmpty ? "Find videos" : "Find more")) { find() }
+                        .buttonStyle(PillButtonStyle(compact: true)).fixedSize().disabled(searching)
+                }
+                if problem.videos.isEmpty && !searching {
+                    Text("Find walkthroughs for this problem: approach, edge cases and complexity, from channels like NeetCode. They play here, next to your code.")
+                        .font(.system(size: 13)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
+                }
+                if let error { Text(error).font(.system(size: 12)).foregroundStyle(PB.red).fixedSize(horizontal: false, vertical: true) }
+                ForEach(problem.videos) { v in
+                    Button { playing = v } label: {
+                        HStack(alignment: .top, spacing: 12) {
+                            AsyncImage(url: v.thumbnailURL) { img in img.resizable().scaledToFill() } placeholder: { Color.black.opacity(0.85) }
+                                .frame(width: 128, height: 72).clipped()
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .overlay { Image(systemName: "play.fill").font(.system(size: 16)).foregroundStyle(.white).shadow(radius: 4) }
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(v.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(PB.ink).lineLimit(2).multilineTextAlignment(.leading)
+                                Text(v.channel).font(.system(size: 12)).foregroundStyle(PB.muted).lineLimit(1)
+                                if !v.why.isEmpty { Text(v.why).font(.system(size: 12)).foregroundStyle(PB.ink2).lineLimit(2).multilineTextAlignment(.leading) }
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(v.id == playing?.id ? PB.cobaltSoft : Color.clear))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu { Button("Remove", role: .destructive) { problem.videos.removeAll { $0.id == v.id }; try? context.save() } }
+                }
+            }
+            .padding(16)
+        }
+        .frame(maxHeight: compact ? 520 : .infinity)
+    }
+
+    private func find() {
+        searching = true; error = nil
+        let topic = "\(problem.title) coding interview problem solution explanation (LeetCode-style walkthrough)"
+        let ctx = "\(problem.difficulty) · topics: \(problem.topics.joined(separator: ", ")). Prefer NeetCode, Back To Back SWE, take U forward, or the official LeetCode channel."
+        Task {
+            defer { searching = false }
+            do {
+                let found = try await Learning.videos(topic: topic, context: ctx, claude: claude, cloud: cloud)
+                let known = Set(problem.videos.map(\.id))
+                problem.videos += found.filter { !known.contains($0.id) }
+                problem.updatedAt = .now
+                try? context.save()
+                if found.isEmpty { error = "No videos found. Try again in a moment." }
+                else if playing == nil { playing = problem.videos.first }
             } catch { self.error = error.localizedDescription }
         }
     }

@@ -71,6 +71,7 @@ struct ProblemRow: Codable {
     var language: String
     var solved: Bool
     var notes: String
+    var videos: [Video]?
     var created_at: String?
     var updated_at: String?
 }
@@ -418,7 +419,7 @@ struct SyncSnapshot {
         for p in (try? context.fetch(FetchDescriptor<Problem>())) ?? [] {
             let row = ProblemRow(id: p.id, role_id: p.roleId, title: p.title, difficulty: p.difficulty, topics: p.topics, statement: p.statement,
                                  starters: p.starters, code: p.code, language: p.language, solved: p.solved, notes: p.notes,
-                                 created_at: Stamp.string(p.createdAt))
+                                 videos: p.videos, created_at: Stamp.string(p.createdAt))
             problemRows[p.id] = row; problems[p.id] = key(row)
         }
         if let profile {
@@ -442,9 +443,11 @@ struct RemoteData {
         try context.delete(model: QuizAttempt.self)
         try context.delete(model: Problem.self)
         for p in problems {
-            context.insert(Problem(id: p.id, roleId: p.role_id, title: p.title, difficulty: p.difficulty, topics: p.topics, statement: p.statement,
-                                   starters: p.starters, code: p.code, language: p.language, solved: p.solved, notes: p.notes,
-                                   createdAt: Stamp.date(p.created_at) ?? .now, updatedAt: Stamp.date(p.updated_at) ?? .now))
+            let problem = Problem(id: p.id, roleId: p.role_id, title: p.title, difficulty: p.difficulty, topics: p.topics, statement: p.statement,
+                                  starters: p.starters, code: p.code, language: p.language, solved: p.solved, notes: p.notes,
+                                  createdAt: Stamp.date(p.created_at) ?? .now, updatedAt: Stamp.date(p.updated_at) ?? .now)
+            problem.videos = p.videos ?? []
+            context.insert(problem)
         }
         for q in quizzes {
             context.insert(QuizAttempt(id: q.id, roleId: q.role_id, sessionId: q.session_id, topic: q.topic, items: q.items,
