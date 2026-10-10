@@ -1,0 +1,16 @@
+# Build output
+native/build/
+DerivedData/
+release/
+*.dmg
+*.ipa
+*.xcarchive
+
+# Local / private
+.env*
+.DS_Store
+supabase/.temp/
+.vercel/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+node_modules/

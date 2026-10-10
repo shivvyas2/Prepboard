@@ -1,0 +1,1428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="light">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prepboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<style>
+:root {
+  /* warm beige base */
+  --bg: #efe9df;
+  --bg-2: #e9e1d3;
+  --surface: #f7f2ea;
+  --card: #fffdf9;
+  --ink: #1d1a16;
+  --ink-2: #4f4a42;
+  --muted: #8c8579;
+  --faint: #bcb4a6;
+  --line: #e7dfd2;
+  --line-2: #d9cfbf;
+  /* accents */
+  --cobalt: #1f4fd8;
+  --cobalt-2: #1a43b8;
+  --cobalt-soft: #e5ebfb;
+  --sun: #f7c744;
+  --sun-soft: #fdf2cf;
+  --on-sun: #2b2410;
+  --now: var(--cobalt);
+  --shadow: 0 1px 0 rgba(60,45,20,.03), 0 10px 28px rgba(60,45,20,.07);
+  --r-xl: 28px; --r-lg: 20px; --r-md: 14px;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+html { scroll-behavior: smooth; background: var(--bg-2); }
+body {
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  color: var(--ink);
+  background: linear-gradient(180deg, var(--bg) 0%, var(--bg-2) 100%);
+  min-height: 100vh; font-size: 14px; -webkit-font-smoothing: antialiased;
+}
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: inherit; }
+.mono { font-family: var(--mono); }
+[hidden] { display: none !important; }
+:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 2px; }
+
+/* ---------- shell ---------- */
+.shell { display: grid; grid-template-columns: 76px minmax(0, 1fr); min-height: 100vh; }
+.rail { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 20px 0; position: sticky; top: 0; height: 100vh; }
+.logo { width: 44px; height: 44px; border-radius: 14px; background: var(--cobalt); color: #fff; position: relative; display: grid; place-items: center; font-weight: 800; letter-spacing: -.04em; margin-bottom: 18px; }
+.rail-btn { width: 48px; height: 48px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); display: grid; place-items: center; color: var(--ink-2); transition: background .15s, color .15s, transform .1s; }
+.rail-btn:hover { color: var(--ink); }
+.rail-btn:active { transform: scale(.96); }
+.rail-btn.active { background: var(--cobalt); color: #fff; border-color: var(--cobalt); }
+.logo::after { content: ""; position: absolute; right: -3px; top: -3px; width: 12px; height: 12px; border-radius: 50%; background: var(--sun); border: 2px solid var(--bg); }
+.rail .spacer { flex: 1; }
+.rail-btn svg { width: 20px; height: 20px; }
+
+main { padding: 20px 24px 60px 4px; min-width: 0; }
+.topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tab { border: 0; background: transparent; padding: 10px 18px; border-radius: 999px; color: var(--ink-2); font-weight: 500; }
+.tab:hover { color: var(--ink); }
+.tab.active { background: var(--cobalt); color: #fff; }
+.search { flex: 1; min-width: 200px; max-width: 420px; margin-left: auto; display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 0 16px; height: 44px; }
+.search input { border: 0; outline: 0; background: transparent; flex: 1; min-width: 0; }
+.search kbd { font-family: var(--mono); font-size: 11px; color: var(--muted); border: 1px solid var(--line-2); border-radius: 6px; padding: 1px 6px; }
+.icon-btn { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); display: grid; place-items: center; color: var(--ink-2); flex: none; }
+.icon-btn:hover { color: var(--ink); border-color: var(--line-2); }
+.icon-btn.sm { width: 34px; height: 34px; font-size: 13px; }
+.btn-primary { height: 44px; padding: 0 20px; border-radius: 999px; border: 0; background: var(--cobalt); color: #fff; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; text-decoration: none; }
+.btn-ghost { height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line-2); background: transparent; font-weight: 500; color: var(--ink-2); display: inline-flex; align-items: center; gap: 6px; text-decoration: none; white-space: nowrap; }
+.btn-ghost:hover { color: var(--ink); border-color: var(--ink-2); }
+
+/* ---------- cards ---------- */
+.card { background: var(--card); border-radius: var(--r-xl); border: 1px solid var(--line); box-shadow: var(--shadow); padding: 20px; min-width: 0; }
+.panel { background: rgba(247,242,234,.75); border-radius: var(--r-xl); border: 1px solid var(--line); padding: 14px; min-width: 0; }
+.card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.card-head h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.card-head .right { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+.label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+.muted { color: var(--muted); }
+.h-display { font-size: clamp(30px, 4vw, 46px); letter-spacing: -.04em; font-weight: 700; margin: 0; line-height: 1.02; }
+.page-head { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.page-head .right { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.stack { display: grid; gap: 18px; min-width: 0; }
+
+/* ---------- dashboard ---------- */
+.dash { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 18px; }
+.dash > * { min-width: 0; }
+.hero { display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: end; }
+.countdown { display: flex; gap: 10px; }
+.cd-cell { background: var(--sun-soft); border: 1px solid #f3dfa0; border-radius: var(--r-lg); padding: 12px 14px; min-width: 74px; text-align: center; }
+.cd-cell b { display: block; font-size: 28px; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.cd-cell span { font-size: 11px; color: var(--muted); }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.stat { background: var(--surface); border-radius: var(--r-lg); padding: 14px; border: 1px solid var(--line); }
+.stat b { font-size: 26px; display: block; letter-spacing: -.03em; }
+.upnext { background: var(--cobalt); color: #fff; border-radius: var(--r-xl); padding: 22px; display: grid; gap: 12px; }
+.upnext .label { color: var(--sun); }
+.upnext h2 { margin: 0; font-size: 22px; letter-spacing: -.02em; line-height: 1.2; }
+.upnext .when { font-family: var(--mono); font-size: 13px; color: rgba(255,255,255,.7); }
+.upnext .ref { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.18); color: #fff; }
+.upnext .ref .n { background: var(--sun); color: var(--on-sun); border-color: var(--sun); }
+.upnext .btn-ghost { color: #fff; border-color: rgba(255,255,255,.3); }
+.agenda-row { display: grid; grid-template-columns: 46px 10px minmax(0, 1fr); gap: 10px; align-items: start; padding: 8px 0; border: 0; background: transparent; width: 100%; text-align: left; }
+.agenda-row .t { font-family: var(--mono); font-size: 12px; color: var(--muted); padding-top: 1px; }
+.agenda-row .d { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--ink); margin-top: 4px; }
+.agenda-row.done .d { background: var(--ink); }
+.agenda-row.done .x { color: var(--muted); text-decoration: line-through; }
+.agenda-row.current .d { border-color: var(--cobalt); background: var(--sun); box-shadow: 0 0 0 3px var(--sun-soft); }
+.agenda-row.break .x { color: var(--muted); }
+.agenda-row.break .d { border-color: var(--faint); border-style: dashed; }
+.agenda-row .x { font-weight: 500; line-height: 1.35; }
+.agenda-row:hover .x { text-decoration: underline; }
+
+/* pipeline */
+.pipeline { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 12px; }
+.pipeline.compact .col { min-height: 0; }
+.pipeline.compact .col:not(:has(.role-tile)) .col-head { opacity: .55; }
+.col { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 10px; min-height: 130px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.col.drop { outline: 2px dashed var(--ink-2); outline-offset: -4px; }
+.col-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 6px; }
+.col-head span { font-weight: 600; font-size: 13px; }
+.count { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.role-tile { min-width: 0; overflow-wrap: anywhere; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px; text-align: left; display: grid; gap: 4px; width: 100%; }
+.role-tile:hover { border-color: var(--ink-2); }
+.role-tile.hot { background: var(--cobalt); color: #fff; border-color: var(--cobalt); }
+.role-tile.hot .muted { color: rgba(255,255,255,.6); }
+.role-tile.hot .bar { background: rgba(255,255,255,.15); border-color: transparent; }
+.role-tile.hot .bar i { background: var(--sun); }
+.add-tile { border: 1px dashed var(--line-2); background: transparent; border-radius: var(--r-md); padding: 10px; color: var(--muted); }
+.bar { height: 8px; background: var(--surface); border-radius: 999px; overflow: hidden; border: 1px solid var(--line); display: block; }
+.bar i { display: block; height: 100%; background: var(--cobalt); border-radius: 999px; }
+
+/* ---------- timeline ---------- */
+.filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.pill { height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--ink-2); font-weight: 500; display: inline-flex; align-items: center; gap: 8px; }
+.pill .n { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.pill .sw { width: 8px; height: 8px; border-radius: 2px; background: currentColor; }
+.pill.on { background: var(--cobalt); color: #fff; border-color: var(--cobalt); }
+.pill.on .n { color: rgba(255,255,255,.6); }
+.pill.soft { background: transparent; border-color: var(--line-2); }
+
+.track { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(180px, 1fr); overflow-x: auto; padding: 6px 2px 2px; }
+.track-day { position: relative; padding: 0 16px 4px; border-left: 1px solid var(--line); min-width: 0; }
+.track-day:first-child { border-left: 0; }
+.track-day .dl { display: flex; align-items: baseline; gap: 6px; border: 0; background: transparent; padding: 0; text-align: left; }
+.track-day .dl b { font-size: 22px; letter-spacing: -.03em; }
+.track-day .dl span { font-size: 12px; color: var(--muted); font-weight: 500; }
+.track-day.today .dl span { color: var(--now); }
+.track-line { position: relative; height: 36px; margin-top: 10px; display: flex; align-items: center; gap: 6px; }
+.track-line::before { content: ""; position: absolute; left: -16px; right: -16px; top: 50%; border-top: 1px solid var(--line-2); }
+.dot { position: relative; z-index: 1; border-radius: 50%; background: var(--card); border: 1.5px solid var(--ink); flex: none; padding: 0; }
+.dot:hover { transform: scale(1.15); }
+.dot.done { background: var(--cobalt); border-color: var(--cobalt); }
+.dot.break { border-color: var(--faint); border-style: dashed; }
+.dot.missed { border-color: var(--faint); background: var(--surface); }
+.dot.current { border-color: var(--cobalt); background: var(--sun); box-shadow: 0 0 0 4px var(--sun-soft); }
+.dot.milestone { width: 36px; height: 36px; background: var(--sun); border-color: var(--on-sun); color: var(--on-sun); display: grid; place-items: center; font-size: 13px; }
+.track-day .meta { font-size: 11px; color: var(--muted); font-family: var(--mono); margin-top: 4px; }
+
+.day { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 22px; padding: 26px 0; border-top: 1px solid var(--line-2); scroll-margin-top: 16px; }
+.day:first-child { border-top: 2px solid var(--cobalt); }
+.day-num { position: sticky; top: 16px; align-self: start; }
+.day-num .big { font-size: 84px; line-height: .86; font-weight: 800; letter-spacing: -.06em; display: flex; align-items: flex-start; gap: 6px; }
+.day-num .big sup { font-size: 14px; letter-spacing: 0; font-weight: 600; color: var(--muted); margin-top: 8px; }
+.day.today .day-num .big sup { color: var(--now); }
+.day.past .day-num .big { color: var(--faint); }
+.day-num .sub { margin-top: 12px; font-size: 12px; color: var(--muted); display: grid; gap: 6px; }
+.day-num .bar { width: 120px; }
+.sessions { display: grid; gap: 10px; min-width: 0; }
+
+.sess { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; gap: 16px; align-items: start; background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 16px 18px; scroll-margin-top: 120px; transition: box-shadow .2s, border-color .2s; }
+.sess:hover { border-color: var(--line-2); }
+.sess-time { font-family: var(--mono); display: grid; gap: 2px; padding-top: 1px; }
+.sess-time b { font-size: 15px; font-weight: 600; }
+.sess-time span { font-size: 12px; color: var(--muted); }
+.sess-body { min-width: 0; border-left: 1px solid var(--line); padding-left: 16px; display: grid; gap: 6px; }
+.sess-meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.kind { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; }
+.kind::before { content: ""; width: 7px; height: 7px; border-radius: 2px; background: currentColor; }
+.dur { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.sess-title { font-size: 16px; font-weight: 600; letter-spacing: -.01em; line-height: 1.3; overflow-wrap: anywhere; }
+.refs { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.ref { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px 0 4px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 12px; font-weight: 500; color: var(--ink); max-width: 100%; }
+.ref:hover { border-color: var(--ink-2); }
+.ref .n { font-family: var(--mono); font-size: 10px; font-weight: 600; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--card); border: 1px solid var(--line); flex: none; }
+.ref .l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sess-actions { display: flex; gap: 6px; align-items: center; }
+.sess.done .sess-title { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1px; }
+.sess.done { background: rgba(255,253,249,.5); }
+.sess.missed:not(.break) { background: rgba(255,253,249,.72); }
+.sess.missed:not(.break) .sess-time b { color: var(--muted); }
+.sess.current { background: var(--cobalt); color: #fff; border-color: var(--cobalt); box-shadow: 0 12px 30px rgba(31,79,216,.25); }
+.sess.current .sess-body { border-color: rgba(255,255,255,.15); }
+.sess.current .sess-time span, .sess.current .dur { color: rgba(255,255,255,.6); }
+.sess.current .ref { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.18); color: #fff; }
+.sess.current .ref .n { background: var(--sun); color: var(--on-sun); border-color: var(--sun); }
+.sess.current .icon-btn { background: transparent; color: #fff; border-color: rgba(255,255,255,.25); }
+.sess.current .kind { color: #fff; }
+.sess.break { background: transparent; border-style: dashed; padding: 10px 18px; box-shadow: none; }
+.sess.break .sess-title { font-size: 14px; font-weight: 500; color: var(--muted); }
+.sess.flash { box-shadow: 0 0 0 3px var(--sun); }
+.live-tag { font-size: 11px; font-weight: 700; color: var(--on-sun); background: var(--sun); border-radius: 6px; padding: 2px 7px; letter-spacing: .04em; }
+.now-line { display: flex; align-items: center; gap: 10px; color: var(--now); font-family: var(--mono); font-size: 12px; font-weight: 600; scroll-margin-top: 140px; }
+.now-line::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--now); }
+.now-line::after { content: ""; flex: 1; border-top: 1.5px solid var(--now); }
+.milestone-card { background: var(--sun); color: var(--on-sun); border-radius: var(--r-lg); padding: 20px 22px; display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; gap: 16px; align-items: center; scroll-margin-top: 120px; }
+.milestone-card .sess-time span { color: rgba(43,36,16,.6); }
+.milestone-card .t { font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+.milestone-card .s { color: rgba(43,36,16,.7); margin-top: 2px; }
+.milestone-card .cd-cell { background: rgba(255,253,249,.55); border-color: rgba(43,36,16,.12); min-width: 58px; padding: 8px; }
+.milestone-card .cd-cell b { font-size: 22px; }
+.milestone-card .cd-cell span { color: rgba(43,36,16,.6); }
+.empty-day { color: var(--muted); padding: 14px 0; }
+
+.k-study { color: var(--cobalt); } .k-practice { color: var(--ink); } .k-mock { color: #c2410c; }
+.k-review { color: #2f7d4f; } .k-logistics { color: #8a6d1f; } .k-break { color: var(--faint); }
+
+/* checkboxes */
+.check { width: 22px; height: 22px; border-radius: 6px; border: 1.5px solid var(--ink-2); background: transparent; flex: none; padding: 0; display: grid; place-items: center; color: transparent; transition: background .12s; }
+.check svg { width: 14px; height: 14px; }
+.check:hover { background: var(--surface); }
+.check.on { background: var(--cobalt); border-color: var(--cobalt); color: #fff; }
+.sess.current .check { border-color: #fff; }
+.sess.current .check.on { background: var(--sun); border-color: var(--sun); color: var(--on-sun); }
+
+/* checklist (today's tasks) */
+.checklist-head { display: flex; align-items: baseline; justify-content: space-between; padding-bottom: 14px; border-bottom: 1px solid var(--line-2); }
+.checklist-head h3 { margin: 0; font-size: 22px; letter-spacing: -.02em; font-weight: 700; }
+.checklist-head .of { color: var(--muted); font-size: 14px; }
+.check-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 16px; align-items: center; padding: 16px 2px; border-bottom: 1px solid var(--line-2); }
+.check-row .x { font-size: 15px; font-weight: 500; border: 0; background: transparent; padding: 0; text-align: left; line-height: 1.35; }
+.check-row .x:hover { text-decoration: underline; }
+.check-row .tm { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.check-row.done .x { color: var(--muted); text-decoration: line-through; }
+.check-row.current .tm { color: var(--now); }
+.add-row { display: flex; align-items: center; gap: 14px; padding: 14px 2px; border-bottom: 1px solid var(--line-2); }
+.add-row span { font-size: 22px; line-height: 1; color: var(--ink-2); width: 22px; text-align: center; }
+.add-row input { border: 0; outline: 0; background: transparent; flex: 1; min-width: 0; font-size: 15px; }
+.add-row input::placeholder { color: var(--faint); }
+
+.chip { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 8px; background: var(--cobalt-soft); color: var(--cobalt); border: 0; white-space: nowrap; letter-spacing: .03em; }
+
+/* doc rows */
+.doc-row { display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: var(--r-md); width: 100%; border: 0; background: transparent; text-align: left; min-width: 0; }
+.doc-row:hover { background: var(--surface); }
+.doc-ico { width: 36px; height: 36px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); display: grid; place-items: center; flex: none; font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--ink-2); }
+.doc-row .t { min-width: 0; flex: 1; }
+.doc-row .t div:first-child { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- role detail ---------- */
+.role-layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 18px; }
+.role-layout > * { min-width: 0; }
+.stepper { display: flex; gap: 6px; flex-wrap: wrap; }
+.step { border: 1px solid var(--line-2); background: var(--card); border-radius: 999px; padding: 8px 14px; font-weight: 500; color: var(--ink-2); display: inline-flex; gap: 8px; align-items: center; }
+.step .n { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.step.past { color: var(--ink); }
+.step.past .n { color: var(--ink); }
+.step.current { background: var(--cobalt); color: #fff; border-color: var(--cobalt); }
+.step.past { background: var(--cobalt-soft); border-color: var(--cobalt-soft); }
+.step.current .n { color: rgba(255,255,255,.65); }
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field input, .field textarea, .field select { border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 10px 12px; outline: 0; width: 100%; }
+.field input:focus, .field textarea:focus, .field select:focus { border-color: var(--ink-2); }
+.field.full { grid-column: 1 / -1; }
+.field textarea { min-height: 90px; resize: vertical; }
+
+/* ---------- docs workspace ---------- */
+.docs { display: grid; grid-template-columns: 310px minmax(0, 1fr); gap: 18px; align-items: start; }
+.docs > * { min-width: 0; }
+.doc-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; max-height: calc(100vh - 150px); overflow-y: auto; overflow-x: hidden; padding: 2px 4px 2px 2px; }
+.doc-list > * { min-width: 0; }
+.docs-side { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; align-content: start; }
+.docs-side select { width: 100%; min-width: 0; text-overflow: ellipsis; }
+.page-head select, .meta-row select { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+.doc-card > span { min-width: 0; }
+.doc-card .ttl { overflow-wrap: anywhere; }
+.group-label { padding: 12px 4px 2px; }
+.doc-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 12px 14px; text-align: left; width: 100%; display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px; align-items: start; }
+.doc-card:hover { border-color: var(--line-2); }
+.doc-card.active { border-color: var(--cobalt); box-shadow: 0 0 0 1px var(--cobalt); }
+.doc-card .num { font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--muted); padding-top: 1px; }
+.doc-card .ttl { font-weight: 600; font-size: 14px; letter-spacing: -.01em; line-height: 1.3; display: block; }
+.doc-card .when { font-size: 12px; color: var(--muted); margin-top: 3px; display: block; }
+.editor { min-height: calc(100vh - 110px); display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.editor-bar { display: flex; align-items: center; gap: 8px; padding: 14px 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.seg { display: inline-flex; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+.seg button { border: 0; background: transparent; padding: 6px 14px; border-radius: 999px; font-weight: 500; color: var(--ink-2); }
+.seg button.on { background: var(--cobalt); color: #fff; }
+.editor-body { padding: 28px clamp(18px, 5vw, 64px) 60px; flex: 1; overflow: auto; }
+.title-input { font-size: clamp(26px, 3vw, 38px); font-weight: 700; letter-spacing: -.035em; line-height: 1.12; border: 0; outline: 0; background: transparent; width: 100%; padding: 0; margin-bottom: 10px; resize: none; overflow: hidden; display: block; font-family: inherit; }
+.meta-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
+.meta-row select, .meta-row input { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 6px 12px; outline: 0; font-size: 12px; max-width: 100%; }
+.scheduled { display: grid; gap: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 14px 16px; margin-bottom: 22px; }
+.scheduled-row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; border: 0; background: transparent; text-align: left; padding: 2px 0; align-items: baseline; }
+.scheduled-row .w { font-family: var(--mono); font-size: 12px; color: var(--ink-2); }
+.scheduled-row .s { font-size: 13px; }
+.scheduled-row .s em { font-style: normal; color: var(--muted); }
+.scheduled-row:hover .s { text-decoration: underline; }
+.body-input { width: 100%; min-height: 60vh; border: 0; outline: 0; background: transparent; resize: none; font-family: var(--mono); font-size: 13px; line-height: 1.7; }
+.prose { line-height: 1.65; max-width: 820px; }
+.prose h1 { font-size: 30px; letter-spacing: -.03em; }
+.prose h2 { font-size: 21px; letter-spacing: -.02em; margin-top: 2em; padding-top: .8em; border-top: 1px solid var(--line); scroll-margin-top: 20px; transition: background .4s; }
+.prose h2.target { background: var(--sun-soft); box-shadow: -12px 0 0 var(--sun-soft), 12px 0 0 var(--sun-soft); border-radius: 4px; }
+.prose h3 { font-size: 16px; margin-top: 1.6em; }
+.prose code { font-family: var(--mono); font-size: .88em; background: var(--surface); border: 1px solid var(--line); padding: 1px 5px; border-radius: 6px; }
+.prose pre { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; overflow-x: auto; }
+.prose pre code { border: 0; padding: 0; background: transparent; }
+.prose table { border-collapse: collapse; width: 100%; display: block; overflow-x: auto; font-size: 13px; }
+.prose th, .prose td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+.prose th { background: var(--surface); }
+.prose blockquote { margin: 0; padding: 4px 16px; border-left: 3px solid var(--cobalt); color: var(--ink-2); }
+.prose hr { border: 0; border-top: 1px solid var(--line); }
+.toc { display: grid; gap: 2px; margin-top: 10px; }
+.toc a { text-decoration: none; color: var(--ink-2); font-size: 12px; padding: 4px 8px; border-radius: 8px; }
+.toc a:hover { background: var(--surface); color: var(--ink); }
+
+/* ---------- search ---------- */
+.results { display: grid; gap: 10px; }
+.result { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 14px 16px; text-align: left; width: 100%; display: grid; gap: 4px; }
+.result:hover { border-color: var(--ink-2); }
+.result mark { background: var(--sun); color: var(--on-sun); padding: 0 3px; border-radius: 4px; }
+.web-links { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.empty { text-align: center; color: var(--muted); padding: 40px 10px; }
+.toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 999px; font-weight: 500; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 20; }
+.toast.show { opacity: 1; }
+dialog { border: 1px solid var(--line); border-radius: var(--r-xl); background: var(--card); color: var(--ink); padding: 22px; width: min(560px, calc(100vw - 32px)); box-shadow: var(--shadow); }
+dialog::backdrop { background: rgba(43,36,16,.25); backdrop-filter: blur(4px); }
+.form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.check-list { display: grid; gap: 4px; max-height: 180px; overflow: auto; border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; background: var(--surface); }
+.check-list label { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+
+/* ---------- profile & avatars ---------- */
+.avatar { width: 44px; height: 44px; border-radius: 50%; overflow: hidden; display: block; flex: none; background: var(--surface); }
+.avatar svg, .avatar img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.profile-btn { border: 0; padding: 0; background: transparent; border-radius: 50%; box-shadow: 0 0 0 2px var(--card), 0 0 0 3.5px var(--line-2); }
+.profile-btn.rail-top { position: relative; margin-bottom: 18px; }
+.profile-btn.rail-top .avatar { width: 48px; height: 48px; }
+.profile-btn.rail-top::after { content: ""; position: absolute; right: -2px; top: -2px; width: 12px; height: 12px; border-radius: 50%; background: var(--sun); border: 2px solid var(--bg); }
+.profile-btn:hover { box-shadow: 0 0 0 2px var(--card), 0 0 0 3.5px var(--cobalt); }
+.avatar-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+.avatar-opt { border: 0; padding: 0; background: transparent; border-radius: 50%; aspect-ratio: 1; }
+.avatar-opt .avatar { width: 100%; height: 100%; }
+.avatar-opt.on { box-shadow: 0 0 0 3px var(--card), 0 0 0 5px var(--cobalt); }
+.profile-head { display: flex; gap: 16px; align-items: center; margin-bottom: 18px; }
+.profile-head .avatar { width: 72px; height: 72px; }
+.greet { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.greet .avatar { width: 36px; height: 36px; }
+.greet b { font-size: 15px; }
+
+/* ---------- home ---------- */
+.home { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 18px; align-items: start; }
+.home > * { min-width: 0; }
+.span-3 { grid-column: span 3; } .span-4 { grid-column: span 4; } .span-5 { grid-column: span 5; }
+.span-8 { grid-column: span 8; } .span-12 { grid-column: span 12; }
+.home .hero { align-self: stretch; }
+.home .upnext { align-self: stretch; }
+.timeleft { display: grid; gap: 8px; justify-items: end; }
+.stat.warn { background: var(--sun-soft); border-color: #f3dfa0; }
+.strip-wrap { overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
+.strip { position: relative; min-width: 720px; }
+.strip-grid { position: relative; height: 18px; margin-bottom: 6px; }
+.strip-grid span { position: absolute; transform: translateX(-50%); font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.strip-grid span:first-child { transform: none; } .strip-grid span:last-child { transform: translateX(-100%); }
+.strip-lane { position: relative; height: 74px; background: repeating-linear-gradient(90deg, var(--line) 0 1px, transparent 1px calc(100% / 8)); border-radius: 14px; background-color: var(--surface); border: 1px solid var(--line); }
+.blk { position: absolute; top: 8px; bottom: 8px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--card); padding: 6px 8px; text-align: left; overflow: hidden; display: grid; align-content: start; gap: 2px; min-width: 0; border-left: 3px solid var(--ink); }
+.blk .bt { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.blk .bm { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+.blk.b-study { border-left-color: var(--cobalt); } .blk.b-mock { border-left-color: #c2410c; } .blk.b-review { border-left-color: #2f7d4f; } .blk.b-logistics { border-left-color: #8a6d1f; }
+.blk.break { background: transparent; border-style: dashed; border-left-width: 1px; border-left-style: dashed; border-left-color: var(--line-2); }
+.blk.break .bt { color: var(--muted); font-weight: 500; }
+.blk.done { opacity: .55; } .blk.done .bt { text-decoration: line-through; }
+.blk.current { background: var(--cobalt); border-color: var(--cobalt); color: #fff; }
+.blk.current .bm { color: rgba(255,255,255,.7); }
+.strip-now { position: absolute; top: -4px; bottom: -4px; width: 0; border-left: 2px solid var(--cobalt); z-index: 2; pointer-events: none; }
+.strip-now span { position: absolute; bottom: -20px; left: -22px; font-family: var(--mono); font-size: 10px; font-weight: 600; color: #fff; background: var(--cobalt); padding: 1px 5px; border-radius: 5px; }
+.strip-iv { position: absolute; top: 6px; bottom: 6px; width: 0; border-left: 2px dashed var(--on-sun); z-index: 2; }
+.strip-iv span { position: absolute; top: -2px; left: 6px; font-size: 11px; font-weight: 700; background: var(--sun); color: var(--on-sun); padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.prio-list { display: grid; }
+.prio { display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 12px; align-items: start; padding: 12px 0; border: 0; border-bottom: 1px solid var(--line); background: transparent; text-align: left; }
+.prio:last-child { border-bottom: 0; }
+.prio:hover .ptt { text-decoration: underline; }
+.pchip { font-size: 11px; font-weight: 700; padding: 4px 8px; border-radius: 8px; text-align: center; letter-spacing: .02em; }
+.p-now { background: var(--sun); color: var(--on-sun); }
+.p-catch { background: #fbe4d8; color: #c2410c; }
+.p-next { background: var(--cobalt-soft); color: var(--cobalt); }
+.pt { display: grid; gap: 3px; min-width: 0; }
+.ptt { font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.ptm { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.days-list { display: grid; gap: 6px; }
+.day-row { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 10px; align-items: center; padding: 10px; border-radius: 14px; border: 1px solid transparent; background: transparent; text-align: left; }
+.day-row:hover { background: var(--surface); }
+.day-row.today { background: var(--cobalt-soft); border-color: var(--cobalt-soft); }
+.day-row .dn { font-size: 30px; font-weight: 800; letter-spacing: -.04em; line-height: 1; }
+.day-row.today .dn { color: var(--cobalt); }
+.day-row .dd { display: grid; gap: 5px; min-width: 0; }
+.day-row .dd b { font-size: 13px; }
+.ivtag { justify-self: start; font-size: 11px; font-weight: 700; background: var(--sun); color: var(--on-sun); padding: 3px 8px; border-radius: 999px; }
+@media (max-width: 1240px) {
+  .c-hero, .c-up { grid-column: span 12; }
+  .c-prio { grid-column: span 7; } .c-tasks { grid-column: span 5; }
+  .c-days, .c-pipe, .c-recent { grid-column: span 12; }
+  .days-list { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+}
+@media (max-width: 900px) {
+  .c-prio, .c-tasks { grid-column: span 12; }
+  .home .hero { grid-template-columns: 1fr; }
+  .timeleft { justify-items: start; }
+}
+
+/* ---------- responsive ---------- */
+@media (max-width: 1080px) {
+  .dash, .role-layout { grid-template-columns: minmax(0, 1fr); }
+  .stats { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 760px) {
+  .shell { grid-template-columns: minmax(0, 1fr); }
+  .rail { position: fixed; bottom: 0; top: auto; left: 0; right: 0; height: auto; flex-direction: row; justify-content: space-around; padding: 10px 16px; background: rgba(239,233,223,.94); backdrop-filter: blur(12px); z-index: 10; border-top: 1px solid var(--line); }
+  .rail .spacer { display: none; }
+  .profile-btn.rail-top { margin-bottom: 0; order: 10; }
+  .profile-btn.rail-top .avatar { width: 40px; height: 40px; }
+  main { padding: 16px 16px 100px; }
+  .tabs { display: none; }
+  .search { max-width: none; margin-left: 0; order: 3; flex-basis: 100%; }
+  .hero { grid-template-columns: 1fr; }
+  .cd-cell { min-width: 0; flex: 1; }
+  .docs { grid-template-columns: minmax(0, 1fr); }
+  .doc-list { max-height: none; }
+  .fields, .form-grid { grid-template-columns: 1fr; }
+  .day { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .day-num { position: static; }
+  .day-num .big { font-size: 56px; }
+  .sess { grid-template-columns: 48px minmax(0, 1fr) auto; gap: 12px; padding: 14px; }
+  .sess-body { padding-left: 12px; }
+  .sess-actions { flex-direction: column; }
+  .milestone-card { grid-template-columns: 48px minmax(0, 1fr); }
+  .milestone-card .countdown { grid-column: 1 / -1; }
+  .page-head .right { margin-left: 0; }
+  .editor-body { padding: 22px 18px 40px; }
+  .scheduled-row { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .avatar-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .profile-btn .avatar { width: 40px; height: 40px; }
+  .track { grid-auto-columns: minmax(120px, 1fr); }
+  .track-day { padding: 0 10px 4px; }
+  .track-line { gap: 4px; flex-wrap: wrap; height: auto; min-height: 36px; }
+  .track-line::before { left: -10px; right: -10px; }
+  .track-day .dl span { font-size: 11px; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="rail" aria-label="Primary">
+    <button class="profile-btn rail-top" id="profileBtn" title="Profile" aria-label="Profile"><span class="avatar" id="railAvatar"></span></button>
+    <button class="rail-btn" data-view="dashboard" title="Home" aria-label="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg></button>
+    <button class="rail-btn" data-view="timeline" title="Timeline" aria-label="Timeline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="1.8" fill="currentColor"/><circle cx="15" cy="12" r="1.8" fill="currentColor"/><circle cx="10" cy="18" r="1.8" fill="currentColor"/></svg></button>
+    <button class="rail-btn" data-view="roles" title="Roles" aria-label="Roles"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="7" width="18" height="13" rx="3"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+    <button class="rail-btn" data-view="docs" title="Documents" aria-label="Documents"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg></button>
+    <button class="rail-btn" data-view="scores" title="Scores" aria-label="Scores"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg></button>
+    <button class="rail-btn" data-view="search" title="Search" aria-label="Search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
+    <div class="spacer"></div>
+    <button class="rail-btn" id="dataBtn" title="Import / export" aria-label="Import or export data"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></button>
+  </nav>
+
+  <main>
+    <header class="topbar">
+      <div class="tabs" role="tablist">
+        <button class="tab" data-view="dashboard">Home</button>
+        <button class="tab" data-view="timeline">Timeline</button>
+        <button class="tab" data-view="roles">Roles</button>
+        <button class="tab" data-view="docs">Documents</button>
+        <button class="tab" data-view="scores">Scores</button>
+        <button class="tab" data-view="search">Search</button>
+      </div>
+      <label class="search">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="q" placeholder="Search roles, docs, sessions…" autocomplete="off">
+        <kbd>/</kbd>
+      </label>
+      <button class="btn-primary" id="newBtn"><span style="font-size:18px;line-height:0">+</span> New</button>
+    </header>
+    <section id="view"></section>
+  </main>
+</div>
+
+<dialog id="newDialog">
+  <div class="card-head"><h3>Create</h3><div class="right"><button class="icon-btn sm" data-close aria-label="Close">✕</button></div></div>
+  <div style="display:grid;gap:6px">
+    <button class="doc-row" data-create="session"><span class="doc-ico">Se</span><span class="t"><div>Prep session</div><div class="muted">A time block on the timeline, linked to docs</div></span></button>
+    <button class="doc-row" data-create="doc"><span class="doc-ico">Md</span><span class="t"><div>Document</div><div class="muted">Notes, research, guides (Markdown)</div></span></button>
+    <button class="doc-row" data-create="role"><span class="doc-ico">Ro</span><span class="t"><div>Role</div><div class="muted">Track a company, stage and interview date</div></span></button>
+  </div>
+</dialog>
+
+<dialog id="sessionDialog">
+  <form id="sessionForm" style="display:grid;gap:12px">
+    <div class="card-head" style="margin:0"><h3 id="sessionDialogTitle">New session</h3><div class="right"><button type="button" class="icon-btn sm" data-close aria-label="Close">✕</button></div></div>
+    <label class="field"><span class="label">What</span><input name="title" required placeholder="e.g. Patterns 1–6, 2 problems each"></label>
+    <div class="form-grid">
+      <label class="field"><span class="label">Day</span><input name="day" type="date" required></label>
+      <label class="field"><span class="label">Start</span><input name="start" type="time" required></label>
+      <label class="field"><span class="label">End</span><input name="end" type="time" required></label>
+    </div>
+    <div class="form-grid" style="grid-template-columns:1fr 1fr">
+      <label class="field"><span class="label">Type</span><select name="kind"></select></label>
+      <label class="field"><span class="label">Role</span><select name="roleId"></select></label>
+    </div>
+    <div class="field"><span class="label">Linked documents</span><div class="check-list" id="sessionDocs"></div></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" class="btn-ghost" id="sessionDelete" hidden>Delete</button><button class="btn-primary" type="submit">Save session</button></div>
+  </form>
+</dialog>
+
+<dialog id="profileDialog">
+  <form id="profileForm" style="display:grid;gap:14px">
+    <div class="card-head" style="margin:0"><h3>Profile</h3><div class="right"><button type="button" class="icon-btn sm" data-close aria-label="Close">✕</button></div></div>
+    <div class="profile-head"><span class="avatar" id="profilePreview"></span>
+      <div style="display:grid;gap:6px;flex:1;min-width:0">
+        <input name="name" placeholder="Your name" style="font-size:20px;font-weight:700;border:0;outline:0;background:transparent;padding:0;min-width:0">
+        <input name="headline" placeholder="Headline, e.g. iOS engineer · New York" style="border:0;outline:0;background:transparent;padding:0;color:var(--ink-2);min-width:0">
+      </div>
+    </div>
+    <div class="label">Choose an avatar</div>
+    <div class="avatar-grid" id="avatarGrid"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <label class="btn-ghost" style="cursor:pointer">Upload photo<input type="file" id="photoFile" accept="image/*" hidden></label>
+      <button type="button" class="btn-ghost" id="removePhoto">Remove photo</button>
+      <span class="muted" style="font-size:12px">Saved on this device</span>
+      <button class="btn-primary" type="submit" style="margin-left:auto">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dataDialog">
+  <div class="card-head"><h3>Your data</h3><div class="right"><button class="icon-btn sm" data-close aria-label="Close">✕</button></div></div>
+  <p class="muted" style="margin-top:0">Everything is saved in this browser. Export a JSON backup to move it, or to load it into the Mac/iOS app (Import).</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn-primary" id="exportBtn">Export JSON</button>
+    <label class="btn-ghost" style="cursor:pointer">Import JSON<input type="file" id="importFile" accept="application/json" hidden></label>
+    <button class="btn-ghost" id="resetBtn">Clear data on this device</button>
+  </div>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  "use strict";
+  const STAGES = ["Saved", "Applied", "Recruiter", "Technical", "Onsite", "Offer", "Closed"];
+  const KINDS = { study: "Study", practice: "Practice", mock: "Mock", review: "Review", logistics: "Logistics", break: "Break" };
+  let KEY = "prepboard.v2";
+  const $ = (s, el = document) => el.querySelector(s);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const uid = (p) => `${p}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const nowISO = () => new Date().toISOString();
+  const pad = (n) => String(n).padStart(2, "0");
+
+  // ---------- storage ----------
+  // Every account starts empty; plans are created with "Start something new".
+  const blank = () => ({ roles: [], docs: [], tasks: [], quizzes: [] });
+  function normalize(data) {
+    data.tasks = (data.tasks || []).map((t) => {
+      const out = { kind: "study", refs: [], videos: [], ...t };
+      if (!out.start && out.due) { out.start = new Date(`${out.due}T09:00`).toISOString(); out.end = new Date(`${out.due}T10:00`).toISOString(); }
+      if (!out.start) { out.start = nowISO(); out.end = new Date(Date.now() + 36e5).toISOString(); }
+      return out;
+    });
+    data.quizzes = data.quizzes || [];
+    data.docs = (data.docs || []).map((d) => ({ fileType: "md", filePath: "", ...d }));
+    return data;
+  }
+  function load() {
+    try { const raw = localStorage.getItem(KEY); if (raw) return normalize(JSON.parse(raw)); } catch (_) {}
+    return normalize(blank());
+  }
+  let db = load();
+  let saveTimer;
+  function save() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (_) {} }, 200);
+    window.PBCloud?.schedulePush?.();
+  }
+
+  const ui = { view: "dashboard", roleId: null, docId: null, docMode: "read", q: "", docFilter: "all", tlRole: null, tlKind: "all", showBreaks: true };
+  try { Object.assign(ui, JSON.parse(sessionStorage.getItem("prepboard.ui2") || "{}")); } catch (_) {}
+  const persistUI = () => { try { sessionStorage.setItem("prepboard.ui2", JSON.stringify(ui)); } catch (_) {} };
+
+  // ---------- lookups ----------
+  const roleById = (id) => db.roles.find((r) => r.id === id);
+  const docById = (id) => db.docs.find((d) => d.id === id);
+  const taskById = (id) => db.tasks.find((t) => t.id === id);
+  const tStart = (t) => new Date(t.start);
+  const tEnd = (t) => new Date(t.end || t.start);
+  const isBreak = (t) => t.kind === "break";
+  const sessionsFor = (roleId) => db.tasks.filter((t) => !roleId || t.roleId === roleId).sort((a, b) => tStart(a) - tStart(b));
+  const workFor = (roleId) => sessionsFor(roleId).filter((t) => !isBreak(t));
+  const progress = (roleId) => { const w = workFor(roleId); return w.length ? Math.round(100 * w.filter((x) => x.done).length / w.length) : 0; };
+  const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const hm = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const state = (t, now = new Date()) => t.done ? "done" : (tStart(t) <= now && now < tEnd(t)) ? "current" : tEnd(t) <= now ? "missed" : "upcoming";
+  const dur = (t) => { const m = Math.round((tEnd(t) - tStart(t)) / 6e4); return m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? " " + (m % 60) + "m" : ""}` : `${m}m`; };
+  const docNum = (d) => pad(Math.min(d?.order ?? 0, 99));
+  const cleanHeading = (h) => (h || "").replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}⭐]/gu, "").replace(/\s*\(.*$/, "").replace(/:.*$/, "").trim();
+  const refLabel = (r) => { const d = docById(r.doc); return r.heading ? cleanHeading(r.heading) : (d ? cleanHeading(d.title.split(/[—]/)[0]) : "Missing doc"); };
+  const slug = (s) => (s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+  function nextInterview() {
+    return db.roles.filter((r) => r.interviewAt && new Date(r.interviewAt) > Date.now() - 3600e3)
+      .sort((a, b) => new Date(a.interviewAt) - new Date(b.interviewAt))[0];
+  }
+  function activeRoleId() {
+    if (ui.tlRole && roleById(ui.tlRole)) return ui.tlRole;
+    return nextInterview()?.id || db.roles[0]?.id || null;
+  }
+
+  function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 1600); }
+  function fmtDate(d, opts = { month: "short", day: "numeric" }) { d = new Date(d); return isNaN(d) ? "" : d.toLocaleDateString(undefined, opts); }
+  function fmtDateTime(iso) { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }); }
+  function relative(iso) {
+    const d = new Date(iso); if (isNaN(d)) return "";
+    const s = (Date.now() - d) / 1000;
+    if (s < 60) return "just now"; if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+    if (s < 86400) return `${Math.floor(s / 3600)}h ago`; return fmtDate(d);
+  }
+  function md(text) {
+    if (window.marked && window.DOMPurify) return DOMPurify.sanitize(marked.parse(text || "", { gfm: true }));
+    return `<pre>${esc(text)}</pre>`;
+  }
+
+  // ---------- navigation ----------
+  let pending = null; // { scroll: elementId, block, flash: className }
+  function go(view, extra = {}, after = null) { Object.assign(ui, { view }, extra); persistUI(); pending = after; render(); if (!after) window.scrollTo({ top: 0 }); }
+  document.addEventListener("click", (e) => {
+    const nav = e.target.closest("[data-view]");
+    if (nav && !nav.closest("#view")) go(nav.dataset.view);
+  });
+
+  // ---------- shared fragments ----------
+  function refChips(t) {
+    return (t.refs || []).map((r) => {
+      const d = docById(r.doc); if (!d) return "";
+      return `<button class="ref" data-open-ref="${esc(r.doc)}" data-heading="${esc(r.heading || "")}" title="${esc(d.title)}${r.heading ? " › " + esc(r.heading) : ""}"><span class="n">${docNum(d)}</span><span class="l">${esc(refLabel(r))}</span></button>`;
+    }).join("");
+  }
+  function countdownHTML(iso) {
+    const ms = Math.max(0, new Date(iso) - Date.now());
+    const d = Math.floor(ms / 864e5), h = Math.floor(ms % 864e5 / 36e5), m = Math.floor(ms % 36e5 / 6e4);
+    return [[d, "days"], [h, "hours"], [m, "min"]].map(([v, l]) => `<div class="cd-cell"><b>${pad(v)}</b><span>${l}</span></div>`).join("");
+  }
+  const CHECK_SVG = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-7"/></svg>';
+  const checkBtn = (t) => `<button class="check ${t.done ? "on" : ""}" data-toggle-task="${t.id}" role="checkbox" aria-checked="${t.done}" aria-label="Done: ${esc(t.title)}">${CHECK_SVG}</button>`;
+  function checklistHTML(list, now) {
+    return list.filter((t) => !isBreak(t)).map((t) => `<div class="check-row ${t.done ? "done" : ""} ${state(t, now)}">
+      ${checkBtn(t)}<button class="x" data-goto-session="${t.id}">${esc(t.title)}</button><span class="tm">${hm(tStart(t))}</span></div>`).join("");
+  }
+  function agendaHTML(list, now) {
+    return list.map((t) => `<button class="agenda-row ${state(t, now)} ${isBreak(t) ? "break" : ""}" data-goto-session="${t.id}">
+      <span class="t">${hm(tStart(t))}</span><span class="d"></span><span class="x">${esc(t.title)}</span></button>`).join("");
+  }
+  function docRowHTML(d) {
+    return `<button class="doc-row" data-open-doc="${d.id}"><span class="doc-ico">${(d.tags || []).includes("research") ? "Rs" : docNum(d)}</span>
+      <span class="t"><div>${esc(d.title || "Untitled")}</div><div class="muted" style="font-size:12px">${esc(roleById(d.roleId)?.company || "General")} · ${esc(relative(d.updatedAt))}</div></span></button>`;
+  }
+
+  // ---------- TIMELINE ----------
+  function viewTimeline() {
+    const roleId = activeRoleId();
+    const role = roleById(roleId);
+    const now = new Date();
+    const all = sessionsFor(roleId);
+    const counts = Object.fromEntries(Object.keys(KINDS).map((k) => [k, all.filter((t) => t.kind === k).length]));
+    const visible = all.filter((t) => (ui.tlKind === "all" || t.kind === ui.tlKind) && (ui.showBreaks || !isBreak(t)));
+    const interviewKey = role?.interviewAt ? dayKey(new Date(role.interviewAt)) : null;
+
+    const keys = new Set(all.map((t) => dayKey(tStart(t))));
+    if (interviewKey) keys.add(interviewKey);
+    const days = [...keys].sort();
+    const todayKey = dayKey(now);
+
+    const track = days.map((k) => {
+      const ds = all.filter((t) => dayKey(tStart(t)) === k);
+      const work = ds.filter((t) => !isBreak(t));
+      const d = new Date(`${k}T12:00`);
+      const dots = ds.map((t) => {
+        const size = Math.round(Math.max(10, Math.min(22, 8 + (tEnd(t) - tStart(t)) / 6e4 / 12)));
+        return `<button class="dot ${state(t, now)} ${isBreak(t) ? "break" : ""}" style="width:${size}px;height:${size}px" data-goto-session="${t.id}" title="${esc(hm(tStart(t)) + " · " + t.title)}" aria-label="${esc(hm(tStart(t)) + " " + t.title)}"></button>`;
+      }).join("") + (k === interviewKey ? `<button class="dot milestone" data-goto="interview" title="Interview · ${esc(fmtDateTime(role.interviewAt))}" aria-label="Interview">★</button>` : "");
+      return `<div class="track-day ${k === todayKey ? "today" : ""}">
+        <button class="dl" data-goto="day-${k}"><b>${d.getDate()}</b><span>${d.toLocaleDateString(undefined, { weekday: "short", month: "short" })}${k === todayKey ? " · Today" : ""}</span></button>
+        <div class="track-line">${dots}</div>
+        <div class="meta">${work.length ? `${work.filter((t) => t.done).length}/${work.length} done` : ""}${k === interviewKey ? `${work.length ? " · " : ""}interview ${hm(new Date(role.interviewAt))}` : ""}</div>
+      </div>`;
+    }).join("");
+
+    const dayBlocks = days.map((k) => {
+      const d = new Date(`${k}T12:00`);
+      const work = all.filter((t) => dayKey(tStart(t)) === k && !isBreak(t));
+      const pct = work.length ? Math.round(100 * work.filter((t) => t.done).length / work.length) : 0;
+      const items = visible.filter((t) => dayKey(tStart(t)) === k).map((t) => ({ t, at: tStart(t) }));
+      if (k === interviewKey) items.push({ interview: true, at: new Date(role.interviewAt) });
+      items.sort((a, b) => a.at - b.at);
+      let rows = "", nowPlaced = k !== todayKey;
+      for (const it of items) {
+        if (!nowPlaced && it.at > now) { rows += `<div class="now-line" id="now">Now ${hm(now)}</div>`; nowPlaced = true; }
+        if (it.interview) {
+          const end = role.interviewEnd ? new Date(role.interviewEnd) : new Date(it.at.getTime() + 45 * 6e4);
+          rows += `<div class="milestone-card" id="interview">
+            <div class="sess-time"><b>${hm(it.at)}</b><span>${hm(end)}</span></div>
+            <div><div class="label" style="color:rgba(43,36,16,.6)">Interview</div><div class="t">${esc(role.company)} — ${esc(role.title)}</div><div class="s">${esc(role.interviewNote || "")}</div></div>
+            <div class="countdown" data-countdown="${esc(role.interviewAt)}" style="gap:6px">${countdownHTML(role.interviewAt)}</div>
+          </div>`;
+          continue;
+        }
+        const t = it.t, st = state(t, now);
+        rows += `<div class="sess ${st} ${isBreak(t) ? "break" : ""}" id="s-${t.id}">
+          <div class="sess-time"><b>${hm(tStart(t))}</b><span>${hm(tEnd(t))}</span></div>
+          <div class="sess-body">
+            ${isBreak(t) ? "" : `<div class="sess-meta"><span class="kind k-${t.kind}">${KINDS[t.kind] || t.kind}</span><span class="dur">${dur(t)}</span>${st === "current" ? `<span class="live-tag">NOW</span>` : ""}</div>`}
+            <div class="sess-title">${esc(t.title)}</div>
+            ${(t.refs || []).length ? `<div class="refs">${refChips(t)}</div>` : ""}
+            ${isBreak(t) ? "" : (window.PBLearn?.videoStrip(t) || "") + `<div class="sess-learn"><button class="learn-btn" data-quiz-session="${t.id}"><span class="dotq"></span>Quiz me</button>${(t.videos || []).length ? "" : `<button class="learn-btn" data-videos-session="${t.id}">▶ Find videos</button>`}</div>`}
+          </div>
+          <div class="sess-actions">
+            ${isBreak(t) ? "" : checkBtn(t)}
+            <button class="icon-btn sm" data-edit-session="${t.id}" aria-label="Edit session" title="Edit">✎</button>
+          </div>
+        </div>`;
+      }
+      if (!nowPlaced) rows += `<div class="now-line" id="now">Now ${hm(now)}</div>`;
+      return `<section class="day ${k === todayKey ? "today" : ""} ${k < todayKey ? "past" : ""}" id="day-${k}">
+        <div class="day-num">
+          <div class="big">${pad(d.getDate())}<sup>${d.toLocaleDateString(undefined, { weekday: "short" })}</sup></div>
+          <div class="sub"><span>${d.toLocaleDateString(undefined, { month: "long" })}${k === todayKey ? " · Today" : ""}</span>
+            ${work.length ? `<span class="bar"><i style="width:${pct}%"></i></span><span class="mono">${work.filter((t) => t.done).length}/${work.length} sessions</span>` : ""}
+            <button class="btn-ghost" style="width:max-content;height:30px;font-size:12px" data-new-session="${k}">+ Session</button>
+          </div>
+        </div>
+        <div class="sessions">${rows || `<div class="empty-day">Nothing scheduled.</div>`}</div>
+      </section>`;
+    }).join("");
+
+    return `<div class="stack">
+      <div class="page-head">
+        <div><div class="label">Prep plan${role ? " · " + esc(role.company) + " — " + esc(role.title) : ""}</div><h1 class="h-display">Timeline</h1></div>
+        <div class="right">
+          ${db.roles.length > 1 ? `<select class="btn-ghost" id="tlRole" aria-label="Role">${db.roles.map((r) => `<option value="${r.id}" ${r.id === roleId ? "selected" : ""}>${esc(r.company)} — ${esc(r.title)}</option>`).join("")}</select>` : ""}
+          <button class="btn-ghost" data-goto="now">Jump to now</button>
+          <button class="btn-primary" data-new-session="">+ Session</button>
+        </div>
+      </div>
+      ${days.length ? `<div class="card" style="padding:16px 4px 14px"><div class="track">${track}</div></div>` : ""}
+      <div class="filters">
+        <button class="pill ${ui.tlKind === "all" ? "on" : ""}" data-kind="all">All <span class="n">${all.filter((t) => !isBreak(t)).length}</span></button>
+        ${Object.entries(KINDS).filter(([k]) => k !== "break").map(([k, l]) => `<button class="pill ${ui.tlKind === k ? "on" : ""}" data-kind="${k}"><span class="sw k-${k}"></span>${l} <span class="n">${counts[k]}</span></button>`).join("")}
+        <button class="pill soft" data-toggle-breaks>${ui.showBreaks ? "Hide breaks" : "Show breaks"}</button>
+      </div>
+      <div>${dayBlocks || `<div class="card empty">No sessions yet. Add one to build your plan.</div>`}</div>
+    </div>`;
+  }
+
+  // ---------- OVERVIEW ----------
+  function pipelineHTML(compact) {
+    return `<div class="pipeline ${compact ? "compact" : ""}">${STAGES.map((s) => {
+      const roles = db.roles.filter((r) => r.stage === s);
+      return `<div class="col" data-stage="${s}">
+        <div class="col-head"><span>${s}</span><span class="count">${pad(roles.length)}</span></div>
+        ${roles.map((r) => `<button class="role-tile ${r.stage === "Technical" || r.stage === "Onsite" ? "hot" : ""}" draggable="true" data-open-role="${r.id}">
+            <span style="font-weight:600">${esc(r.company)}</span><span class="muted">${esc(r.title)}</span>
+            ${r.interviewAt ? `<span class="muted mono" style="font-size:11px">${esc(fmtDate(r.interviewAt))}</span>` : ""}
+            <span class="bar" style="margin-top:6px"><i style="width:${progress(r.id)}%"></i></span>
+          </button>`).join("")}
+        ${compact ? "" : `<button class="add-tile" data-add-role="${s}">+ Add</button>`}
+      </div>`;
+    }).join("")}</div>`;
+  }
+
+  function priorityItems(sess, now) {
+    const work = sess.filter((t) => !isBreak(t) && !t.done);
+    const missed = work.filter((t) => tEnd(t) <= now).map((t) => ({ t, level: "catch", label: "Catch up" }));
+    const current = work.filter((t) => state(t, now) === "current").map((t) => ({ t, level: "now", label: "Now" }));
+    const next = work.filter((t) => tStart(t) > now).slice(0, 4).map((t) => ({ t, level: "next", label: dayKey(tStart(t)) === dayKey(now) ? "Today" : fmtDate(tStart(t), { weekday: "short" }) }));
+    return [...current, ...missed, ...next].slice(0, 6);
+  }
+
+  function dayStripHTML(sess, role, now) {
+    const today = dayKey(now);
+    const list = sess.filter((t) => dayKey(tStart(t)) === today);
+    const startH = 7, endH = 23, span = (endH - startH) * 60;
+    const pos = (d) => Math.max(0, Math.min(100, ((d.getHours() * 60 + d.getMinutes()) - startH * 60) / span * 100));
+    const blocks = list.map((t) => {
+      const st = state(t, now), l = pos(tStart(t)), w = Math.max(1.5, pos(tEnd(t)) - l);
+      return `<button class="blk ${st} ${isBreak(t) ? "break" : ""} b-${t.kind}" style="left:${l}%;width:${w}%" data-goto-session="${t.id}" title="${esc(hm(tStart(t)) + "–" + hm(tEnd(t)) + " · " + t.title)}">
+        <span class="bt">${esc(isBreak(t) ? t.title.split(/[+,.]/)[0] : t.title)}</span><span class="bm">${hm(tStart(t))}</span></button>`;
+    }).join("");
+    const iv = role?.interviewAt && dayKey(new Date(role.interviewAt)) === today
+      ? `<div class="strip-iv" style="left:${pos(new Date(role.interviewAt))}%"><span>★ Interview ${hm(new Date(role.interviewAt))}</span></div>` : "";
+    const nowH = now.getHours() + now.getMinutes() / 60;
+    const nowMark = nowH >= startH && nowH <= endH ? `<div class="strip-now" style="left:${pos(now)}%"><span>${hm(now)}</span></div>` : "";
+    const ticks = Array.from({ length: (endH - startH) / 2 + 1 }, (_, i) => startH + i * 2)
+      .map((h) => `<span style="left:${(h - startH) / (endH - startH) * 100}%">${pad(h)}:00</span>`).join("");
+    return `<div class="strip-wrap"><div class="strip">
+      <div class="strip-grid">${ticks}</div>
+      <div class="strip-lane">${blocks || `<div class="muted" style="padding:18px 4px">Nothing scheduled today.</div>`}${iv}${nowMark}</div>
+    </div></div>`;
+  }
+
+  function viewDashboard() {
+    const now = new Date();
+    const next = nextInterview();
+    const roleId = activeRoleId();
+    const role = roleById(roleId);
+    const sess = sessionsFor(roleId);
+    const current = sess.find((t) => state(t, now) === "current" && !isBreak(t));
+    const upcoming = current || sess.find((t) => !t.done && !isBreak(t) && tEnd(t) > now);
+    const today = sess.filter((t) => dayKey(tStart(t)) === dayKey(now));
+    const tomorrowKey = dayKey(new Date(now.getTime() + 864e5));
+    const agenda = today.length ? today : sess.filter((t) => dayKey(tStart(t)) === tomorrowKey);
+    const work = workFor(roleId);
+    const remaining = work.filter((t) => !t.done && tEnd(t) > now);
+    const hoursLeft = remaining.reduce((n, t) => n + (tEnd(t) - Math.max(tStart(t), now)), 0) / 36e5;
+    const missedCount = work.filter((t) => !t.done && tEnd(t) <= now).length;
+    const recent = [...db.docs].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).slice(0, 5);
+    const prio = priorityItems(sess, now);
+    const days = [...new Set([...work.map((t) => dayKey(tStart(t))), ...(role?.interviewAt ? [dayKey(new Date(role.interviewAt))] : [])])].sort();
+    const ivKey = role?.interviewAt ? dayKey(new Date(role.interviewAt)) : "";
+    return `<div class="home">
+      <div class="card hero span-8 c-hero">
+        <div>
+          <button class="greet" data-open-profile style="border:0;background:transparent;padding:0;text-align:left"><span class="avatar">${avatarHTML()}</span><span><b>${greeting()}${profile().name ? ", " + esc(profile().name.split(" ")[0]) : ""}</b><span class="muted" style="display:block;font-size:12px">${esc(profile().headline || "Set up your profile")}</span></span></button>
+          <div class="label">${next ? "Next interview" : db.roles.length ? "No interview scheduled" : "Get started"}</div>
+          <h1 class="h-display" style="margin:8px 0 6px">${next ? esc(next.company) : db.roles.length ? "No interview scheduled" : "What are you preparing for?"}</h1>
+          <div class="muted">${next ? `${esc(next.title)} · ${esc(fmtDateTime(next.interviewAt))}${next.interviewNote ? " · " + esc(next.interviewNote) : ""}` : db.roles.length ? "Add an interview date to a role to start a countdown." : "Chat with the planner: tell it the role and paste the job posting, and it builds your timeline, sessions and study guides."}</div>
+          ${next ? `<div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap"><button class="btn-primary" data-view-in="timeline">Open timeline</button><button class="btn-ghost" data-open-role="${next.id}">Role details</button></div>`
+                 : `<div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap"><button class="btn-primary" data-start-new>✦ Start something new</button><button class="btn-ghost" data-add-role="Saved">Add a role manually</button></div>`}
+        </div>
+        ${next ? `<div class="timeleft"><div class="label">Time left</div><div class="countdown" data-countdown="${esc(next.interviewAt)}">${countdownHTML(next.interviewAt)}</div></div>` : ""}
+      </div>
+      ${upcoming ? `<div class="upnext span-4 c-up">
+        <div class="label">${current ? "Happening now" : "Up next"}</div>
+        <div class="when">${esc(fmtDate(tStart(upcoming), { weekday: "short", month: "short", day: "numeric" }))} · ${hm(tStart(upcoming))}–${hm(tEnd(upcoming))}</div>
+        <h2>${esc(upcoming.title)}</h2>
+        ${(upcoming.refs || []).length ? `<div class="refs">${refChips(upcoming)}</div>` : ""}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:auto"><button class="btn-ghost" data-toggle-task="${upcoming.id}">Mark done</button><button class="btn-ghost" data-goto-session="${upcoming.id}">On timeline →</button></div>
+      </div>` : (work.length ? `<div class="card span-4 c-up empty">All sessions done.</div>` : `<div class="upnext span-4 c-up"><div class="label">Up next</div><h2>No sessions yet</h2><div class="when" style="font-family:inherit">Your timeline fills in as soon as you create a plan.</div><div style="margin-top:auto"><button class="btn-ghost" data-start-new>✦ Start something new</button></div></div>`)}
+
+      <div class="stats span-12">
+        <div class="stat"><div class="label">Prep hours left</div><b>${hoursLeft.toFixed(hoursLeft < 10 ? 1 : 0)}<span class="muted" style="font-size:15px">h</span></b></div>
+        <div class="stat"><div class="label">Sessions left</div><b>${remaining.length}<span class="muted" style="font-size:15px">/${work.length}</span></b></div>
+        <div class="stat ${missedCount ? "warn" : ""}"><div class="label">To catch up</div><b>${missedCount}</b></div>
+        <div class="stat"><div class="label">Prep progress</div><b>${progress(roleId)}%</b><span class="bar" style="margin-top:8px"><i style="width:${progress(roleId)}%"></i></span></div>
+      </div>
+
+      <div class="card span-12">
+        <div class="card-head"><h3>Today</h3><span class="muted" style="font-size:13px">${esc(fmtDate(now, { weekday: "long", month: "long", day: "numeric" }))}</span><div class="right"><button class="btn-ghost" data-view-in="timeline">Full timeline →</button></div></div>
+        ${dayStripHTML(sess, role, now)}
+      </div>
+
+      <div class="card span-5 c-prio">
+        <div class="card-head"><h3>Priorities</h3><span class="count">${prio.length}</span></div>
+        <div class="prio-list">${prio.map(({ t, level, label }) => `<button class="prio" data-goto-session="${t.id}">
+          <span class="pchip p-${level}">${esc(label)}</span>
+          <span class="pt"><span class="ptt">${esc(t.title)}</span><span class="ptm">${hm(tStart(t))}–${hm(tEnd(t))} · ${esc(KINDS[t.kind] || t.kind)}${(t.refs || []).length ? " · " + esc(refLabel(t.refs[0])) : ""}</span></span>
+        </button>`).join("") || `<div class="empty" style="padding:20px">Nothing pending. Nice.</div>`}</div>
+      </div>
+
+      <div class="card span-4 c-tasks" style="padding:22px 24px 10px">
+        <div class="checklist-head"><h3>${today.length ? "Today's tasks" : "Tomorrow's tasks"}</h3><span class="of">${agenda.filter((t) => !isBreak(t) && t.done).length} of ${agenda.filter((t) => !isBreak(t)).length}</span></div>
+        ${checklistHTML(agenda, now)}
+        <form class="add-row" data-quick-add="${today.length || !agenda.length ? dayKey(now) : tomorrowKey}"><span>+</span><input name="title" placeholder="Add a task" autocomplete="off"></form>
+      </div>
+
+      <div class="card span-3 c-days">
+        <div class="card-head"><h3>Countdown plan</h3></div>
+        <div class="days-list">${days.map((k) => {
+          const w = work.filter((t) => dayKey(tStart(t)) === k), done = w.filter((t) => t.done).length;
+          const d = new Date(k + "T12:00");
+          return `<button class="day-row ${k === dayKey(now) ? "today" : ""}" data-goto="day-${k}" data-view-in-day="${k}">
+            <span class="dn">${pad(d.getDate())}</span><span class="dd"><b>${esc(d.toLocaleDateString(undefined, { weekday: "long" }))}${k === dayKey(now) ? " · Today" : ""}</b>
+            ${w.length ? `<span class="bar"><i style="width:${Math.round(100 * done / w.length)}%"></i></span><span class="muted mono" style="font-size:11px">${done}/${w.length} sessions</span>` : ""}
+            ${k === ivKey ? `<span class="ivtag">★ Interview ${hm(new Date(role.interviewAt))}</span>` : ""}</span></button>`;
+        }).join("") || `<div class="muted">No plan yet.</div>`}</div>
+      </div>
+
+      <div class="panel span-8 c-pipe">
+        <div class="card-head" style="padding:4px 6px 0"><h3>Pipeline</h3><span class="muted">Drag roles between stages</span><div class="right"><button class="icon-btn sm" data-add-role="Saved" aria-label="Add role">+</button></div></div>
+        ${pipelineHTML(true)}
+      </div>
+      <div class="card span-4 c-recent">
+        <div class="card-head"><h3>Recently edited</h3><div class="right"><button class="icon-btn sm" data-new-doc="" aria-label="New document">+</button></div></div>
+        ${recent.map(docRowHTML).join("") || `<div class="empty">No documents yet.</div>`}
+      </div>
+    </div>`;
+  }
+
+  // ---------- ROLES ----------
+  function viewRoles() {
+    return `<div class="stack">
+      <div class="page-head"><div><div class="label">Pipeline</div><h1 class="h-display">Roles</h1></div>
+        <div class="right"><button class="btn-primary" data-add-role="Saved">+ New role</button></div></div>
+      <div class="panel">${pipelineHTML(false)}</div>
+      <div class="card"><div class="card-head"><h3>All roles</h3></div>
+        ${db.roles.map((r) => `<button class="doc-row" data-open-role="${r.id}"><span class="doc-ico">${esc(r.company.slice(0, 2))}</span>
+          <span class="t"><div>${esc(r.company)} — ${esc(r.title)}</div><div class="muted" style="font-size:12px">${esc(r.stage)}${r.interviewAt ? " · " + esc(fmtDateTime(r.interviewAt)) : ""}</div></span>
+          <span style="width:120px" class="bar"><i style="width:${progress(r.id)}%"></i></span></button>`).join("") || `<div class="empty">No roles yet.</div>`}
+      </div>
+    </div>`;
+  }
+
+  function viewRole() {
+    const r = roleById(ui.roleId);
+    if (!r) return viewRoles();
+    const si = STAGES.indexOf(r.stage);
+    const now = new Date();
+    const docs = db.docs.filter((d) => d.roleId === r.id).sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+    const toLocalInput = (iso) => { if (!iso) return ""; const d = new Date(iso); return isNaN(d) ? "" : `${dayKey(d)}T${hm(d)}`; };
+    const byDay = {};
+    workFor(r.id).forEach((t) => (byDay[dayKey(tStart(t))] ||= []).push(t));
+    return `<div class="stack">
+      <div class="page-head">
+        <button class="icon-btn" data-view-in="roles" aria-label="Back">←</button>
+        <div><div class="label">${esc(r.team || "Role")}</div><h1 class="h-display">${esc(r.company)}</h1><div class="muted" style="margin-top:4px">${esc(r.title)}</div></div>
+        <div class="right"><button class="btn-ghost" data-del-role="${r.id}">Delete</button><button class="btn-ghost" data-new-doc="${r.id}">+ Document</button><button class="btn-primary" data-view-in="timeline" data-tl-role="${r.id}">Timeline</button></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Stage</h3><div class="right"><span class="mono muted">${progress(r.id)}% prep</span></div></div>
+        <div class="stepper">${STAGES.map((s, i) => `<button class="step ${i < si ? "past" : ""} ${i === si ? "current" : ""}" data-set-stage="${s}"><span class="n">${pad(i + 1)}</span>${s}</button>`).join("")}</div>
+        <div class="bar" style="margin-top:16px"><i style="width:${progress(r.id)}%"></i></div>
+      </div>
+      <div class="role-layout">
+        <div class="stack" style="align-content:start">
+          <div class="card">
+            <div class="card-head"><h3>Details</h3><span class="muted" style="font-size:12px">Autosaves</span>${r.link ? `<div class="right"><a class="btn-ghost" href="${esc(r.link)}" target="_blank" rel="noopener">Open posting ↗</a></div>` : ""}</div>
+            <div class="fields">
+              ${[["company", "Company"], ["title", "Title"], ["team", "Team"], ["location", "Location"], ["salary", "Comp range"], ["roleNumber", "Role #"], ["link", "Posting URL"], ["interviewNote", "Interview format"]]
+                .map(([k, l]) => `<label class="field"><span class="label">${l}</span><input data-role-field="${k}" value="${esc(r[k] || "")}"></label>`).join("")}
+              <label class="field"><span class="label">Interview (local time)</span><input type="datetime-local" data-role-field="interviewAt" value="${toLocalInput(r.interviewAt)}"></label>
+              <label class="field"><span class="label">Stage</span><select data-role-field="stage">${STAGES.map((s) => `<option ${s === r.stage ? "selected" : ""}>${s}</option>`).join("")}</select></label>
+              <label class="field full"><span class="label">Notes</span><textarea data-role-field="notes">${esc(r.notes || "")}</textarea></label>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>Documents</h3><span class="count">${docs.length}</span><div class="right"><button class="icon-btn sm" data-new-doc="${r.id}" aria-label="New document">+</button></div></div>
+            ${docs.map(docRowHTML).join("") || `<div class="empty">No documents for this role yet.</div>`}
+          </div>
+        </div>
+        <aside class="card" style="align-self:start">
+          <div class="card-head"><h3>Plan</h3><span class="count">${workFor(r.id).filter((t) => t.done).length}/${workFor(r.id).length}</span><div class="right"><button class="icon-btn sm" data-new-session="" aria-label="New session">+</button></div></div>
+          ${Object.entries(byDay).map(([k, list]) => `<div class="label" style="margin:16px 0 0">${esc(fmtDate(new Date(k + "T12:00"), { weekday: "long", month: "short", day: "numeric" }))}</div>${checklistHTML(list, now)}`).join("") || `<div class="empty">No sessions yet.</div>`}
+        </aside>
+      </div>
+    </div>`;
+  }
+
+  // ---------- DOCUMENTS ----------
+  const scheduleFor = (docId) => db.tasks.filter((t) => (t.refs || []).some((r) => r.doc === docId)).sort((a, b) => tStart(a) - tStart(b));
+  function viewDocs() {
+    let docs = [...db.docs];
+    if (ui.docFilter !== "all") docs = docs.filter((d) => (ui.docFilter === "none" ? !d.roleId : d.roleId === ui.docFilter));
+    const groups = {};
+    docs.forEach((d) => (groups[d.roleId || ""] ||= []).push(d));
+    Object.values(groups).forEach((g) => g.sort((a, b) => (a.order ?? 999) - (b.order ?? 999) || new Date(b.updatedAt) - new Date(a.updatedAt)));
+    const ordered = Object.entries(groups).sort(([a], [b]) => (a ? 0 : 1) - (b ? 0 : 1));
+    if (!ui.docId || !docById(ui.docId)) ui.docId = ordered[0]?.[1][0]?.id || null;
+    const d = docById(ui.docId);
+    const headings = d ? [...(d.body || "").matchAll(/^##\s+(.+)$/gm)].map((m) => m[1]) : [];
+    const sched = d ? scheduleFor(d.id) : [];
+    const now = new Date();
+    return `<div class="docs">
+      <div class="docs-side">
+        <div style="display:flex;gap:8px">
+          <select class="btn-ghost" id="docFilter" style="flex:1;min-width:0">
+            <option value="all">All documents</option><option value="none" ${ui.docFilter === "none" ? "selected" : ""}>General</option>
+            ${db.roles.map((r) => `<option value="${r.id}" ${ui.docFilter === r.id ? "selected" : ""}>${esc(r.company)} — ${esc(r.title)}</option>`).join("")}
+          </select>
+          <button class="icon-btn" data-upload-pdf="${ui.docFilter !== "all" && ui.docFilter !== "none" ? ui.docFilter : ""}" aria-label="Upload PDF" title="Upload PDF" style="font-size:11px;font-weight:700">PDF</button>
+          <button class="icon-btn" data-new-doc="${ui.docFilter !== "all" && ui.docFilter !== "none" ? ui.docFilter : ""}" aria-label="New document">+</button>
+        </div>
+        <div class="doc-list">
+          ${ordered.map(([rid, list]) => `<div class="label group-label">${esc(rid ? (roleById(rid)?.company || "") + " — " + (roleById(rid)?.title || "") : "General")}</div>
+            ${list.map((x) => {
+              const s = scheduleFor(x.id).find((t) => !t.done && tEnd(t) > now);
+              return `<button class="doc-card ${x.id === ui.docId ? "active" : ""}" data-select-doc="${x.id}">
+                <span class="num">${x.fileType === "pdf" ? "PDF" : (x.tags || []).includes("research") ? "Rs" : docNum(x)}</span>
+                <span><span class="ttl">${esc(x.title || "Untitled")}</span>
+                <span class="when">${s ? `Next: ${esc(fmtDate(tStart(s), { weekday: "short" }))} ${hm(tStart(s))}` : `Edited ${esc(relative(x.updatedAt))}`}</span></span>
+              </button>`;
+            }).join("")}`).join("") || `<div class="empty">No documents.</div>`}
+        </div>
+      </div>
+      ${d ? `<div class="card editor">
+        <div class="editor-bar">
+          ${d.fileType === "pdf" ? `<span class="chip">PDF</span>` : `<div class="seg"><button class="${ui.docMode === "read" ? "on" : ""}" data-doc-mode="read">Read</button><button class="${ui.docMode === "edit" ? "on" : ""}" data-doc-mode="edit">Edit</button></div>`}
+          <span class="muted" style="font-size:12px">${d.fileType === "pdf" ? "" : (d.body || "").split(/\s+/).filter(Boolean).length.toLocaleString() + " words · "}edited ${esc(relative(d.updatedAt))}</span>
+          <div style="margin-left:auto;display:flex;gap:6px">
+            ${d.fileType === "pdf" ? "" : `<button class="icon-btn sm" data-export-pdf title="Export as PDF" aria-label="Export as PDF" style="font-size:10px;font-weight:700">PDF</button>`}
+            <button class="icon-btn sm" data-download-doc="${d.id}" title="Download .md" aria-label="Download markdown">↓</button>
+            <button class="icon-btn sm" data-del-doc="${d.id}" title="Delete" aria-label="Delete document">✕</button>
+          </div>
+        </div>
+        <div class="editor-body">
+          <textarea class="title-input" data-doc-field="title" rows="1" placeholder="Untitled">${esc(d.title)}</textarea>
+          <div class="meta-row">
+            <select data-doc-field="roleId"><option value="">General</option>${db.roles.map((r) => `<option value="${r.id}" ${r.id === d.roleId ? "selected" : ""}>${esc(r.company)} — ${esc(r.title)}</option>`).join("")}</select>
+            <input data-doc-field="tags" value="${esc((d.tags || []).join(", "))}" placeholder="tags, comma separated">
+          </div>
+          ${sched.length ? `<div class="scheduled"><div class="label">On your timeline</div>
+            ${sched.map((t) => `<button class="scheduled-row" data-goto-session="${t.id}"><span class="w">${esc(fmtDate(tStart(t), { weekday: "short", day: "numeric" }))} · ${hm(tStart(t))}</span>
+              <span class="s">${t.done ? "✓ " : ""}${esc(t.title)} <em>${esc((t.refs || []).filter((r) => r.doc === d.id && r.heading).map((r) => "› " + cleanHeading(r.heading)).join("  "))}</em></span></button>`).join("")}
+          </div>` : ""}
+          ${headings.length > 2 && ui.docMode === "read" ? `<details style="margin-bottom:18px"><summary class="label" style="cursor:pointer">Contents · ${headings.length}</summary><div class="toc">${headings.map((h) => `<a href="#h-${slug(h)}">${esc(h)}</a>`).join("")}</div></details>` : ""}
+          ${d.fileType === "pdf" ? `<div class="pdf-view" id="pdfView" data-doc="${d.id}"></div>` : ui.docMode === "edit"
+            ? `<textarea class="body-input" data-doc-field="body" placeholder="Start writing… Markdown supported.">${esc(d.body)}</textarea>`
+            : `<article class="prose" id="prose">${md(d.body) || `<p class="muted">Empty. Switch to Edit to start writing.</p>`}</article>`}
+        </div>
+      </div>` : `<div class="card empty">Create a document to get started.</div>`}
+    </div>`;
+  }
+
+  // ---------- SEARCH ----------
+  function searchAll(q) {
+    const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!terms.length) return [];
+    const hit = (text) => { const t = (text || "").toLowerCase(); return terms.every((x) => t.includes(x)); };
+    const score = (text) => terms.reduce((n, x) => n + ((text || "").toLowerCase().split(x).length - 1), 0);
+    const out = [];
+    db.roles.forEach((r) => { const blob = [r.company, r.title, r.team, r.notes, r.location, r.stage].join(" "); if (hit(blob)) out.push({ type: "Role", attr: `data-open-role="${r.id}"`, title: `${r.company} — ${r.title}`, text: r.notes || "", score: score(blob) + 50 }); });
+    db.tasks.forEach((t) => { const blob = t.title + " " + (t.refs || []).map((r) => r.heading).join(" "); if (hit(blob)) out.push({ type: `Session · ${fmtDate(tStart(t), { weekday: "short", day: "numeric" })} ${hm(tStart(t))}`, attr: `data-goto-session="${t.id}"`, title: t.title, text: (t.refs || []).map(refLabel).join(" · "), score: 30 + score(blob) }); });
+    db.docs.forEach((d) => {
+      const blob = d.title + " " + d.body + " " + (d.tags || []).join(" ");
+      if (!hit(blob)) return;
+      const h = [...(d.body || "").matchAll(/^##\s+(.+)$/gm)].map((m) => m[1]).find((x) => terms.some((t) => x.toLowerCase().includes(t)));
+      out.push({ type: "Document", attr: `data-open-ref="${d.id}" data-heading="${esc(h || "")}"`, title: d.title + (h ? ` › ${cleanHeading(h)}` : ""), text: d.body, score: score(d.title) * 20 + score(blob) });
+    });
+    return out.sort((a, b) => b.score - a.score).slice(0, 60);
+  }
+  function snippet(text, q) {
+    const t = (text || "").replace(/\s+/g, " ");
+    const first = q.toLowerCase().split(/\s+/).filter(Boolean)[0] || "";
+    const i = Math.max(0, t.toLowerCase().indexOf(first) - 70);
+    let s = esc((i > 0 ? "…" : "") + t.slice(i, i + 220) + (t.length > i + 220 ? "…" : ""));
+    q.split(/\s+/).filter(Boolean).forEach((term) => { s = s.replace(new RegExp(`(${esc(term).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi"), "<mark>$1</mark>"); });
+    return s;
+  }
+  function viewSearch() {
+    const q = ui.q.trim();
+    const results = searchAll(q);
+    const enc = encodeURIComponent(q);
+    const link = (href, label) => `<a class="btn-ghost" target="_blank" rel="noopener" href="${href}">${label} ↗</a>`;
+    return `<div class="stack" style="max-width:900px">
+      <div><div class="label">Search</div><h1 class="h-display">${q ? `“${esc(q)}”` : "Find anything"}</h1></div>
+      ${q ? `<div class="card"><div class="card-head"><h3>Research on the web</h3></div><div class="web-links">
+        ${link(`https://developer.apple.com/search/?q=${enc}`, "Apple Developer")}${link(`https://leetcode.com/problemset/?search=${enc}`, "LeetCode")}
+        ${link(`https://www.google.com/search?q=${enc}`, "Web")}${link(`https://www.glassdoor.com/Search/results.htm?keyword=${enc}`, "Glassdoor")}
+        <button class="btn-ghost" data-save-research="${esc(q)}">Save as research note</button>
+      </div></div>` : ""}
+      <div class="results">
+        ${q ? (results.map((r) => `<button class="result" ${r.attr}><span class="label">${esc(r.type)}</span><span style="font-weight:600">${esc(r.title)}</span><span class="muted" style="font-size:13px">${snippet(r.text, q)}</span></button>`).join("") || `<div class="empty">No matches in your workspace.</div>`)
+          : `<div class="empty">Type in the search bar. Press <span class="mono">/</span> anywhere to focus it.</div>`}
+      </div>
+    </div>`;
+  }
+
+  // ---------- render ----------
+  // ---------- avatars ----------
+  // Illustrated avatars drawn in the app palette. Same specs as the native app (Avatars.swift).
+  const AV = [
+    { bg: "#1f4fd8", skin: "#f2d3b3", hair: "#2b2410", style: "fringe", shirt: "#f7c744" },
+    { bg: "#f7c744", skin: "#d9a47a", hair: "#1d1a16", style: "bun", shirt: "#1f4fd8" },
+    { bg: "#e5ebfb", skin: "#a86b45", hair: "#1d1a16", style: "curly", shirt: "#1f4fd8" },
+    { bg: "#fdf2cf", skin: "#f2d3b3", hair: "#c2410c", style: "long", shirt: "#2f7d4f" },
+    { bg: "#1d1a16", skin: "#d9a47a", hair: "#f7c744", style: "short", shirt: "#e5ebfb" },
+    { bg: "#efe9df", skin: "#6e4630", hair: "#1d1a16", style: "bald", shirt: "#f7c744" },
+    { bg: "#2f7d4f", skin: "#f2d3b3", hair: "#8a6d1f", style: "short", shirt: "#fffdf9" },
+    { bg: "#f7c744", skin: "#a86b45", hair: "#1d1a16", style: "long", shirt: "#c2410c" },
+    { bg: "#1f4fd8", skin: "#6e4630", hair: "#1d1a16", style: "curly", shirt: "#fdf2cf" },
+    { bg: "#e5ebfb", skin: "#d9a47a", hair: "#4f4a42", style: "bald", shirt: "#1d1a16" },
+    { bg: "#c2410c", skin: "#f2d3b3", hair: "#1d1a16", style: "bun", shirt: "#fdf2cf" },
+    { bg: "#fdf2cf", skin: "#6e4630", hair: "#1d1a16", style: "fringe", shirt: "#1f4fd8" },
+  ];
+  function hairSVG(a) {
+    const h = a.hair;
+    switch (a.style) {
+      case "fringe": return `<path d="M16 36a16 16 0 0 1 32 0c-5-6-11-7-16-5-5-2-11-1-16 5z" fill="${h}"/>`;
+      case "bun": return `<circle cx="32" cy="15" r="6.5" fill="${h}"/><path d="M16.5 34a15.5 15.5 0 0 1 31 0c-6-5-25-5-31 0z" fill="${h}"/>`;
+      case "curly": return [[20,25],[26,20],[33,18],[40,21],[45,27],[17,32],[47,33]].map(([x,y]) => `<circle cx="${x}" cy="${y}" r="6" fill="${h}"/>`).join("");
+      case "long": return `<path d="M14 38a18 18 0 0 1 36 0v14h-7V38H21v14h-7z" fill="${h}"/>`;
+      case "short": return `<path d="M17 33a15 15 0 0 1 30 0c-4-4-10-6-15-6s-11 2-15 6z" fill="${h}"/>`;
+      default: return `<circle cx="26" cy="37" r="4.2" fill="none" stroke="${a.bg === "#1d1a16" ? "#fffdf9" : "#1d1a16"}" stroke-width="1.6"/><circle cx="38" cy="37" r="4.2" fill="none" stroke="${a.bg === "#1d1a16" ? "#fffdf9" : "#1d1a16"}" stroke-width="1.6"/><path d="M30.2 37h3.6" stroke="#1d1a16" stroke-width="1.6"/>`;
+    }
+  }
+  function avatarSVG(i) {
+    const a = AV[((i % AV.length) + AV.length) % AV.length];
+    const behind = a.style === "long" ? hairSVG(a) : "";
+    const front = a.style === "long" ? "" : hairSVG(a);
+    return `<svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" fill="${a.bg}"/>${behind}
+      <ellipse cx="32" cy="66" rx="20" ry="14" fill="${a.shirt}"/><rect x="28" y="46" width="8" height="8" rx="3" fill="${a.skin}"/>
+      <circle cx="32" cy="37" r="15" fill="${a.skin}"/>${front}
+      <circle cx="26.5" cy="38" r="1.7" fill="#1d1a16"/><circle cx="37.5" cy="38" r="1.7" fill="#1d1a16"/>
+      <path d="M27.5 44q4.5 3.6 9 0" stroke="#1d1a16" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>`;
+  }
+  const profile = () => (db.profile ||= { name: "", headline: "", avatar: 0, photo: "" });
+  const avatarHTML = (p = profile()) => p.photo ? `<img src="${esc(p.photo)}" alt="">` : avatarSVG(p.avatar || 0);
+  function paintProfile() {
+    $("#railAvatar").innerHTML = avatarHTML();
+    $("#profileBtn").title = profile().name || "Profile";
+  }
+  const pDialog = $("#profileDialog"), pForm = $("#profileForm");
+  let draft = null;
+  function paintDraft() {
+    $("#profilePreview").innerHTML = avatarHTML(draft);
+    $("#avatarGrid").innerHTML = AV.map((_, i) => `<button type="button" class="avatar-opt ${!draft.photo && draft.avatar === i ? "on" : ""}" data-avatar="${i}" aria-label="Avatar ${i + 1}"><span class="avatar">${avatarSVG(i)}</span></button>`).join("");
+    $("#removePhoto").hidden = !draft.photo;
+  }
+  function openProfile() {
+    draft = { ...profile() };
+    pForm.elements.name.value = draft.name; pForm.elements.headline.value = draft.headline;
+    paintDraft(); pDialog.showModal();
+  }
+  $("#avatarGrid").addEventListener("click", (e) => { const b = e.target.closest("[data-avatar]"); if (!b) return; draft.avatar = +b.dataset.avatar; draft.photo = ""; paintDraft(); });
+  $("#removePhoto").addEventListener("click", () => { draft.photo = ""; paintDraft(); });
+  $("#photoFile").addEventListener("change", (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    const img = new Image();
+    img.onload = () => {   // downscale to 256px so it fits in local storage
+      const c = document.createElement("canvas"), n = 256, sc = Math.max(n / img.width, n / img.height);
+      c.width = c.height = n;
+      c.getContext("2d").drawImage(img, (n - img.width * sc) / 2, (n - img.height * sc) / 2, img.width * sc, img.height * sc);
+      draft.photo = c.toDataURL("image/jpeg", 0.85); paintDraft(); URL.revokeObjectURL(img.src);
+    };
+    img.src = URL.createObjectURL(f); e.target.value = "";
+  });
+  pForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    db.profile = { ...draft, name: pForm.elements.name.value.trim(), headline: pForm.elements.headline.value.trim() };
+    save(); pDialog.close(); paintProfile(); render(); toast("Profile saved");
+  });
+  $("#profileBtn").addEventListener("click", openProfile);
+  function greeting() {
+    const h = new Date().getHours();
+    return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+  }
+
+  function autoGrow(t) { t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; }
+  function render() {
+    document.querySelectorAll("[data-view]").forEach((b) => {
+      if (b.closest("#view")) return;
+      b.classList.toggle("active", b.dataset.view === (ui.view === "role" ? "roles" : ui.view));
+    });
+    const views = { scores: () => window.PBLearn?.viewScores() || "", dashboard: viewDashboard, timeline: viewTimeline, roles: viewRoles, role: viewRole, docs: viewDocs, search: viewSearch };
+    $("#view").innerHTML = (views[ui.view] || viewDashboard)();
+    if (ui.view === "docs" && ui.docMode === "read") {
+      const first = document.querySelector("#prose > h1:first-child");
+      if (first && first.textContent.trim() === (docById(ui.docId)?.title || "").trim()) first.remove();
+      document.querySelectorAll("#prose h2").forEach((h) => (h.id = "h-" + slug(h.textContent)));
+    }
+    bindDnD();
+    document.querySelectorAll("textarea.title-input").forEach(autoGrow);
+    (window.PB?.afterRender || []).forEach((f) => { try { f(); } catch (e) { console.error(e); } });
+    if (pending) {
+      const p = pending; pending = null;
+      requestAnimationFrame(() => {
+        const el = document.getElementById(p.scroll);
+        if (!el) return;
+        el.scrollIntoView({ behavior: "smooth", block: p.block || "center" });
+        if (p.flash) { el.classList.add(p.flash); setTimeout(() => el.classList.remove(p.flash), 1800); }
+      });
+    }
+  }
+
+  // ---------- actions ----------
+  function createRole(stage = "Saved") {
+    const r = { id: uid("role"), company: "New company", title: "Role title", team: "", location: "", salary: "", link: "", stage, interviewAt: "", interviewNote: "", notes: "", createdAt: nowISO() };
+    db.roles.push(r); save(); go("role", { roleId: r.id });
+  }
+  function createDoc(roleId = "", title = "", body = "", tags = []) {
+    const d = { id: uid("doc"), roleId: roleId || "", title, body, tags, updatedAt: nowISO(), order: 900 };
+    db.docs.unshift(d); save(); go("docs", { docId: d.id, docMode: "edit", docFilter: "all" });
+    setTimeout(() => $(".title-input")?.focus(), 30);
+  }
+  function openRef(docId, heading) {
+    go("docs", { docId, docMode: "read", docFilter: "all" }, heading ? { scroll: "h-" + slug(heading), block: "start", flash: "target" } : null);
+  }
+  function gotoSession(id) {
+    const t = taskById(id); if (!t) return;
+    if (isBreak(t)) ui.showBreaks = true;
+    if (ui.tlKind !== "all" && ui.tlKind !== t.kind) ui.tlKind = "all";
+    go("timeline", { tlRole: t.roleId || ui.tlRole }, { scroll: "s-" + id, flash: "flash" });
+  }
+
+  // session dialog
+  const sDialog = $("#sessionDialog"), sForm = $("#sessionForm");
+  let editingId = null;
+  function openSessionDialog(id, dayKeyStr) {
+    editingId = id || null;
+    const t = id ? taskById(id) : null;
+    const roleId = t?.roleId || activeRoleId() || "";
+    $("#sessionDialogTitle").textContent = t ? "Edit session" : "New session";
+    $("#sessionDelete").hidden = !t;
+    sForm.elements.title.value = t?.title || "";
+    sForm.elements.day.value = t ? dayKey(tStart(t)) : (dayKeyStr || dayKey(new Date()));
+    sForm.elements.start.value = t ? hm(tStart(t)) : "10:00";
+    sForm.elements.end.value = t ? hm(tEnd(t)) : "11:00";
+    sForm.elements.kind.innerHTML = Object.entries(KINDS).map(([k, l]) => `<option value="${k}" ${(t?.kind || "study") === k ? "selected" : ""}>${l}</option>`).join("");
+    sForm.elements.roleId.innerHTML = db.roles.map((r) => `<option value="${r.id}" ${r.id === roleId ? "selected" : ""}>${esc(r.company)} — ${esc(r.title)}</option>`).join("");
+    const linked = new Set((t?.refs || []).map((r) => r.doc));
+    $("#sessionDocs").innerHTML = [...db.docs].sort((a, b) => (a.order ?? 999) - (b.order ?? 999))
+      .map((d) => `<label><input type="checkbox" value="${d.id}" ${linked.has(d.id) ? "checked" : ""}> <span class="mono muted">${docNum(d)}</span> ${esc(d.title || "Untitled")}</label>`).join("") || `<span class="muted">No documents yet.</span>`;
+    sDialog.showModal();
+    setTimeout(() => sForm.elements.title.focus(), 30);
+  }
+  sForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = sForm.elements;
+    const start = new Date(`${f.day.value}T${f.start.value}`), end = new Date(`${f.day.value}T${f.end.value}`);
+    if (!(end > start)) { toast("End must be after start"); return; }
+    const chosen = [...$("#sessionDocs").querySelectorAll("input:checked")].map((i) => i.value);
+    const t = editingId ? taskById(editingId) : { id: uid("task"), done: false, refs: [] };
+    const keep = (t.refs || []).filter((r) => chosen.includes(r.doc));
+    const added = chosen.filter((id) => !keep.some((r) => r.doc === id)).map((id) => ({ doc: id, heading: "" }));
+    Object.assign(t, { title: f.title.value.trim(), kind: f.kind.value, roleId: f.roleId.value, start: start.toISOString(), end: end.toISOString(), due: f.day.value, refs: [...keep, ...added] });
+    if (!editingId) db.tasks.push(t);
+    save(); sDialog.close(); gotoSession(t.id);
+  });
+  $("#sessionDelete").addEventListener("click", () => {
+    if (!editingId || !confirm("Delete this session?")) return;
+    db.tasks = db.tasks.filter((t) => t.id !== editingId); save(); sDialog.close(); render();
+  });
+
+  $("#view").addEventListener("click", (e) => {
+    const el = e.target.closest("button, a");
+    if (!el) return;
+    const ds = el.dataset;
+    if (ds.startNew !== undefined) window.PBCloud?.openNewPrep();
+    else if (ds.openProfile !== undefined) openProfile();
+    else if (ds.openRef) openRef(ds.openRef, ds.heading);
+    else if (ds.gotoSession) gotoSession(ds.gotoSession);
+    else if (ds.viewInDay) go("timeline", {}, { scroll: "day-" + ds.viewInDay, block: "start" });
+    else if (ds.goto) {
+      const target = ds.goto === "now" ? (document.querySelector(".sess.current") || document.getElementById("now")) : document.getElementById(ds.goto);
+      target?.scrollIntoView({ behavior: "smooth", block: ds.goto.startsWith("day-") ? "start" : "center" });
+      if (!target && ds.goto === "now") toast("Nothing scheduled today");
+    }
+    else if (ds.kind) { ui.tlKind = ds.kind; persistUI(); render(); }
+    else if (ds.toggleBreaks !== undefined) { ui.showBreaks = !ui.showBreaks; persistUI(); render(); }
+    else if (ds.newSession !== undefined) openSessionDialog(null, ds.newSession);
+    else if (ds.editSession) openSessionDialog(ds.editSession);
+    else if (ds.openRole) go("role", { roleId: ds.openRole });
+    else if (ds.viewIn) go(ds.viewIn, ds.tlRole ? { tlRole: ds.tlRole } : {});
+    else if (ds.addRole) createRole(ds.addRole);
+    else if (ds.openDoc) openRef(ds.openDoc, "");
+    else if (ds.selectDoc) { ui.docId = ds.selectDoc; ui.docMode = "read"; persistUI(); render(); }
+    else if (ds.newDoc !== undefined) createDoc(ds.newDoc);
+    else if (ds.docMode) { ui.docMode = ds.docMode; persistUI(); render(); }
+    else if (ds.toggleTask) { const t = taskById(ds.toggleTask); t.done = !t.done; save(); const y = window.scrollY; render(); window.scrollTo(0, y); toast(t.done ? "Session done" : "Marked not done"); }
+    else if (ds.setStage) { roleById(ui.roleId).stage = ds.setStage; save(); render(); }
+    else if (ds.delRole) {
+      if (!confirm("Delete this role and its sessions? Documents are kept as General.")) return;
+      db.roles = db.roles.filter((r) => r.id !== ds.delRole);
+      db.tasks = db.tasks.filter((t) => t.roleId !== ds.delRole);
+      db.docs.forEach((d) => { if (d.roleId === ds.delRole) d.roleId = ""; });
+      save(); go("roles");
+    }
+    else if (ds.delDoc) {
+      if (!confirm("Delete this document? Links to it on the timeline are removed.")) return;
+      window.PBFiles?.deleteStoredFile(docById(ds.delDoc)).catch(() => {});
+      db.docs = db.docs.filter((d) => d.id !== ds.delDoc);
+      db.tasks.forEach((t) => { t.refs = (t.refs || []).filter((r) => r.doc !== ds.delDoc); });
+      ui.docId = null; save(); render();
+    }
+    else if (ds.downloadDoc) {
+      const d = docById(ds.downloadDoc);
+      download(`${slug(d.title || "untitled")}.md`, /^#\s/.test(d.body) ? d.body : `# ${d.title}\n\n${d.body}`, "text/markdown");
+    }
+    else if (ds.saveResearch) {
+      const q = ds.saveResearch, enc = encodeURIComponent(q);
+      createDoc(activeRoleId() || "", `Research: ${q}`, `## Question\n${q}\n\n## Findings\n- \n\n## Sources\n- https://developer.apple.com/search/?q=${enc}\n- https://www.google.com/search?q=${enc}\n`, ["research"]);
+    }
+  });
+
+  $("#view").addEventListener("submit", (e) => {
+    const f = e.target.closest("[data-quick-add]");
+    if (!f) return;
+    e.preventDefault();
+    const title = f.elements.title.value.trim(); if (!title) return;
+    const day = f.dataset.quickAdd, now = new Date();
+    let start = new Date(`${day}T${pad(now.getHours() + 1 > 22 ? 22 : now.getHours() + 1)}:00`);
+    if (day !== dayKey(now)) start = new Date(`${day}T10:00`);
+    db.tasks.push({ id: uid("task"), roleId: activeRoleId() || "", title, kind: "study", done: false, refs: [], due: day,
+      start: start.toISOString(), end: new Date(start.getTime() + 36e5).toISOString() });
+    save(); render(); setTimeout(() => document.querySelector("[data-quick-add] input")?.focus(), 0);
+  });
+
+  $("#view").addEventListener("input", (e) => {
+    const el = e.target;
+    if (el.dataset.roleField) {
+      const r = roleById(ui.roleId); const k = el.dataset.roleField;
+      r[k] = k === "interviewAt" ? (el.value ? new Date(el.value).toISOString() : "") : el.value;
+      if (k === "interviewAt") delete r.interviewEnd;
+      save(); if (k === "stage") render();
+    } else if (el.dataset.docField) {
+      const d = docById(ui.docId); const k = el.dataset.docField;
+      d[k] = k === "tags" ? el.value.split(",").map((s) => s.trim()).filter(Boolean) : el.value;
+      d.updatedAt = nowISO(); save();
+      if (k === "roleId") render();
+      if (k === "title") autoGrow(el);
+      if (k === "title") { const c = document.querySelector(`[data-select-doc="${d.id}"] .ttl`); if (c) c.textContent = el.value || "Untitled"; }
+    }
+  });
+  $("#view").addEventListener("change", (e) => {
+    if (e.target.id === "docFilter") { ui.docFilter = e.target.value; ui.docId = null; persistUI(); render(); }
+    if (e.target.id === "tlRole") { ui.tlRole = e.target.value; persistUI(); render(); }
+  });
+  $("#view").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && e.target.classList.contains("title-input")) { e.preventDefault(); $(".body-input")?.focus(); return; }
+    if (e.key === "Tab" && e.target.classList.contains("body-input")) {
+      e.preventDefault(); const t = e.target, s = t.selectionStart;
+      t.setRangeText("    ", s, t.selectionEnd, "end"); t.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  });
+
+  function bindDnD() {
+    document.querySelectorAll(".role-tile[draggable]").forEach((tile) => tile.addEventListener("dragstart", (e) => e.dataTransfer.setData("text/plain", tile.dataset.openRole)));
+    document.querySelectorAll(".col[data-stage]").forEach((col) => {
+      col.addEventListener("dragover", (e) => { e.preventDefault(); col.classList.add("drop"); });
+      col.addEventListener("dragleave", () => col.classList.remove("drop"));
+      col.addEventListener("drop", (e) => {
+        e.preventDefault(); const r = roleById(e.dataTransfer.getData("text/plain"));
+        if (r) { r.stage = col.dataset.stage; save(); render(); toast(`${r.company} → ${r.stage}`); }
+      });
+    });
+  }
+
+  // search box
+  const qInput = $("#q");
+  qInput.value = ui.q;
+  let qTimer;
+  qInput.addEventListener("input", () => {
+    clearTimeout(qTimer);
+    qTimer = setTimeout(() => { ui.q = qInput.value; persistUI(); if (ui.view !== "search") ui.view = "search"; render(); }, 120);
+  });
+  document.addEventListener("keydown", (e) => {
+    const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+    if (e.key === "/" && !typing) { e.preventDefault(); qInput.focus(); qInput.select(); }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); qInput.focus(); qInput.select(); }
+  });
+
+  // dialogs
+  const newDialog = $("#newDialog"), dataDialog = $("#dataDialog");
+  $("#newBtn").addEventListener("click", () => newDialog.showModal());
+  $("#dataBtn").addEventListener("click", () => dataDialog.showModal());
+  document.querySelectorAll("dialog").forEach((d) => d.addEventListener("click", (e) => { if (e.target === d || e.target.closest("[data-close]")) d.close(); }));
+  newDialog.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-create]"); if (!b) return;
+    newDialog.close();
+    if (b.dataset.create === "role") createRole();
+    if (b.dataset.create === "doc") createDoc(ui.view === "role" ? ui.roleId : activeRoleId() || "");
+    if (b.dataset.create === "session") openSessionDialog(null);
+  });
+
+  function download(name, text, type) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text], { type }));
+    a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  $("#exportBtn").addEventListener("click", () => download(`prepboard-${dayKey(new Date())}.json`, JSON.stringify(db, null, 1), "application/json"));
+  $("#importFile").addEventListener("change", async (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      if (!Array.isArray(data.roles) || !Array.isArray(data.docs)) throw new Error("bad");
+      db = normalize({ roles: data.roles, docs: data.docs, tasks: data.tasks || [], quizzes: data.quizzes || [], profile: data.profile || db.profile }); save(); dataDialog.close(); render(); toast("Imported");
+    } catch (_) { toast("That file isn't a Prepboard export"); }
+    e.target.value = "";
+  });
+  $("#resetBtn").addEventListener("click", () => {
+    if (!confirm("Remove everything stored in this browser? (Data in your account stays safe and syncs back when you sign in.)")) return;
+    db = normalize({ ...blank(), profile: db.profile }); save(); dataDialog.close(); go("timeline"); toast("Reset");
+  });
+
+  // live clock: update countdowns every 30s; re-render the timeline/overview each minute so "now" moves
+  setInterval(() => {
+    document.querySelectorAll("[data-countdown]").forEach((c) => {
+      const ms = Math.max(0, new Date(c.dataset.countdown) - Date.now());
+      const v = [Math.floor(ms / 864e5), Math.floor(ms % 864e5 / 36e5), Math.floor(ms % 36e5 / 6e4)];
+      c.querySelectorAll(".cd-cell b").forEach((b, i) => (b.textContent = pad(v[i])));
+    });
+  }, 30000);
+  setInterval(() => {
+    const busy = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || document.querySelector("dialog[open]");
+    if (!busy && (ui.view === "timeline" || ui.view === "dashboard")) { const y = window.scrollY; render(); window.scrollTo(0, y); }
+  }, 60000);
+
+  // ---------- API for cloud.js (accounts + sync) and the new-prep chat ----------
+  window.PB = {
+    get db() { return db; },
+    setDb(next, storageKey) {
+      if (storageKey) KEY = storageKey;
+      db = normalize({ roles: next.roles || [], docs: next.docs || [], tasks: next.tasks || [], quizzes: next.quizzes || [], profile: next.profile || db.profile });
+      try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (_) {}
+      paintProfile(); render();
+    },
+    loadCached(storageKey) { try { const raw = localStorage.getItem(storageKey); return raw ? normalize(JSON.parse(raw)) : null; } catch (_) { return null; } },
+    blank, save, render, go, toast, uid, esc, dayKey, pad, KINDS,
+  };
+  window.PBAvatar = avatarSVG;
+
+  paintProfile();
+  render();
+  if (ui.view === "timeline") requestAnimationFrame(() => (document.querySelector(".sess.current") || document.getElementById("now"))?.scrollIntoView({ block: "center" }));
+})();
+</script>
+<script src="cloud.js"></script>
+<script src="ai.js"></script>
+<script src="learn.js"></script>
+<script src="files.js"></script>
+</body>
+</html>
