@@ -39,6 +39,9 @@ struct ClaudePanel: View {
         let ctx = currentContext
         VStack(spacing: 0) {
             header
+            if app.claudeTerminal {
+                ClaudeTerminalView(directory: claude.workingDirectory)
+            } else {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
@@ -59,6 +62,7 @@ struct ClaudePanel: View {
                 .onChange(of: claude.messages.last?.text) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
             composer(ctx)
+            }
         }
         .frame(maxHeight: .infinity)
         .background(RoundedRectangle(cornerRadius: PB.rXL, style: .continuous).fill(PB.card))
@@ -76,8 +80,15 @@ struct ClaudePanel: View {
                 Text(claude.workingDirectory.lastPathComponent).font(.pbMono).foregroundStyle(PB.muted).lineLimit(1)
             }
             Spacer(minLength: 0)
+            Picker("", selection: Binding(get: { app.claudeTerminal }, set: { app.claudeTerminal = $0 })) {
+                Text("Chat").tag(false)
+                Text("Terminal").tag(true)
+            }
+            .pickerStyle(.segmented).labelsHidden().fixedSize()
+            .help("Terminal runs the full Claude Code in your prep folder (⇧⌘J)")
             Menu {
                 Button("New conversation") { claude.reset() }
+                Button("Restart terminal") { ClaudeTerminal.shared.restart(in: claude.workingDirectory) }
                 Button("Change folder…") { claude.chooseWorkingDirectory() }
                 Divider()
                 Text("Tools allowed: read files, search the web")

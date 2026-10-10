@@ -3,7 +3,7 @@ import Observation
 import SwiftData
 
 enum Section: String, CaseIterable, Identifiable {
-    case dashboard = "Home", timeline = "Timeline", roles = "Roles", documents = "Documents", scores = "Scores", browse = "Browse", search = "Search"
+    case dashboard = "Home", timeline = "Timeline", roles = "Roles", documents = "Documents", practice = "Practice", scores = "Scores", browse = "Browse", search = "Search"
     var id: String { rawValue }
     var icon: String {
         switch self {
@@ -11,6 +11,7 @@ enum Section: String, CaseIterable, Identifiable {
         case .timeline: "list.bullet.below.rectangle"
         case .roles: "briefcase"
         case .documents: "doc.text"
+        case .practice: "chevron.left.forwardslash.chevron.right"
         case .scores: "trophy"
         case .browse: "safari"
         case .search: "magnifyingglass"
@@ -35,10 +36,12 @@ final class AppState {
     var docScrollHeading: String?         // documents: heading to scroll to after opening
     var sessionEditor: SessionDraft?
     var showClaude = false
+    var claudeTerminal = false          // Claude panel: chat (false) or the real Claude Code terminal (true)
     var showProfile = false
     var showNewPrep = false
     var quizSessionID: String?
     var playingVideo: Video?
+    var sideVideo: Video?               // docked player, so a video keeps playing beside documents and PDFs
     /// `-PrepboardOpenURL https://…` opens a page in the in-app browser at launch (testing).
     var browserURL: URL? = UserDefaults.standard.string(forKey: "PrepboardOpenURL").flatMap(URL.init(string:))
 

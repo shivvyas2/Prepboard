@@ -159,6 +159,11 @@ struct DocEditorView: View {
     @State private var exporting = false
     @State private var blocks: [MDBlock] = []
     @Environment(Cloud.self) private var cloud
+    @Query private var allDocs: [Doc]
+
+    /// Formatted copy ↔ original PDF (planner attachments are saved as both).
+    private var originalID: String? { doc.tags.first { $0.hasPrefix("original:") }.map { String($0.dropFirst(9)) } }
+    private var formattedCopy: Doc? { doc.isPDF ? allDocs.first { $0.tags.contains("original:\(doc.id)") } : nil }
 
     var body: some View {
         @Bindable var app = app
@@ -173,6 +178,13 @@ struct DocEditorView: View {
                 Text("\(doc.body.split(whereSeparator: \.isWhitespace).count) words · edited \(doc.updatedAt.formatted(.relative(presentation: .named)))")
                     .font(.system(size: 12)).foregroundStyle(PB.muted).lineLimit(1)
                 Spacer(minLength: 0)
+                if let id = originalID, allDocs.contains(where: { $0.id == id }) {
+                    Button { app.openDoc(id, heading: nil) } label: { Label("Original PDF", systemImage: "doc.richtext") }
+                        .buttonStyle(PillButtonStyle(filled: false, compact: true)).help("Open the PDF exactly as uploaded")
+                } else if let copy = formattedCopy {
+                    Button { app.openDoc(copy.id, heading: nil) } label: { Label("Formatted version", systemImage: "doc.text") }
+                        .buttonStyle(PillButtonStyle(filled: false, compact: true))
+                }
                 if blocks.contains(where: { if case .heading(2, _) = $0 { true } else { false } }) && !app.docEditing {
                     Menu {
                         ForEach(Array(blocks.enumerated()), id: \.offset) { idx, b in
@@ -232,6 +244,7 @@ struct DocEditorView: View {
                 }
                 .onAppear { blocks = parsedBody(); scrollToHeading(proxy) }
                 .onChange(of: app.docEditing) { if !app.docEditing { blocks = parsedBody() } }
+                .onChange(of: doc.body) { if !app.docEditing { blocks = parsedBody() } }
                 .onChange(of: app.docScrollHeading) { scrollToHeading(proxy) }
             }
         }

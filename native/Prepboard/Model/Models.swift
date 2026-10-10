@@ -180,3 +180,31 @@ extension Array where Element == PrepTask {
         return Double(mine.filter(\.done).count) / Double(mine.count)
     }
 }
+
+/// A LeetCode/CoderPad-style practice problem with the user's code per language (synced as pb_problems).
+@Model
+final class Problem {
+    @Attribute(.unique) var id: String
+    var roleId: String
+    var title: String
+    var difficulty: String          // Easy | Medium | Hard
+    var topics: [String]
+    var statement: String           // Markdown
+    var starters: [String: String]  // language → starter code with test harness
+    var code: [String: String]      // language → the user's code
+    var language: String
+    var solved: Bool
+    var notes: String
+    var createdAt: Date
+    var updatedAt: Date
+
+    init(id: String = "prob-" + UUID().uuidString.prefix(8).lowercased(), roleId: String = "", title: String, difficulty: String = "Medium",
+         topics: [String] = [], statement: String, starters: [String: String], code: [String: String] = [:], language: String = "swift",
+         solved: Bool = false, notes: String = "", createdAt: Date = .now, updatedAt: Date = .now) {
+        self.id = id; self.roleId = roleId; self.title = title; self.difficulty = difficulty; self.topics = topics
+        self.statement = statement; self.starters = starters; self.code = code; self.language = language
+        self.solved = solved; self.notes = notes; self.createdAt = createdAt; self.updatedAt = updatedAt
+    }
+
+    func currentCode(_ lang: String) -> String { code[lang] ?? starters[lang] ?? "" }
+}

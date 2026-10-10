@@ -61,6 +61,20 @@ struct QuizRow: Codable {
     var updated_at: String?
 }
 
+struct ProblemRow: Codable {
+    var user_id: UUID?
+    var id: String
+    var role_id, title, difficulty: String
+    var topics: [String]
+    var statement: String
+    var starters, code: [String: String]
+    var language: String
+    var solved: Bool
+    var notes: String
+    var created_at: String?
+    var updated_at: String?
+}
+
 struct ProfileRow: Codable {
     var user_id: UUID?
     var name, headline: String
@@ -243,7 +257,8 @@ final class Cloud {
         async let sessions: [SessionRow] = client.from("pb_sessions").select().execute().value
         async let profiles: [ProfileRow] = client.from("pb_profiles").select().eq("user_id", value: user.id).execute().value
         async let quizzes: [QuizRow] = client.from("pb_quiz_attempts").select().order("created_at", ascending: false).limit(500).execute().value
-        return try await RemoteData(roles: roles, docs: docs, sessions: sessions, quizzes: quizzes, profile: profiles.first)
+        async let problems: [ProblemRow] = client.from("pb_problems").select().execute().value
+        return try await RemoteData(roles: roles, docs: docs, sessions: sessions, quizzes: quizzes, problems: problems, profile: profiles.first)
     }
 
     func push() async {
@@ -269,11 +284,15 @@ final class Cloud {
             let quizRows = now.quizzes.filter { base.quizzes[$0.key] != $0.value }.compactMap { now.quizRows[$0.key] }
                 .map { r -> QuizRow in var r = r; r.user_id = user.id; r.updated_at = stamp; return r }
             if !quizRows.isEmpty { try await client.from("pb_quiz_attempts").upsert(quizRows, onConflict: "user_id,id").execute() }
+            let problemRows = now.problems.filter { base.problems[$0.key] != $0.value }.compactMap { now.problemRows[$0.key] }
+                .map { r -> ProblemRow in var r = r; r.user_id = user.id; r.updated_at = stamp; return r }
+            if !problemRows.isEmpty { try await client.from("pb_problems").upsert(problemRows, onConflict: "user_id,id").execute() }
 
             for (table, removed) in [("pb_roles", Set(base.roles.keys).subtracting(now.roles.keys)),
                                      ("pb_docs", Set(base.docs.keys).subtracting(now.docs.keys)),
                                      ("pb_sessions", Set(base.sessions.keys).subtracting(now.sessions.keys)),
-                                     ("pb_quiz_attempts", Set(base.quizzes.keys).subtracting(now.quizzes.keys))] where !removed.isEmpty {
+                                     ("pb_quiz_attempts", Set(base.quizzes.keys).subtracting(now.quizzes.keys)),
+                                     ("pb_problems", Set(base.problems.keys).subtracting(now.problems.keys))] where !removed.isEmpty {
                 try await client.from(table).delete().eq("user_id", value: user.id).in("id", values: Array(removed)).execute()
             }
             if now.profileJSON != base.profileJSON, var p = now.profileRow {
@@ -364,6 +383,7 @@ enum PlannerError: LocalizedError {
 struct SyncSnapshot {
     var roles: [String: String] = [:], docs: [String: String] = [:], sessions: [String: String] = [:], quizzes: [String: String] = [:]
     var quizRows: [String: QuizRow] = [:]
+    var problems: [String: String] = [:], problemRows: [String: ProblemRow] = [:]
     var roleRows: [String: RoleRow] = [:], docRows: [String: CloudDocRow] = [:], sessionRows: [String: SessionRow] = [:]
     var profileJSON: String = ""
     var profileRow: ProfileRow?
@@ -395,6 +415,12 @@ struct SyncSnapshot {
                               items: q.items, weak_topics: q.weakTopics, source: q.source, created_at: Stamp.string(q.createdAt))
             quizRows[q.id] = row; quizzes[q.id] = key(row)
         }
+        for p in (try? context.fetch(FetchDescriptor<Problem>())) ?? [] {
+            let row = ProblemRow(id: p.id, role_id: p.roleId, title: p.title, difficulty: p.difficulty, topics: p.topics, statement: p.statement,
+                                 starters: p.starters, code: p.code, language: p.language, solved: p.solved, notes: p.notes,
+                                 created_at: Stamp.string(p.createdAt))
+            problemRows[p.id] = row; problems[p.id] = key(row)
+        }
         if let profile {
             let row = ProfileRow(name: profile.name, headline: profile.headline, avatar: profile.avatar,
                                  photo: profile.photo.map { "data:image/jpeg;base64," + $0.base64EncodedString() } ?? "")
@@ -404,8 +430,8 @@ struct SyncSnapshot {
 }
 
 struct RemoteData {
-    let roles: [RoleRow], docs: [CloudDocRow], sessions: [SessionRow], quizzes: [QuizRow], profile: ProfileRow?
-    var isEmpty: Bool { roles.isEmpty && docs.isEmpty && sessions.isEmpty && quizzes.isEmpty }
+    let roles: [RoleRow], docs: [CloudDocRow], sessions: [SessionRow], quizzes: [QuizRow], problems: [ProblemRow], profile: ProfileRow?
+    var isEmpty: Bool { roles.isEmpty && docs.isEmpty && sessions.isEmpty && quizzes.isEmpty && problems.isEmpty }
 
     /// Replaces the local store with the account's data.
     @MainActor
@@ -414,6 +440,12 @@ struct RemoteData {
         try context.delete(model: Doc.self)
         try context.delete(model: PrepTask.self)
         try context.delete(model: QuizAttempt.self)
+        try context.delete(model: Problem.self)
+        for p in problems {
+            context.insert(Problem(id: p.id, roleId: p.role_id, title: p.title, difficulty: p.difficulty, topics: p.topics, statement: p.statement,
+                                   starters: p.starters, code: p.code, language: p.language, solved: p.solved, notes: p.notes,
+                                   createdAt: Stamp.date(p.created_at) ?? .now, updatedAt: Stamp.date(p.updated_at) ?? .now))
+        }
         for q in quizzes {
             context.insert(QuizAttempt(id: q.id, roleId: q.role_id, sessionId: q.session_id, topic: q.topic, items: q.items,
                                        source: q.source, createdAt: Stamp.date(q.created_at) ?? .now))

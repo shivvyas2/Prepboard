@@ -211,14 +211,14 @@
   //   forgot  → email → verify (type "email") → newpass   reset password
   //   verify  → enter the 6-digit code (with resend)
   //   newpass → choose a new password (also reached from a password-reset link)
-  let authMode = "signin";
+  let authMode = "code";   // email + 6-digit code first, like the apps
   const authCtx = { email: "", type: "email", reset: false, name: "" };
   let needsNewPassword = false;
   let resendAt = 0;
   const redirectTo = () => location.origin + location.pathname;
 
   const TITLES = {
-    signin: "Welcome back", signup: "Create your account", code: "Sign in with a code",
+    signin: "Sign in with password", signup: "Create your account", code: "Sign in or create an account",
     forgot: "Reset your password", verify: "Check your email", newpass: "Choose a new password",
   };
 
@@ -232,16 +232,17 @@
     let fields = "", submit = "", links = "", sub = "";
     if (m === "signin") {
       fields = emailField + pwField("Password", "current-password"); submit = "Sign in";
-      links = `<span>New here? <button type="button" class="auth-switch" data-mode="signup">Create an account</button></span>
-        <span style="display:flex;gap:14px"><button type="button" class="auth-switch" data-mode="code">Email me a code</button><button type="button" class="auth-switch" data-mode="forgot">Forgot password?</button></span>`;
+      links = `<span><button type="button" class="auth-switch" data-mode="code">Email me a code instead</button></span>
+        <span><button type="button" class="auth-switch" data-mode="forgot">Forgot password?</button></span>`;
     } else if (m === "signup") {
       fields = `<label class="field"><span class="label">Name</span><input name="name" autocomplete="name" required value="${esc(authCtx.name)}"></label>` + emailField + pwField("Password", "new-password");
       submit = "Create account";
       links = `<span>Have an account? <button type="button" class="auth-switch" data-mode="signin">Sign in</button></span>`;
     } else if (m === "code" || m === "forgot") {
-      sub = m === "forgot" ? "We'll email you a reset link. Open it on any device to choose a new password." : "We'll email you a 6-digit code to sign in, no password needed.";
-      fields = emailField; submit = m === "forgot" ? "Email me a reset link" : "Email me a code";
-      links = `<span><button type="button" class="auth-switch" data-mode="signin">Back to sign in</button></span>`;
+      sub = m === "forgot" ? "We'll email you a reset link. Open it on any device to choose a new password." : "Enter your email and we'll send a 6-digit code. No password needed, and new accounts are created automatically.";
+      fields = emailField; submit = m === "forgot" ? "Email me a reset link" : "Continue";
+      links = m === "forgot" ? `<span><button type="button" class="auth-switch" data-mode="signin">Back to sign in</button></span>`
+        : `<span><button type="button" class="auth-switch" data-mode="signin">Use password instead</button></span>`;
     } else if (m === "verify") {
       sub = `Enter the 6-digit code we sent to <b>${esc(authCtx.email)}</b>. It may take a minute; check spam too.`;
       fields = `<label class="field"><span class="label">Code</span><input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="10" required
@@ -249,7 +250,7 @@
       submit = authCtx.reset ? "Verify and continue" : "Verify";
       const wait = Math.max(0, Math.ceil((resendAt - Date.now()) / 1000));
       links = `<span><button type="button" class="auth-switch" data-resend ${wait ? "disabled" : ""}>${wait ? `Resend code in ${wait}s` : "Resend code"}</button></span>
-        <span><button type="button" class="auth-switch" data-mode="signin">Use a different email</button></span>`;
+        <span><button type="button" class="auth-switch" data-mode="code">Use a different email</button></span>`;
     } else if (m === "newpass") {
       sub = "Choose a new password for your account. You'll use it to sign in on the web, Mac, iPad and iPhone.";
       fields = pwField("New password", "new-password") + `<label class="field"><span class="label">Confirm password</span><input name="password2" type="password" autocomplete="new-password" minlength="8" required></label>`;
@@ -283,7 +284,7 @@
   function hideAuth() { const el = document.getElementById("auth"); if (el) el.hidden = true; }
 
   async function sendEmailCode(email) {
-    const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false, emailRedirectTo: redirectTo() } });
+    const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true, emailRedirectTo: redirectTo() } });
     if (error) throw error;
     resendAt = Date.now() + 60_000;
   }
@@ -303,7 +304,7 @@
     const msg = err?.message || String(err || "");
     if (/rate limit|security purposes|only request this after/i.test(msg)) return "Please wait a minute before asking for another code.";
     if (/token has expired|invalid/i.test(msg) && authMode === "verify") return "That code is wrong or has expired. Check the latest email, or resend.";
-    if (/Signups not allowed for otp|User not found/i.test(msg)) return "No account uses that email yet. Create one instead.";
+    if (/Signups not allowed for otp|User not found/i.test(msg)) return "No account uses that email yet.";
     if (/Email not confirmed/i.test(msg)) return "Confirm your email first: we've sent you a 6-digit code.";
     return msg || "Something went wrong.";
   }
@@ -355,7 +356,9 @@
         const token = f.code.value.replace(/\D/g, "");
         if (token.length < 6) throw new Error("Enter the 6-digit code from the email.");
         if (authCtx.reset) needsNewPassword = true;   // hold the app until a new password is chosen
-        const { error } = await sb.auth.verifyOtp({ email: authCtx.email, token, type: authCtx.type });
+        let { error } = await sb.auth.verifyOtp({ email: authCtx.email, token, type: authCtx.type });
+        // A brand-new account's first code is a signup confirmation.
+        if (error && authCtx.type === "email" && !authCtx.reset) ({ error } = await sb.auth.verifyOtp({ email: authCtx.email, token, type: "signup" }));
         if (error) { needsNewPassword = false; throw error; }
         if (authCtx.reset) { authMode = "newpass"; showAuth(); }
         return;

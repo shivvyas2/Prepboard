@@ -41,6 +41,7 @@ struct RootView: View {
         case .dashboard: DashboardView()
         case .roles: RolesView()
         case .documents: DocumentsView()
+        case .practice: PracticeView()
         case .scores: ScoresView()
         case .browse: BrowserView()
         case .search: SearchView()
@@ -94,14 +95,20 @@ struct RootView: View {
                 topBar
                 HStack(alignment: .top, spacing: 18) {
                     content.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    if let v = app.sideVideo {
+                        VStack { SideVideoPanel(video: v); Spacer(minLength: 0) }
+                            .frame(width: app.showClaude ? 360 : 440)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                    }
                     #if os(macOS)
                     if app.showClaude && claude.isReady {
-                        ClaudePanel().frame(width: 400).padding(.bottom, 20)
+                        ClaudePanel().frame(width: app.claudeTerminal ? 640 : 400).padding(.bottom, 20)
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
                     #endif
                 }
                 .animation(.snappy, value: app.showClaude)
+                .animation(.snappy, value: app.sideVideo)
             }
             .padding(.top, 20).padding(.trailing, 24)
             #if os(macOS)
@@ -191,6 +198,10 @@ struct RootView: View {
                 .tabItem { Label(s.rawValue, systemImage: s.icon) }
                 .tag(s)
             }
+        }
+        // iPhone: the video docks at the top and keeps playing across tabs.
+        .safeAreaInset(edge: .top) {
+            if let v = app.sideVideo { SideVideoPanel(video: v, compact: true).padding(.horizontal, 12).padding(.bottom, 6).background(PB.background) }
         }
     }
     #endif

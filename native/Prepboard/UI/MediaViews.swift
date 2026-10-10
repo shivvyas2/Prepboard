@@ -110,8 +110,44 @@ private struct WebPlayer: UIViewRepresentable {
 }
 #endif
 
+/// Docked player beside the current section (documents, PDFs, timeline…). One instance, so it keeps playing.
+struct SideVideoPanel: View {
+    let video: Video
+    var compact = false
+    @Environment(AppState.self) private var app
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            YouTubePlayer(video: video).id(video.id)
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(video.title).font(.system(size: 13, weight: .semibold)).lineLimit(2)
+                    Text(video.channel).font(.system(size: 12)).foregroundStyle(PB.muted).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                CircleIconButton(systemImage: "arrow.up.left.and.arrow.down.right", size: 30, label: "Full size") {
+                    app.sideVideo = nil; app.playingVideo = video
+                }
+                CircleIconButton(systemImage: "arrow.up.right.square", size: 30, label: "Open on YouTube") { openURL(video.watchURL) }
+                CircleIconButton(systemImage: "xmark", size: 30, label: "Close video") { app.sideVideo = nil }
+            }
+            .padding(compact ? 10 : 14)
+            if !compact && !video.why.isEmpty {
+                Text(video.why).font(.system(size: 12)).foregroundStyle(PB.ink2).padding(.horizontal, 14).padding(.bottom, 14)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .background(PB.card)
+        .clipShape(RoundedRectangle(cornerRadius: compact ? 16 : PB.rXL, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: compact ? 16 : PB.rXL, style: .continuous).strokeBorder(PB.line))
+        .shadow(color: Color(hex: 0x3C2D14).opacity(0.07), radius: 14, y: 8)
+    }
+}
+
 struct VideoPlayerSheet: View {
     let video: Video
+    @Environment(AppState.self) private var app
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
 
@@ -125,6 +161,13 @@ struct VideoPlayerSheet: View {
                         Text(video.channel).font(.system(size: 13)).foregroundStyle(PB.muted)
                     }
                     Spacer()
+                    Button("Play beside docs") {
+                        app.sideVideo = video
+                        app.section = .documents
+                        dismiss()
+                    }
+                    .buttonStyle(PillButtonStyle(compact: true))
+                    .help("Keep the video playing on the side while you read your documents and PDFs")
                     Button("YouTube ↗") { openURL(video.watchURL) }.buttonStyle(PillButtonStyle(filled: false, compact: true))
                     CircleIconButton(systemImage: "xmark", size: 32, label: "Close") { dismiss() }
                 }

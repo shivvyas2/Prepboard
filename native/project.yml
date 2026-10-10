@@ -19,6 +19,9 @@ packages:
   Supabase:
     url: https://github.com/supabase/supabase-swift
     from: 2.20.0
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm
+    exactVersion: 1.18.0   # 1.19+ adds a build plugin that needs manual trust in Xcode
 targets:
   Prepboard-macOS:
     type: application
@@ -29,6 +32,8 @@ targets:
     dependencies:
       - package: Supabase
         product: Supabase
+      - package: SwiftTerm
+        product: SwiftTerm
     settings:
       base:
         PRODUCT_NAME: Prepboard

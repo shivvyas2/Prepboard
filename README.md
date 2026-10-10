@@ -25,6 +25,10 @@
 - **Home shows everything at a glance:** the countdown to your interview, what's happening now, today's hour strip, priorities, a checklist and the day-by-day plan.
 - **Timeline:** big day numerals, time-blocked sessions (study, practice, mock, review), and a live "now" line. Every session links to the exact guide section to study.
 - **Documents:** Markdown guides with a reading view, plus PDFs (job postings, résumés) rendered inline. Each doc shows when it's on your timeline.
+- **Discovery and research:** the planner asks which résumé you applied with, researches the company, team and interview process on the web, and writes "Company & role research" and "Your résumé for this role" guides. Attach PDFs (résumé, job posting) in the chat: each is kept as the original PDF *and* as a formatted document, linked both ways, and synced to every device.
+- **Practice (LeetCode / CoderPad style):** problem on the left, code editor and console on the right, Swift, Python or JavaScript, built-in tests, an interview timer, and a CoderPad-style AI assistant you can switch off for no-AI rounds. AI writes new problems for your role, or paste one. The Mac runs all three languages; iPhone and iPad run JavaScript.
+- **Watch while you study:** "Play beside docs" docks a video next to your documents and PDFs and keeps it playing.
+- **Claude Code terminal (Mac):** the full interactive Claude Code in a panel (⇧⌘J), in your prep folder.
 - **Quizzes and a Scores leaderboard:** "Quiz me" writes multiple-choice questions from a session's material, shows the correct answer and an explanation each time, and tracks mastery by topic, with a *Learn more* list for weak spots.
 - **YouTube videos:** "Find videos" pulls 3–4 strong explainers for a session and plays them in the app.
 - **Browse:** an in-app browser (native apps) with "Save to notes" for research.

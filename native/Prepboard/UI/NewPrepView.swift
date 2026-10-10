@@ -1,5 +1,7 @@
+import PDFKit
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - Planner API types (supabase/functions/prep-chat)
 
@@ -16,9 +18,46 @@ private struct DocRequest: Encodable {
     let mode = "doc"
     let role: Plan.Role
     let doc: Plan.Doc
+    let context: String
     let now: String
     let timezone: String
 }
+
+private struct FormatRequest: Encodable {
+    let mode = "format"
+    let kind: String
+    let text: String
+}
+
+/// A PDF the user attached in the planner (résumé, job posting…). Kept as the original PDF and as a formatted doc.
+struct PlannerAttachment: Identifiable {
+    enum Kind: String, CaseIterable { case resume = "Résumé", posting = "Job posting", other = "Other document" }
+    let id = UUID()
+    let name: String
+    var kind: Kind
+    let data: Data
+    let text: String
+    var sent = false
+
+    var tag: String { kind == .resume ? "resume" : kind == .posting ? "job-posting" : "attachment" }
+    var promptBlock: String {
+        "<attachment kind=\"\(kind.rawValue)\" name=\"\(name)\">\n\(text.isEmpty ? "(no selectable text in this PDF)" : String(text.prefix(30_000)))\n</attachment>"
+    }
+
+    init?(url: URL) {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        name = url.lastPathComponent
+        self.data = data
+        text = PDFDocument(data: data)?.string?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let n = name.lowercased()
+        kind = n.contains("resume") || n.contains("résumé") || n.contains("cv") ? .resume
+            : n.contains("job") || n.contains("posting") || n.contains("description") || n.contains("jd") ? .posting : .resume
+    }
+}
+
+private let attachmentMarker = "\n\n<attachment "
 
 private struct ChatResponse: Decodable { let reply: String?; let plan: Plan?; let error: String? }
 private struct DocResponse: Decodable { let body: String?; let error: String? }
@@ -50,6 +89,8 @@ struct NewPrepView: View {
     @State private var thinking = false
     @State private var plan: Plan?
     @State private var claudeSession: String?
+    @State private var attachments: [PlannerAttachment] = []
+    @State private var importing = false
     @FocusState private var focused: Bool
     @Environment(ClaudeCode.self) private var claude
     private var usingClaudeCode: Bool { claude.isReady }
@@ -92,7 +133,16 @@ struct NewPrepView: View {
                 .onChange(of: thinking) { withAnimation { proxy.scrollTo("end") } }
             }
 
+            if !attachments.isEmpty { attachmentChips.frame(maxWidth: 760).padding(.horizontal, 16).padding(.bottom, 8) }
+
             HStack(alignment: .bottom, spacing: 10) {
+                Button { importing = true } label: {
+                    Image(systemName: "paperclip").font(.system(size: 16, weight: .medium)).foregroundStyle(PB.ink2)
+                        .frame(width: 36, height: 42)
+                }
+                .buttonStyle(.plain)
+                .help("Attach your résumé or the job posting (PDF)")
+                .accessibilityLabel("Attach a PDF")
                 TextField(plan == nil ? "Describe the role, or paste the job posting…" : "Ask for changes, e.g. “less on Saturday, more mocks”",
                           text: $input, axis: .vertical)
                     .textFieldStyle(.plain).font(.system(size: 15)).lineLimit(1...8)
@@ -104,10 +154,10 @@ struct NewPrepView: View {
                         .frame(width: 42, height: 42).background(Circle().fill(PB.cobalt))
                 }
                 .buttonStyle(.plain)
-                .disabled(thinking || input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(thinking || (input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !attachments.contains { !$0.sent }))
                 .opacity(thinking ? 0.4 : 1)
             }
-            .padding(.leading, 18).padding(.trailing, 8).padding(.vertical, 8)
+            .padding(.leading, 8).padding(.trailing, 8).padding(.vertical, 8)
             .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(PB.card))
             .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(PB.line2))
             .shadow(color: Color(hex: 0x3C2D14).opacity(0.07), radius: 14, y: 8)
@@ -116,6 +166,10 @@ struct NewPrepView: View {
         }
         .background(PB.background)
         .onAppear { focused = true }
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.pdf], allowsMultipleSelection: true) { result in
+            guard case let .success(urls) = result else { return }
+            attachments += urls.compactMap(PlannerAttachment.init(url:))
+        }
         #if os(macOS)
         .frame(minWidth: 720, minHeight: 640)
         #endif
@@ -142,9 +196,36 @@ struct NewPrepView: View {
         .padding(.top, 50)
     }
 
+    private var attachmentChips: some View {
+        FlowLayout(spacing: 8) {
+            ForEach($attachments) { $a in
+                HStack(spacing: 6) {
+                    Image(systemName: "doc.richtext").foregroundStyle(PB.cobalt)
+                    Text(a.name).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                    Menu(a.kind.rawValue) {
+                        ForEach(PlannerAttachment.Kind.allCases, id: \.self) { k in Button(k.rawValue) { a.kind = k } }
+                    }
+                    .menuStyle(.button).buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize()
+                    if !a.sent {
+                        Button { attachments.removeAll { $0.id == a.id } } label: { Image(systemName: "xmark").font(.system(size: 10, weight: .bold)) }
+                            .buttonStyle(.plain).foregroundStyle(PB.muted).accessibilityLabel("Remove \(a.name)")
+                    }
+                }
+                .padding(.horizontal, 10).frame(height: 32)
+                .background(Capsule().fill(PB.card)).overlay(Capsule().strokeBorder(PB.line))
+            }
+        }
+    }
+
     private func bubble(_ m: PlannerMessage) -> some View {
         let user = m.role == "user"
-        return Text(m.content)
+        let parts = m.content.components(separatedBy: attachmentMarker)
+        let names = parts.dropFirst().compactMap { p -> String? in
+            guard let r = p.range(of: "name=\""), let e = p[r.upperBound...].firstIndex(of: "\"") else { return nil }
+            return String(p[r.upperBound..<e])
+        }
+        let shown = parts[0] + names.map { "\n📎 \($0)" }.joined()
+        return Text(shown.trimmingCharacters(in: .whitespacesAndNewlines))
             .font(.system(size: 14)).lineSpacing(3)
             .foregroundStyle(user ? Color.white : PB.ink)
             .textSelection(.enabled)
@@ -197,8 +278,11 @@ struct NewPrepView: View {
     }
 
     private func send(_ text: String) {
-        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty, !thinking else { return }
+        var t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fresh = attachments.indices.filter { !attachments[$0].sent }
+        guard !t.isEmpty || !fresh.isEmpty, !thinking else { return }
+        if t.isEmpty { t = "Here's my " + fresh.map { attachments[$0].kind.rawValue.lowercased() }.joined(separator: " and ") + "." }
+        for i in fresh { t += "\n\n" + attachments[i].promptBlock; attachments[i].sent = true }
         messages.append(.init(role: "user", content: t))
         input = ""
         thinking = true
@@ -208,7 +292,7 @@ struct NewPrepView: View {
                 if usingClaudeCode {
                     let first = claudeSession == nil
                     let prompt = first ? PlannerPrompt.rules(now: DateCoding.string(.now), timezone: TimeZone.current.identifier) + "\n\nUser: \(t)" : t
-                    let (text, session) = try await claude.runText(prompt, tools: "Read WebFetch", resume: claudeSession)
+                    let (text, session) = try await claude.runText(prompt, tools: "Read WebSearch WebFetch", resume: claudeSession)
                     claudeSession = session ?? claudeSession
                     if let p = PlannerPrompt.plan(in: text) {
                         plan = p
@@ -257,15 +341,18 @@ struct NewPrepView: View {
         // Write the study guides in parallel and fill them in as they arrive.
         let cloud = cloud
         let claude: ClaudeCode? = usingClaudeCode ? self.claude : nil
+        let files = attachments
+        let docContext = files.map(\.promptBlock).joined(separator: "\n")
+        saveAttachments(files, roleId: role.id, claude: claude)
         Task { @MainActor in
             await withTaskGroup(of: (String, String?).self) { group in
                 for (doc, d) in created {
                     let id = doc.id
                     group.addTask { @MainActor in
-                        if let claude, let text = try? await claude.runText(PlannerPrompt.docPrompt(role: p.role, doc: d), tools: "Read WebFetch").text {
+                        if let claude, let text = try? await claude.runText(PlannerPrompt.docPrompt(role: p.role, doc: d, context: docContext), tools: "Read WebSearch WebFetch").text {
                             return (id, text)
                         }
-                        let res: DocResponse? = try? await cloud.invoke(DocRequest(role: p.role, doc: d, now: DateCoding.string(.now),
+                        let res: DocResponse? = try? await cloud.invoke(DocRequest(role: p.role, doc: d, context: docContext, now: DateCoding.string(.now),
                                                                                    timezone: TimeZone.current.identifier))
                         return (id, res?.body)
                     }
@@ -277,6 +364,37 @@ struct NewPrepView: View {
                         try? context.save()
                     }
                 }
+            }
+        }
+    }
+
+    /// Keeps each attached PDF twice: the original (synced to storage, openable any time) and a formatted
+    /// Markdown copy in PrepBoard's style that links back to it with an "original:<id>" tag.
+    private func saveAttachments(_ files: [PlannerAttachment], roleId: String, claude: ClaudeCode?) {
+        let cloud = cloud
+        for (i, f) in files.enumerated() {
+            let formatted = Doc(roleId: roleId, title: f.kind == .other ? (f.name as NSString).deletingPathExtension : f.kind.rawValue,
+                                body: "_Formatting \(f.name)…_", tags: [f.tag], order: 900 + i)
+            context.insert(formatted)
+            try? context.save()
+            Task { @MainActor in
+                if let pdf = try? await cloud.importPDF(f.data, fileName: f.name, roleId: roleId, context: context) {
+                    pdf.tags = ["pdf", f.tag, "original"]
+                    formatted.tags.append("original:\(pdf.id)")
+                }
+                var body: String?
+                if !f.text.isEmpty {
+                    if let claude {
+                        body = try? await claude.runText(PlannerPrompt.formatPrompt(kind: f.kind.rawValue, text: f.text), tools: "Read").text
+                    }
+                    if body?.isEmpty ?? true {
+                        let res: DocResponse? = try? await cloud.invoke(FormatRequest(kind: f.kind.rawValue, text: f.text))
+                        body = res?.body
+                    }
+                }
+                formatted.body = (body?.isEmpty == false ? body! : (f.text.isEmpty ? "This PDF has no selectable text. Open the original to read it." : f.text))
+                formatted.updatedAt = .now
+                try? context.save()
             }
         }
     }

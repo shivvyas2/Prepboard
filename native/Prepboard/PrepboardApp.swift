@@ -18,7 +18,7 @@ struct PrepboardApp: App {
 
     init() {
         do {
-            container = try ModelContainer(for: Role.self, Doc.self, PrepTask.self, QuizAttempt.self)
+            container = try ModelContainer(for: Role.self, Doc.self, PrepTask.self, QuizAttempt.self, Problem.self)
         } catch {
             fatalError("Could not open the Prepboard store: \(error)")
         }
@@ -99,8 +99,10 @@ struct PrepboardCommands: Commands {
                 .keyboardShortcut("t", modifiers: .command)
             Button("Search") { app.section = .search }
                 .keyboardShortcut("f", modifiers: .command)
-            Button("Ask Claude") { app.showClaude.toggle() }
+            Button("Ask Claude") { app.claudeTerminal = false; app.showClaude.toggle() }
                 .keyboardShortcut("j", modifiers: .command)
+            Button("Claude Code Terminal") { app.claudeTerminal = true; app.showClaude = true }
+                .keyboardShortcut("j", modifiers: [.command, .shift])
         }
     }
 }
