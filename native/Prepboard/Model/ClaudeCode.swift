@@ -124,7 +124,7 @@ final class ClaudeCode {
         var prompt = q
         if sessionId == nil {
             prompt = """
-            I'm using Prepboard, my interview-prep app. Answer concisely in Markdown (short sections, bullets, \
+            I'm using PrepBoard, my interview-prep app. Answer concisely in Markdown (short sections, bullets, \
             code blocks in Swift when useful). My prep guides are Markdown files in the current folder; read them \
             when relevant.
             """

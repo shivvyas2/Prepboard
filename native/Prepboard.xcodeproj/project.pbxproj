@@ -34,6 +34,7 @@
 		5567A6BCB0A41DF8F1D58E2C /* TimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6FC5742992DC2E095BDEF27 /* TimelineView.swift */; };
 		5589EF6DC5389E19055FFD28 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3010B879EF992187C633DB93 /* SearchView.swift */; };
 		57528548A6A157C9F0F5BDBD /* DocumentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38795E006267302A5600E7F9 /* DocumentsView.swift */; };
+		5805B8D78C5062A7E5B05B1C /* Brand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 086CF94B83674AF95AC590A7 /* Brand.swift */; };
 		64FE37B053DF759D0A45312C /* Transfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0CFBC3448067B5F781BF89 /* Transfer.swift */; };
 		6E71916771134F0651F48F90 /* PrepboardApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 351E33EDB990739C7D995D23 /* PrepboardApp.swift */; };
 		7E1B01F0D9DB36B25A0A7B8F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D5A22B3E3CDDECC8B7D281BA /* Assets.xcassets */; };
@@ -57,12 +58,14 @@
 		D9208C24612868E1BC17D711 /* PrepboardApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 351E33EDB990739C7D995D23 /* PrepboardApp.swift */; };
 		DCDA9A4BB6FAAA8D4DC26E03 /* RolesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E02443C80B213288CCA76C4 /* RolesView.swift */; };
 		E34BE1F0E640EFCF9A23B971 /* Transfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC0CFBC3448067B5F781BF89 /* Transfer.swift */; };
+		E4D535FC0E50C7A7C8882DB9 /* Brand.swift in Sources */ = {isa = PBXBuildFile; fileRef = 086CF94B83674AF95AC590A7 /* Brand.swift */; };
 		E8C0F0C55171374A3A028D60 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B116C2CC40AD6A20444100E /* DashboardView.swift */; };
 		ECC11F2A5615B638B3D8078A /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BC5297DFE0F267A5635C878 /* Components.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		022B1F5544DC07FF847C9C04 /* ClaudeMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeMark.swift; sourceTree = "<group>"; };
+		086CF94B83674AF95AC590A7 /* Brand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Brand.swift; sourceTree = "<group>"; };
 		0EC03837C9B766275F4AE786 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		2B116C2CC40AD6A20444100E /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		3010B879EF992187C633DB93 /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
@@ -124,6 +127,7 @@
 			children = (
 				BC754F719792244FD3C57AC4 /* AuthView.swift */,
 				3C674D8FFA5AF52B25B4BEC7 /* Avatars.swift */,
+				086CF94B83674AF95AC590A7 /* Brand.swift */,
 				DD39A0E9AB7F074D92994A4A /* BrowserView.swift */,
 				022B1F5544DC07FF847C9C04 /* ClaudeMark.swift */,
 				ECC76875631FCA668A14AE13 /* ClaudePanel.swift */,
@@ -288,6 +292,7 @@
 				A02E31B78B594D2B8BEAFD6E /* AppState.swift in Sources */,
 				36C6796C4A48B076D6908AE0 /* AuthView.swift in Sources */,
 				3B15D50EE4334F7A4107A02D /* Avatars.swift in Sources */,
+				E4D535FC0E50C7A7C8882DB9 /* Brand.swift in Sources */,
 				52CB8BE24685B51A7CE6C647 /* BrowserView.swift in Sources */,
 				B32BE904B3B91DA420C56A27 /* ClaudeCode.swift in Sources */,
 				1F38974CBA61CC0503AE383A /* ClaudeMark.swift in Sources */,
@@ -319,6 +324,7 @@
 				9D0D0B8BCDBB61C33B1C4406 /* AppState.swift in Sources */,
 				A68254699A41AD80B40C3B02 /* AuthView.swift in Sources */,
 				23F4D9C73501199D741B0945 /* Avatars.swift in Sources */,
+				5805B8D78C5062A7E5B05B1C /* Brand.swift in Sources */,
 				3F545C9EF30B20F10DE87FBD /* BrowserView.swift in Sources */,
 				334895BDE253677F5EFEE4F0 /* ClaudeCode.swift in Sources */,
 				4513445ECEA3A2A37875B3E4 /* ClaudeMark.swift in Sources */,

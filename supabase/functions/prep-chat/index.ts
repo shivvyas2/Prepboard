@@ -136,7 +136,7 @@ const PLAN_TOOL = {
 } as const;
 
 function chatSystem(now: string, tz: string) {
-  return `You are the planner inside Prepboard, an interview-prep app. The user is starting preparation for something new.
+  return `You are the planner inside PrepBoard, an interview-prep app. The user is starting preparation for something new.
 
 Current time: ${now} (user's timezone: ${tz}).
 

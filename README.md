@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/icon.png" width="112" alt="Prepboard app icon">
+  <img src="brand/logo.svg" width="112" alt="PrepBoard logo">
 </p>
 
-<h1 align="center">Prepboard</h1>
+<h1 align="center">PrepBoard</h1>
 
 <p align="center">
   <b>Plan, study and practice for interviews, one session at a time.</b><br>
@@ -17,7 +17,7 @@
 
 ---
 
-![Prepboard on the web: Home](docs/screenshots/web-dashboard.png)
+![PrepBoard on the web: Home](docs/screenshots/web-dashboard.png)
 
 ## What it does
 
@@ -53,7 +53,7 @@ Distribution is through TestFlight; see [Releases](https://github.com/shivvyas2/
 
 The same SwiftUI app runs natively on macOS, with keyboard shortcuts, the Claude Code side panel (⌘J) and the in-app browser. Download the DMG from [Releases](https://github.com/shivvyas2/Prepboard/releases/latest).
 
-> The Mac build isn't notarized yet. On first launch, right-click **Prepboard.app → Open**, then confirm.
+> The Mac build isn't notarized yet. On first launch, right-click **PrepBoard.app → Open**, then confirm.
 
 ---
 

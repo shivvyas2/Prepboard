@@ -52,6 +52,7 @@ struct RootView: View {
     private var wideShell: some View {
         HStack(alignment: .top, spacing: 0) {
             VStack(spacing: 12) {
+                PrepBoardLogo(size: 48).help("PrepBoard").padding(.bottom, 6)
                 Button { app.showProfile = true } label: {
                     ProfileAvatar(size: 48)
                         .padding(2)
@@ -176,6 +177,7 @@ struct RootView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                         .background(PB.background)
                         .toolbar {
+                            ToolbarItem(placement: .principal) { PrepBoardMark().frame(width: 22, height: 26) }
                             ToolbarItem(placement: .topBarTrailing) { newMenu.scaleEffect(0.85) }
                             ToolbarItem(placement: .topBarLeading) {
                                 Menu {
@@ -213,7 +215,7 @@ struct AppSheets: ViewModifier {
                 let scoped = url.startAccessingSecurityScopedResource()
                 defer { if scoped { url.stopAccessingSecurityScopedResource() } }
                 do { try Transfer.importData(try Data(contentsOf: url), into: context, replace: false); app.message = "Imported" }
-                catch { app.message = "That file isn't a Prepboard export." }
+                catch { app.message = "That file isn't a PrepBoard export." }
             }
             .fileExporter(isPresented: $app.showExporter, document: app.exportFile ?? JSONFile(data: Data()),
                           contentType: .json, defaultFilename: "prepboard-\(DateCoding.dayString(.now)).json") { _ in }

@@ -4,7 +4,9 @@
 <meta charset="utf-8">
 <meta name="color-scheme" content="light">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Prepboard</title>
+<title>PrepBoard</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
@@ -55,12 +57,11 @@ a { color: inherit; }
 /* ---------- shell ---------- */
 .shell { display: grid; grid-template-columns: 76px minmax(0, 1fr); min-height: 100vh; }
 .rail { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 20px 0; position: sticky; top: 0; height: 100vh; }
-.logo { width: 44px; height: 44px; border-radius: 14px; background: var(--cobalt); color: #fff; position: relative; display: grid; place-items: center; font-weight: 800; letter-spacing: -.04em; margin-bottom: 18px; }
+.logo { width: 48px; height: 48px; border-radius: 13px; display: block; flex: none; margin-bottom: 6px; box-shadow: 0 0 0 1px var(--line-2); }
 .rail-btn { width: 48px; height: 48px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); display: grid; place-items: center; color: var(--ink-2); transition: background .15s, color .15s, transform .1s; }
 .rail-btn:hover { color: var(--ink); }
 .rail-btn:active { transform: scale(.96); }
 .rail-btn.active { background: var(--cobalt); color: #fff; border-color: var(--cobalt); }
-.logo::after { content: ""; position: absolute; right: -3px; top: -3px; width: 12px; height: 12px; border-radius: 50%; background: var(--sun); border: 2px solid var(--bg); }
 .rail .spacer { flex: 1; }
 .rail-btn svg { width: 20px; height: 20px; }
 
@@ -463,6 +464,7 @@ dialog::backdrop { background: rgba(43,36,16,.25); backdrop-filter: blur(4px); }
 <body>
 <div class="shell">
   <nav class="rail" aria-label="Primary">
+    <img class="logo" src="logo.svg" alt="PrepBoard" width="48" height="48">
     <button class="profile-btn rail-top" id="profileBtn" title="Profile" aria-label="Profile"><span class="avatar" id="railAvatar"></span></button>
     <button class="rail-btn" data-view="dashboard" title="Home" aria-label="Home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg></button>
     <button class="rail-btn" data-view="timeline" title="Timeline" aria-label="Timeline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="1.8" fill="currentColor"/><circle cx="15" cy="12" r="1.8" fill="currentColor"/><circle cx="10" cy="18" r="1.8" fill="currentColor"/></svg></button>
@@ -1380,7 +1382,7 @@ dialog::backdrop { background: rgba(43,36,16,.25); backdrop-filter: blur(4px); }
       const data = JSON.parse(await file.text());
       if (!Array.isArray(data.roles) || !Array.isArray(data.docs)) throw new Error("bad");
       db = normalize({ roles: data.roles, docs: data.docs, tasks: data.tasks || [], quizzes: data.quizzes || [], profile: data.profile || db.profile }); save(); dataDialog.close(); render(); toast("Imported");
-    } catch (_) { toast("That file isn't a Prepboard export"); }
+    } catch (_) { toast("That file isn't a PrepBoard export"); }
     e.target.value = "";
   });
   $("#resetBtn").addEventListener("click", () => {

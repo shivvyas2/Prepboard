@@ -19,7 +19,8 @@
   .auth-faces { display: flex; }
   .auth-faces .avatar { width: 52px; height: 52px; margin-left: -10px; box-shadow: 0 0 0 3px var(--cobalt); }
   .auth-faces .avatar:first-child { margin-left: 0; }
-  .auth-pill { justify-self: start; background: var(--sun); color: var(--on-sun); font-weight: 700; font-size: 12px; padding: 5px 12px; border-radius: 999px; }
+  .auth-pill { justify-self: start; display: flex; align-items: center; gap: 12px; color: #fff; font-weight: 700; font-size: 22px; letter-spacing: -.02em; }
+  .auth-pill img { width: 52px; height: 52px; border-radius: 14px; }
   .auth-form { padding: 36px; display: grid; gap: 14px; align-content: center; min-width: 0; }
   .auth-form h2 { margin: 0; font-size: 24px; letter-spacing: -.02em; }
   .auth-msg { font-size: 13px; padding: 10px 12px; border-radius: 12px; }
@@ -207,7 +208,7 @@
     const faces = [0, 1, 2, 3, 4].map((i) => `<span class="avatar">${window.PBAvatar ? window.PBAvatar(i) : ""}</span>`).join("");
     el.innerHTML = `<div class="auth-card">
       <div class="auth-art">
-        <span class="auth-pill">Prepboard</span>
+        <span class="auth-pill"><img src="logo.svg" alt="">PrepBoard</span>
         <div><h1>Prepare for the job you want, one session at a time.</h1>
           <p>Plan every interview on a timeline, keep your notes next to the hour you'll use them, and pick up on any device.</p></div>
         <div class="auth-faces">${faces}</div>

@@ -74,7 +74,7 @@ Reply with ONLY a JSON array, no prose:
   }
 
   let plannerSession = null;
-  const PLANNER_RULES = (n, z) => `You are the planner inside Prepboard, an interview-prep app. The user is starting preparation for something new.
+  const PLANNER_RULES = (n, z) => `You are the planner inside PrepBoard, an interview-prep app. The user is starting preparation for something new.
 Current time: ${n} (user's timezone: ${z}).
 Have a short, friendly conversation, asking at most one or two questions per message, to learn: the role (company, title, ideally the job posting), the interview date/time/format, their background and weak spots, and how many hours per day they can prepare. Infer what you can from what they paste.
 When you know enough, reply with ONLY a JSON object in a \`\`\`json fenced block:
@@ -123,7 +123,7 @@ Prefer checklists, likely interview questions with crisp answer outlines, and sh
     const signedIn = !!window.PBCloud?.user;
     if (signedIn && !state.keyStatus) { try { state.keyStatus = await keyCall({ mode: "key_status" }); } catch (_) { state.keyStatus = null; } }
     const b = state.bridge, k = state.keyStatus;
-    box.innerHTML = `<div class="label">AI · how Prepboard talks to Claude</div>
+    box.innerHTML = `<div class="label">AI · how PrepBoard talks to Claude</div>
       <div style="display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 12px">
         <span style="width:30px;height:30px;border-radius:50%;background:#f5ede4;display:grid;place-items:center;color:#d97757;font-weight:800">✳</span>
         <span><b style="font-size:14px">Claude Code (your Claude account)</b><span class="muted" style="display:block;font-size:12px">${

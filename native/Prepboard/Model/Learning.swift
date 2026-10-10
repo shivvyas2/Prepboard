@@ -121,7 +121,7 @@ extension String { var nilIfEmpty: String? { isEmpty ? nil : self } }
 enum PlannerPrompt {
     static func rules(now: String, timezone: String) -> String {
         """
-        You are the planner inside Prepboard, an interview-prep app. The user is starting preparation for something new.
+        You are the planner inside PrepBoard, an interview-prep app. The user is starting preparation for something new.
         Current time: \(now) (user's timezone: \(timezone)).
         Have a short, friendly conversation, asking at most one or two questions per message, to learn: the role (company, title, ideally the job posting), the interview date/time/format, their background and weak spots, and how many hours per day they can prepare. Infer what you can from what they paste.
         When you know enough, reply with ONLY a JSON object in a ```json fenced block:

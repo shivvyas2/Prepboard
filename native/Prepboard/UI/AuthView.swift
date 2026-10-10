@@ -36,8 +36,10 @@ struct AuthView: View {
 
     private var art: some View {
         VStack(alignment: .leading, spacing: 26) {
-            Text("Prepboard").font(.system(size: 12, weight: .bold)).foregroundStyle(PB.onSun)
-                .padding(.horizontal, 12).padding(.vertical, 5).background(Capsule().fill(PB.sun))
+            HStack(spacing: 12) {
+                PrepBoardLogo(size: 52)
+                Text("PrepBoard").font(.system(size: 22, weight: .bold)).kerning(-0.5).foregroundStyle(.white)
+            }
             VStack(alignment: .leading, spacing: 10) {
                 Text("Prepare for the job you want, one session at a time.")
                     .font(.system(size: 44, weight: .bold)).kerning(-1.6).foregroundStyle(.white)

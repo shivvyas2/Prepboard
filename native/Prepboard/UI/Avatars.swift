@@ -356,7 +356,7 @@ struct ProfileSheet: View {
     private var claudeStatus: String {
         switch claude.connection {
         case .unknown, .checking: "Checking for Claude Code on this Mac…"
-        case .notInstalled: "Not installed. Install Claude Code to ask questions and take quizzes in Prepboard."
+        case .notInstalled: "Not installed. Install Claude Code to ask questions and take quizzes in PrepBoard."
         case .signedOut: "Installed, but not signed in. Sign in with your Claude account, then check again."
         case .connected(let v): claude.enabled ? "Connected · \(v). Uses your own Claude account." : "Ready to connect · \(v)"
         }

@@ -150,7 +150,7 @@ struct BrowserView: View {
             VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Browse").pbLabelStyle()
-                    Text("Research without leaving Prepboard").font(.system(size: 28, weight: .bold)).kerning(-0.8)
+                    Text("Research without leaving PrepBoard").font(.system(size: 28, weight: .bold)).kerning(-0.8)
                     Text("Search above, or start from a favorite. Tap “Save to notes” to keep a page with your prep documents.")
                         .foregroundStyle(PB.muted)
                 }
