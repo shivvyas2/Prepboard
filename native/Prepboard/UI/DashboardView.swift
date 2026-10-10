@@ -24,7 +24,7 @@ struct DashboardView: View {
         TimelineView(.periodic(from: .now, by: 60)) { ctx in
             GeometryReader { geo in
                 ScrollView {
-                    layout(width: geo.size.width, now: ctx.date).padding(.bottom, 30)
+                    layout(width: geo.size.width, now: ctx.date).padding(.bottom, 32)
                 }
                 .scrollIndicators(.hidden)
             }
@@ -35,25 +35,25 @@ struct DashboardView: View {
     private func layout(width: CGFloat, now: Date) -> some View {
         let sess = tasks.filter { $0.roleId == activeRole?.id }
         if width > 1100 {
-            VStack(spacing: 18) {
-                HStack(alignment: .top, spacing: 18) { hero(now).frame(maxHeight: .infinity); upNext(sess, now: now).frame(width: 380) }
+            VStack(spacing: 16) {
+                HStack(alignment: .top, spacing: 16) { hero(now).frame(maxHeight: .infinity); upNext(sess, now: now).frame(width: 380) }
                     .fixedSize(horizontal: false, vertical: true)
                 stats(sess, now: now)
                 todayStrip(sess, now: now)
                 if width > 1260 {
-                    HStack(alignment: .top, spacing: 18) {
+                    HStack(alignment: .top, spacing: 16) {
                         priorities(sess, now: now)
                         todaysTasks(sess, now: now)
                         countdownPlan(sess, now: now).frame(width: 300)
                     }
                 } else {
-                    HStack(alignment: .top, spacing: 18) { priorities(sess, now: now); todaysTasks(sess, now: now) }
+                    HStack(alignment: .top, spacing: 16) { priorities(sess, now: now); todaysTasks(sess, now: now) }
                     countdownPlan(sess, now: now)
                 }
-                HStack(alignment: .top, spacing: 18) { pipeline; recent.frame(width: 380) }
+                HStack(alignment: .top, spacing: 16) { pipeline; recent.frame(width: 380) }
             }
         } else {
-            VStack(spacing: 18) {
+            VStack(spacing: 16) {
                 hero(now)
                 upNext(sess, now: now)
                 stats(sess, now: now)
@@ -72,14 +72,14 @@ struct DashboardView: View {
     private func hero(_ now: Date) -> some View {
         let next = nextInterview
         return ViewThatFits(in: .horizontal) {
-            HStack(alignment: .bottom, spacing: 20) { heroText(next); Spacer(minLength: 0); timeLeft(next, now: now) }
-            VStack(alignment: .leading, spacing: 18) { heroText(next); timeLeft(next, now: now) }
+            HStack(alignment: .bottom, spacing: 24) { heroText(next); Spacer(minLength: 0); timeLeft(next, now: now) }
+            VStack(alignment: .leading, spacing: 16) { heroText(next); timeLeft(next, now: now) }
         }
         .pbCard()
     }
 
     private func heroText(_ next: Role?) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Button { app.showProfile = true } label: {
                 HStack(spacing: 12) {
                     ProfileAvatar(size: 36)
@@ -107,13 +107,13 @@ struct DashboardView: View {
                     Button("Role details") { app.openRole(next.id) }
                         .buttonStyle(PillButtonStyle(filled: false, compact: true))
                 }
-                .padding(.top, 10)
+                .padding(.top, 12)
             } else {
                 HStack(spacing: 8) {
                     Button("✦ Start something new") { app.showNewPrep = true }.buttonStyle(PillButtonStyle())
                     Button("Add a role manually") { app.newRole(context) }.buttonStyle(PillButtonStyle(filled: false, compact: true))
                 }
-                .padding(.top, 10)
+                .padding(.top, 12)
             }
         }
     }
@@ -124,7 +124,7 @@ struct DashboardView: View {
             let s = max(0, Int(at.timeIntervalSince(now)))
             VStack(alignment: .leading, spacing: 8) {
                 Text("Time left").pbLabelStyle()
-                HStack(spacing: 10) {
+                HStack(spacing: 12) {
                     cell(s / 86400, "days"); cell(s % 86400 / 3600, "hours"); cell(s % 3600 / 60, "min")
                 }
             }
@@ -132,7 +132,7 @@ struct DashboardView: View {
     }
 
     private func cell(_ v: Int, _ label: String) -> some View {
-        VStack(spacing: 2) {
+        VStack(spacing: 4) {
             Text(String(format: "%02d", v)).font(.system(size: 28, weight: .bold)).monospacedDigit()
             Text(label).font(.system(size: 11)).foregroundStyle(PB.muted)
         }
@@ -161,7 +161,7 @@ struct DashboardView: View {
                 Text(t.title).font(.system(size: 21, weight: .semibold)).kerning(-0.3).foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
                 if !t.refs.isEmpty {
-                    FlowLayout(spacing: 6) { ForEach(t.refs, id: \.self) { RefChip(ref: $0, doc: docsById[$0.docId], inverted: true) } }
+                    FlowLayout(spacing: 8) { ForEach(t.refs, id: \.self) { RefChip(ref: $0, doc: docsById[$0.docId], inverted: true) } }
                 }
                 Spacer(minLength: 0)
                 HStack(spacing: 8) {
@@ -170,20 +170,20 @@ struct DashboardView: View {
                 }
                 .buttonStyle(InvertedGhostStyle())
             }
-            .padding(22)
+            .padding(24)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(RoundedRectangle(cornerRadius: PB.rXL, style: .continuous).fill(PB.cobalt))
         } else if sess.contains(where: { !$0.isBreak }) {
             Text("All sessions done.").foregroundStyle(PB.muted).frame(maxWidth: .infinity, maxHeight: .infinity).pbCard()
         } else {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 Text("Up next").font(.pbLabel).kerning(0.9).textCase(.uppercase).foregroundStyle(PB.sun)
                 Text("No sessions yet").font(.system(size: 21, weight: .semibold)).foregroundStyle(.white)
                 Text("Your timeline fills in as soon as you create a plan.").font(.system(size: 13)).foregroundStyle(.white.opacity(0.75))
                 Spacer(minLength: 0)
                 Button("✦ Start something new") { app.showNewPrep = true }.buttonStyle(InvertedGhostStyle())
             }
-            .padding(22)
+            .padding(24)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(RoundedRectangle(cornerRadius: PB.rXL, style: .continuous).fill(PB.cobalt))
         }
@@ -218,7 +218,7 @@ struct DashboardView: View {
                     ProgressBar(value: progress)
                 }
             }
-            .pbCard(padding: 14, fill: PB.surface, radius: PB.rLG)
+            .pbCard(padding: 16, fill: PB.surface, radius: PB.rLG)
     }
 
     private func stat(_ label: String, value: String, suffix: String? = nil, highlight: Bool = false) -> some View {
@@ -229,7 +229,7 @@ struct DashboardView: View {
                 if let suffix { Text(suffix).font(.system(size: 15, weight: .semibold)).foregroundStyle(PB.muted) }
             }
         }
-        .pbCard(padding: 14, fill: highlight ? PB.sunSoft : PB.surface, radius: PB.rLG)
+        .pbCard(padding: 16, fill: highlight ? PB.sunSoft : PB.surface, radius: PB.rLG)
     }
 
     // MARK: today's hour strip
@@ -244,7 +244,7 @@ struct DashboardView: View {
         }
         let interview = activeRole?.interviewAt.flatMap { cal.isDateInToday($0) ? $0 : nil }
         return VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text("Today").font(.system(size: 15, weight: .semibold))
                 Text(now.formatted(.dateTime.weekday(.wide).month(.wide).day())).font(.system(size: 13)).foregroundStyle(PB.muted)
                 Spacer(minLength: 8)
@@ -270,14 +270,14 @@ struct DashboardView: View {
                         }
                         if let interview {
                             Text("★ Interview \(TimeFmt.hm(interview))").font(.system(size: 11, weight: .bold)).foregroundStyle(PB.onSun)
-                                .padding(.horizontal, 8).padding(.vertical, 3).background(Capsule().fill(PB.sun))
+                                .padding(.horizontal, 8).padding(.vertical, 4).background(Capsule().fill(PB.sun))
                                 .fixedSize().offset(x: x(interview, w) + 4, y: 26)
                         }
                         let nowH = Double(cal.component(.hour, from: now)) + Double(cal.component(.minute, from: now)) / 60
                         if nowH >= startH && nowH <= endH {
                             Rectangle().fill(PB.cobalt).frame(width: 2, height: 82).offset(x: x(now, w) - 1, y: 20)
                             Text(TimeFmt.hm(now)).font(.system(size: 10, weight: .semibold, design: .monospaced)).foregroundStyle(.white)
-                                .padding(.horizontal, 5).padding(.vertical, 1).background(RoundedRectangle(cornerRadius: 5).fill(PB.cobalt))
+                                .padding(.horizontal, 4).padding(.vertical, 1).background(RoundedRectangle(cornerRadius: 5).fill(PB.cobalt))
                                 .fixedSize().offset(x: x(now, w) - 20, y: 102)
                         }
                         if today.isEmpty { Text("Nothing scheduled today.").foregroundStyle(PB.muted).offset(x: 14, y: 50) }
@@ -294,7 +294,7 @@ struct DashboardView: View {
         let st = t.status(at: now)
         let current = st == .current
         return Button { app.gotoSession(t) } label: {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(t.isBreak ? (t.title.components(separatedBy: CharacterSet(charactersIn: "+,.")).first ?? t.title) : t.title)
                     .font(.system(size: 12, weight: t.isBreak ? .medium : .semibold)).lineLimit(1)
                     .strikethrough(st == .done)
@@ -302,7 +302,7 @@ struct DashboardView: View {
                 Text(TimeFmt.hm(t.start)).font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(current ? Color.white.opacity(0.7) : PB.muted)
             }
-            .padding(.horizontal, 8).padding(.vertical, 6)
+            .padding(.horizontal, 8).padding(.vertical, 8)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(RoundedRectangle(cornerRadius: 10).fill(t.isBreak ? Color.clear : current ? PB.cobalt : PB.card))
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(current ? PB.cobalt : PB.line2, style: StrokeStyle(lineWidth: 1, dash: t.isBreak ? [3] : [])))
@@ -331,7 +331,7 @@ struct DashboardView: View {
         let docsById = Dictionary(uniqueKeysWithValues: docs.map { ($0.id, $0) })
         return VStack(alignment: .leading, spacing: 0) {
             CardHeader(title: "Priorities", count: "\(min(items.count, 6))")
-            if items.isEmpty { Text("Nothing pending. Nice.").foregroundStyle(PB.muted).frame(maxWidth: .infinity).padding(20) }
+            if items.isEmpty { Text("Nothing pending. Nice.").foregroundStyle(PB.muted).frame(maxWidth: .infinity).padding(24) }
             ForEach(Array(items.prefix(6).enumerated()), id: \.offset) { idx, item in
                 let (t, label, bg, fg) = item
                 Button { app.gotoSession(t) } label: {
@@ -339,7 +339,7 @@ struct DashboardView: View {
                         Text(label).font(.system(size: 11, weight: .bold)).foregroundStyle(fg)
                             .frame(width: 74).padding(.vertical, 4)
                             .background(RoundedRectangle(cornerRadius: 8).fill(bg))
-                        VStack(alignment: .leading, spacing: 3) {
+                        VStack(alignment: .leading, spacing: 4) {
                             Text(t.title).font(.system(size: 14, weight: .semibold)).multilineTextAlignment(.leading)
                                 .fixedSize(horizontal: false, vertical: true)
                             Text(["\(TimeFmt.hm(t.start))–\(TimeFmt.hm(t.end))", t.kind.label,
@@ -371,12 +371,12 @@ struct DashboardView: View {
                 Spacer()
                 Text("\(agenda.filter(\.done).count) of \(agenda.count)").font(.system(size: 14)).foregroundStyle(PB.muted)
             }
-            .padding(.bottom, 14)
+            .padding(.bottom, 16)
             .overlay(alignment: .bottom) { Rectangle().fill(PB.line2).frame(height: 1) }
             ForEach(agenda) { ChecklistRow(task: $0, now: now) }
             AddTaskRow(roleId: activeRole?.id ?? "", day: today.isEmpty && !tomorrow.isEmpty ? .now.addingTimeInterval(86400) : .now)
         }
-        .pbCard(padding: 22)
+        .pbCard(padding: 24)
     }
 
     // MARK: countdown plan
@@ -386,7 +386,7 @@ struct DashboardView: View {
         let work = sess.filter { !$0.isBreak }
         var days = Set(work.map { cal.startOfDay(for: $0.start) })
         if let at = activeRole?.interviewAt { days.insert(cal.startOfDay(for: at)) }
-        return VStack(alignment: .leading, spacing: 6) {
+        return VStack(alignment: .leading, spacing: 8) {
             CardHeader(title: "Countdown plan")
             if days.isEmpty { Text("No plan yet.").foregroundStyle(PB.muted) }
             ForEach(days.sorted(), id: \.self) { day in
@@ -398,7 +398,7 @@ struct DashboardView: View {
                     HStack(spacing: 12) {
                         Text(day.formatted(.dateTime.day(.twoDigits))).font(.system(size: 30, weight: .heavy)).kerning(-1.2)
                             .foregroundStyle(isToday ? PB.cobalt : PB.ink).frame(width: 46, alignment: .leading)
-                        VStack(alignment: .leading, spacing: 5) {
+                        VStack(alignment: .leading, spacing: 4) {
                             Text(day.formatted(.dateTime.weekday(.wide)) + (isToday ? " · Today" : "")).font(.system(size: 13, weight: .semibold))
                             if !w.isEmpty {
                                 ProgressBar(value: Double(done) / Double(w.count))
@@ -406,11 +406,11 @@ struct DashboardView: View {
                             }
                             if let iv {
                                 Text("★ Interview \(TimeFmt.hm(iv))").font(.system(size: 11, weight: .bold)).foregroundStyle(PB.onSun)
-                                    .padding(.horizontal, 8).padding(.vertical, 3).background(Capsule().fill(PB.sun))
+                                    .padding(.horizontal, 8).padding(.vertical, 4).background(Capsule().fill(PB.sun))
                             }
                         }
                     }
-                    .padding(10)
+                    .padding(12)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 14).fill(isToday ? PB.cobaltSoft : Color.clear))
                     .contentShape(Rectangle())
@@ -427,21 +427,21 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 0) {
             CardHeader(title: "Pipeline") {
                 Text("Drag roles between stages").font(.system(size: 13)).foregroundStyle(PB.muted)
-                CircleIconButton(systemImage: "plus", size: 34, label: "Add role") { app.newRole(context) }
+                CircleIconButton(systemImage: "plus", size: 32, label: "Add role") { app.newRole(context) }
             }
-            .padding(.horizontal, 6)
+            .padding(.horizontal, 8)
             PipelineView(roles: roles, tasks: tasks)
         }
-        .pbCard(padding: 14, fill: PB.surface.opacity(0.7))
+        .pbCard(padding: 16, fill: PB.surface.opacity(0.7))
     }
 
     private var recent: some View {
         let roleNames = Dictionary(uniqueKeysWithValues: roles.map { ($0.id, $0.company) })
         return VStack(alignment: .leading, spacing: 0) {
             CardHeader(title: "Recently edited") {
-                CircleIconButton(systemImage: "plus", size: 34, label: "New document") { app.newDoc(context) }
+                CircleIconButton(systemImage: "plus", size: 32, label: "New document") { app.newDoc(context) }
             }
-            if docs.isEmpty { Text("No documents yet.").foregroundStyle(PB.muted).frame(maxWidth: .infinity).padding(30) }
+            if docs.isEmpty { Text("No documents yet.").foregroundStyle(PB.muted).frame(maxWidth: .infinity).padding(32) }
             ForEach(docs.prefix(5)) { d in
                 DocRow(doc: d, roleName: roleNames[d.roleId] ?? "General") { app.openDoc(d.id) }
             }
@@ -454,7 +454,7 @@ struct InvertedGhostStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 13, weight: .medium))
-            .padding(.horizontal, 14).frame(height: 34)
+            .padding(.horizontal, 16).frame(height: 34)
             .foregroundStyle(.white)
             .overlay(Capsule().strokeBorder(Color.white.opacity(0.3)))
             .contentShape(Capsule())

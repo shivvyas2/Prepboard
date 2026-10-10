@@ -36,7 +36,7 @@ struct PrepTimelineView: View {
 
         return ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 16) {
                     header(role)
                     if !days.isEmpty { track(days: days, all: all, role: role, now: now, proxy: proxy) }
                     filters(all)
@@ -94,7 +94,7 @@ struct PrepTimelineView: View {
 
     private func filters(_ all: [PrepTask]) -> some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 filterPill("All", count: all.filter { !$0.isBreak }.count, on: app.kindFilter == nil) { app.kindFilter = nil }
                 ForEach(SessionKind.allCases.filter { $0 != .break }) { k in
                     filterPill(k.label, count: all.filter { $0.kind == k }.count, on: app.kindFilter == k, swatch: k.color) {
@@ -114,7 +114,7 @@ struct PrepTimelineView: View {
                 Text(title).font(.system(size: 13, weight: .medium))
                 Text("\(count)").font(.pbMono).opacity(0.6)
             }
-            .padding(.horizontal, 14).frame(height: 36)
+            .padding(.horizontal, 16).frame(height: 36)
             .foregroundStyle(on ? Color.white : PB.ink2)
             .background(Capsule().fill(on ? PB.cobalt : PB.card))
             .overlay(Capsule().strokeBorder(on ? PB.cobalt : PB.line))
@@ -134,9 +134,9 @@ struct PrepTimelineView: View {
                     let work = ds.filter { !$0.isBreak }
                     let isToday = cal.isDateInToday(day)
                     let isInterview = role?.interviewAt.map { cal.isDate($0, inSameDayAs: day) } ?? false
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 12) {
                         Button { withAnimation(.snappy) { proxy.scrollTo("day-\(dayKey(day))", anchor: .top) } } label: {
-                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
                                 Text(day.formatted(.dateTime.day())).font(.system(size: 22, weight: .bold)).kerning(-0.6)
                                 Text(day.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated)) + (isToday ? " · Today" : ""))
                                     .font(.system(size: 12, weight: .medium)).foregroundStyle(isToday ? PB.cobalt : PB.muted)
@@ -145,7 +145,7 @@ struct PrepTimelineView: View {
                         .buttonStyle(.plain)
                         ZStack(alignment: .leading) {
                             Rectangle().fill(PB.line2).frame(height: 1).padding(.horizontal, -16)
-                            HStack(spacing: 6) {
+                            HStack(spacing: 8) {
                                 ForEach(ds) { t in dot(t, now: now) }
                                 if isInterview {
                                     Button { app.scrollTarget = "interview" } label: {
@@ -169,7 +169,7 @@ struct PrepTimelineView: View {
             }
             .padding(.vertical, 4)
         }
-        .pbCard(padding: 14)
+        .pbCard(padding: 16)
     }
 
     private func dot(_ t: PrepTask, now: Date) -> some View {
@@ -215,13 +215,13 @@ struct PrepTimelineView: View {
             items.insert(.now(now), at: idx)
         }
 
-        let numeral = VStack(alignment: .leading, spacing: 10) {
+        let numeral = VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 4) {
                 Text(day.formatted(.dateTime.day(.twoDigits)))
                     .font(.system(size: 80, weight: .heavy)).kerning(-4)
                     .foregroundStyle(isPast ? PB.line2 : PB.ink)
                 Text(day.formatted(.dateTime.weekday(.abbreviated)))
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(isToday ? PB.cobalt : PB.muted).padding(.top, 10)
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(isToday ? PB.cobalt : PB.muted).padding(.top, 12)
             }
             .frame(height: 76, alignment: .top)
             Text(day.formatted(.dateTime.month(.wide)) + (isToday ? " · Today" : "")).font(.system(size: 12)).foregroundStyle(PB.muted)
@@ -233,7 +233,7 @@ struct PrepTimelineView: View {
                 .buttonStyle(PillButtonStyle(filled: false, compact: true))
         }
 
-        let list = VStack(alignment: .leading, spacing: 10) {
+        let list = VStack(alignment: .leading, spacing: 12) {
             ForEach(items) { item in
                 switch item {
                 case .session(let t): SessionCard(task: t, now: now, docsById: docsById).id(t.id)
@@ -241,22 +241,22 @@ struct PrepTimelineView: View {
                 case .now(let d): nowLine(d).id("now")
                 }
             }
-            if items.isEmpty { Text("Nothing scheduled.").foregroundStyle(PB.muted).padding(.vertical, 14) }
+            if items.isEmpty { Text("Nothing scheduled.").foregroundStyle(PB.muted).padding(.vertical, 16) }
         }
 
         return Group {
             if containerWidth >= 600 {
-                HStack(alignment: .top, spacing: 18) { numeral.frame(width: 128, alignment: .leading); list.frame(maxWidth: .infinity) }
+                HStack(alignment: .top, spacing: 16) { numeral.frame(width: 128, alignment: .leading); list.frame(maxWidth: .infinity) }
             } else {
-                VStack(alignment: .leading, spacing: 14) { numeral; list }
+                VStack(alignment: .leading, spacing: 16) { numeral; list }
             }
         }
-        .padding(.vertical, 26)
+        .padding(.vertical, 24)
         .overlay(alignment: .top) { Rectangle().fill(first ? PB.cobalt : PB.line2).frame(height: first ? 2 : 1) }
     }
 
     private func nowLine(_ now: Date) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Circle().fill(PB.cobalt).frame(width: 9, height: 9)
             Text("Now \(TimeFmt.hm(now))").font(.system(size: 12, weight: .semibold, design: .monospaced))
             Rectangle().fill(PB.cobalt).frame(height: 1.5)
@@ -267,18 +267,18 @@ struct PrepTimelineView: View {
     private func interviewCard(_ role: Role, at: Date, now: Date) -> some View {
         let s = max(0, Int(at.timeIntervalSince(now)))
         return HStack(alignment: .center, spacing: 16) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(TimeFmt.hm(at)).font(.system(size: 15, weight: .semibold, design: .monospaced))
                 Text(TimeFmt.hm(at.addingTimeInterval(45 * 60))).font(.system(size: 12, design: .monospaced)).opacity(0.6)
             }
             .frame(width: 58, alignment: .leading)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text("INTERVIEW").font(.pbLabel).kerning(0.9).opacity(0.55)
                 Text("\(role.company) — \(role.title)").font(.system(size: 21, weight: .bold)).kerning(-0.4)
                 if !role.interviewNote.isEmpty { Text(role.interviewNote).opacity(0.65) }
             }
             Spacer(minLength: 0)
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 ForEach([(s / 86400, "days"), (s % 86400 / 3600, "hours"), (s % 3600 / 60, "min")], id: \.1) { v, l in
                     VStack(spacing: 0) {
                         Text(String(format: "%02d", v)).font(.system(size: 22, weight: .bold)).monospacedDigit()
@@ -291,7 +291,7 @@ struct PrepTimelineView: View {
             }
         }
         .foregroundStyle(PB.onSun)
-        .padding(.horizontal, 22).padding(.vertical, 20)
+        .padding(.horizontal, 24).padding(.vertical, 24)
         .background(RoundedRectangle(cornerRadius: PB.rLG, style: .continuous).fill(PB.sun))
     }
 
@@ -310,7 +310,7 @@ struct SessionCard: View {
         let current = st == .current
         let fg: Color = current ? .white : PB.ink
         HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(TimeFmt.hm(task.start)).font(.system(size: 15, weight: .semibold, design: .monospaced))
                     .foregroundStyle(st == .missed ? PB.muted : fg)
                 Text(TimeFmt.hm(task.end)).font(.system(size: 12, design: .monospaced))
@@ -318,14 +318,14 @@ struct SessionCard: View {
             }
             .frame(width: 58, alignment: .leading)
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 if !task.isBreak {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 12) {
                         KindLabel(kind: task.kind, inverted: current)
                         Text(TimeFmt.duration(task.minutes)).font(.pbMono).foregroundStyle(current ? Color.white.opacity(0.6) : PB.muted)
                         if current {
                             Text("NOW").font(.system(size: 11, weight: .bold)).foregroundStyle(PB.onSun)
-                                .padding(.horizontal, 7).padding(.vertical, 2)
+                                .padding(.horizontal, 8).padding(.vertical, 4)
                                 .background(RoundedRectangle(cornerRadius: 6).fill(PB.sun))
                         }
                     }
@@ -336,7 +336,7 @@ struct SessionCard: View {
                     .strikethrough(st == .done)
                     .fixedSize(horizontal: false, vertical: true)
                 if !task.refs.isEmpty {
-                    FlowLayout(spacing: 6) {
+                    FlowLayout(spacing: 8) {
                         ForEach(task.refs, id: \.self) { RefChip(ref: $0, doc: docsById[$0.docId], inverted: current) }
                     }
                     .padding(.top, 4)
@@ -347,7 +347,7 @@ struct SessionCard: View {
             .overlay(alignment: .leading) { Rectangle().fill(current ? Color.white.opacity(0.15) : PB.line).frame(width: 1) }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 if !task.isBreak {
                     Toggle("Done", isOn: $task.done).toggleStyle(CheckboxToggleStyle(inverted: current))
                 }
@@ -361,7 +361,7 @@ struct SessionCard: View {
                 .buttonStyle(.plain).help("Edit session")
             }
         }
-        .padding(.horizontal, 18).padding(.vertical, task.isBreak ? 10 : 16)
+        .padding(.horizontal, 16).padding(.vertical, task.isBreak ? 10 : 16)
         .background(
             RoundedRectangle(cornerRadius: PB.rLG, style: .continuous)
                 .fill(task.isBreak ? Color.clear : current ? PB.cobalt : st == .done ? PB.card.opacity(0.5) : PB.card)

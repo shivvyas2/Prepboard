@@ -9,7 +9,8 @@ import Observation
 /// Off by default. When turned on, PrepBoard listens on port 8788 while it's open. Every request must carry
 /// the 16-character pairing code (`Authorization: Bearer …`); browsers are refused outright (they always send
 /// an Origin), an address is locked out for 15 minutes after 10 wrong codes, and Claude Code runs with the
-/// same read-only and web tools as everywhere else in the app.
+/// same read-only and web tools as everywhere else in the app. `/exec` compiles and runs Practice code
+/// (Swift, Python, JavaScript) for paired devices, one run at a time, with the 30-second limit CodeRunner applies.
 @MainActor
 @Observable
 final class DeviceBridge {
@@ -24,6 +25,7 @@ final class DeviceBridge {
     @ObservationIgnored private var listener: NWListener?
     @ObservationIgnored private weak var claude: ClaudeCode?
     @ObservationIgnored private var failures: [String: (count: Int, at: Date)] = [:]
+    @ObservationIgnored private var executing = false
     private static let codeKey = "device-bridge-code"
     private static let allowedTools: Set<String> = ["Read", "Grep", "Glob", "WebSearch", "WebFetch"]
     private static let maxBody = 300_000
@@ -196,6 +198,18 @@ final class DeviceBridge {
             } catch {
                 reply(conn, 200, ["result": error.localizedDescription, "is_error": true])
             }
+        case ("POST", "/exec"):
+            guard let obj = try? JSONSerialization.jsonObject(with: req.body) as? [String: Any],
+                  let code = obj["code"] as? String, code.utf8.count <= 200_000,
+                  let lang = CodeLang(rawValue: (obj["lang"] as? String) ?? "") else {
+                return reply(conn, 400, ["error": "code and lang (swift, python, javascript) are required"])
+            }
+            guard !executing else { return reply(conn, 429, ["error": "Your Mac is already running code. Try again in a moment."]) }
+            executing = true
+            lastUsed = .now
+            let output = await CodeRunner.run(code, lang: lang)
+            executing = false
+            reply(conn, 200, ["output": output])
         default:
             reply(conn, 404, ["error": "Not found"])
         }

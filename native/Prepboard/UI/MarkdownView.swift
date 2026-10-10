@@ -101,7 +101,7 @@ struct MarkdownTable: View {
                             Text(MarkdownParser.inline(c < row.count ? row[c] : ""))
                                 .font(.system(size: 12.5, weight: r == 0 ? .semibold : .regular))
                                 .fixedSize(horizontal: false, vertical: true)
-                                .padding(.horizontal, 10).padding(.vertical, 7)
+                                .padding(.horizontal, 12).padding(.vertical, 8)
                                 .frame(width: widths[c], alignment: .topLeading)
                                 .frame(maxHeight: .infinity, alignment: .topLeading)
                         }
@@ -121,7 +121,7 @@ struct MarkdownView: View {
     let blocks: [MDBlock]
 
     var body: some View {
-        LazyVStack(alignment: .leading, spacing: 10) {
+        LazyVStack(alignment: .leading, spacing: 12) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { idx, block in
                 view(for: block).id(idx)
             }
@@ -135,7 +135,7 @@ struct MarkdownView: View {
         switch block {
         case let .heading(level, text):
             VStack(alignment: .leading, spacing: 8) {
-                if level == 2 { Divider().overlay(PB.line).padding(.top, 14) }
+                if level == 2 { Divider().overlay(PB.line).padding(.top, 16) }
                 Text(MarkdownParser.inline(text))
                     .font(.system(size: level == 1 ? 30 : level == 2 ? 21 : 16, weight: .bold))
                     .kerning(level <= 2 ? -0.5 : 0)
@@ -161,7 +161,7 @@ struct MarkdownView: View {
                 Text(code)
                     .font(.system(size: 12.5, design: .monospaced))
                     .foregroundStyle(PB.ink)
-                    .padding(14)
+                    .padding(16)
             }
             .background(RoundedRectangle(cornerRadius: PB.rMD).fill(PB.surface))
             .overlay(RoundedRectangle(cornerRadius: PB.rMD).strokeBorder(PB.line))

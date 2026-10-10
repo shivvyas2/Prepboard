@@ -188,7 +188,7 @@ struct AIKeySection: View {
                 Spacer()
                 if status?.has_key == true {
                     Text("Saved ••••\(status?.hint ?? "")").font(.system(size: 11, weight: .bold)).foregroundStyle(PB.cobalt)
-                        .padding(.horizontal, 8).padding(.vertical, 3).background(RoundedRectangle(cornerRadius: 8).fill(PB.cobaltSoft))
+                        .padding(.horizontal, 8).padding(.vertical, 4).background(RoundedRectangle(cornerRadius: 8).fill(PB.cobaltSoft))
                     Button("Remove") { Task { await call(Req(mode: "delete_key")); await refresh() } }
                         .buttonStyle(PillButtonStyle(filled: false, compact: true))
                 }
@@ -197,7 +197,7 @@ struct AIKeySection: View {
                 HStack(spacing: 8) {
                     SecureField(status?.has_key == true ? "Replace with a new key (sk-ant-…)" : "sk-ant-…", text: $key)
                         .textFieldStyle(.plain)
-                        .padding(.horizontal, 10).padding(.vertical, 8)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
                         .background(RoundedRectangle(cornerRadius: 10).fill(PB.card))
                         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(PB.line))
                     Button(busy ? "Checking…" : "Save") { save() }.buttonStyle(PillButtonStyle(compact: true)).disabled(busy || key.isEmpty)
@@ -257,20 +257,20 @@ struct ProfileSheet: View {
             }
             HStack(spacing: 16) {
                 ProfileAvatar(size: 72)
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 8) {
                     TextField("Your name", text: $profile.name).textFieldStyle(.plain).font(.system(size: 20, weight: .bold))
                     TextField("Headline, e.g. iOS engineer · New York", text: $profile.headline).textFieldStyle(.plain)
                         .foregroundStyle(PB.ink2)
                 }
             }
             Text("Choose an avatar").pbLabelStyle()
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 10) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 6), spacing: 12) {
                 ForEach(AvatarSpec.all.indices, id: \.self) { i in
                     let on = profile.photo == nil && profile.avatar == i
                     Button { profile.avatar = i; profile.photo = nil } label: {
                         IllustratedAvatar(index: i)
                             .clipShape(Circle())
-                            .padding(3)
+                            .padding(4)
                             .overlay(Circle().strokeBorder(on ? PB.cobalt : Color.clear, lineWidth: 2.5))
                             .contentShape(Circle())
                     }
@@ -298,7 +298,7 @@ struct ProfileSheet: View {
                 Button("Done") { dismiss() }.buttonStyle(PillButtonStyle()).keyboardShortcut(.defaultAction)
             }
         }
-        .padding(22)
+        .padding(24)
         .frame(minWidth: 460)
         .background(PB.card)
         .fileImporter(isPresented: $importing, allowedContentTypes: [.image]) { result in
@@ -312,14 +312,14 @@ struct ProfileSheet: View {
     @ViewBuilder
     private var accountSection: some View {
         if cloud.configured, let user = cloud.user {
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 Circle().fill(cloud.status == .synced ? Color(hex: 0x2F7D4F) : cloud.status == .syncing ? PB.sun : Color(hex: 0xC2410C))
                     .frame(width: 8, height: 8)
                 Text("\(user.email ?? "Signed in") · \(cloud.status.rawValue)").font(.system(size: 13)).lineLimit(1)
                 Spacer()
                 Button("Sign out") { Task { await cloud.signOut() } }.buttonStyle(PillButtonStyle(filled: false, compact: true))
             }
-            .padding(.top, 6)
+            .padding(.top, 8)
         } else if !cloud.configured {
             Text("Accounts aren't connected yet. Your data is saved on this device.").font(.system(size: 12)).foregroundStyle(PB.muted)
         }
@@ -330,7 +330,7 @@ struct ProfileSheet: View {
         HStack(spacing: 12) {
             ClaudeMark().frame(width: 26, height: 26)
                 .padding(8).background(Circle().fill(Color(hex: 0xF5EDE4)))
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text("Claude Code").font(.system(size: 14, weight: .semibold))
                 Text(claudeStatus).font(.system(size: 12)).foregroundStyle(PB.muted).lineLimit(2)
             }
@@ -399,11 +399,11 @@ struct MacBridgeSection: View {
     @State private var busy = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 ClaudeMark().frame(width: 22, height: 22)
-                    .padding(7).background(Circle().fill(Color(hex: 0xF5EDE4)))
-                VStack(alignment: .leading, spacing: 2) {
+                    .padding(8).background(Circle().fill(Color(hex: 0xF5EDE4)))
+                VStack(alignment: .leading, spacing: 4) {
                     Text("Claude Code on my Mac").font(.system(size: 14, weight: .semibold))
                     Text(statusText).font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
                 }
@@ -446,7 +446,7 @@ struct MacBridgeSection: View {
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
             .font(.system(size: 15, design: .monospaced))
-            .padding(.horizontal, 10).frame(minHeight: 44)
+            .padding(.horizontal, 12).frame(minHeight: 44)
             .background(RoundedRectangle(cornerRadius: 10).fill(PB.card))
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(PB.line))
     }
@@ -469,17 +469,17 @@ struct DeviceBridgeSection: View {
     @Environment(DeviceBridge.self) private var bridge
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             Toggle(isOn: Binding(get: { bridge.enabled }, set: { bridge.setEnabled($0) })) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text("Let my iPhone and iPad use Claude Code").font(.system(size: 14, weight: .semibold))
                     Text("Works while PrepBoard is open on this Mac, over the same Wi-Fi or Tailscale.")
                         .font(.system(size: 12)).foregroundStyle(PB.muted)
                 }
             }
-            .toggleStyle(CheckboxToggleStyle())
+            .toggleStyle(CheckboxToggleStyle(labeled: true))
             if bridge.enabled {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text("On iPhone or iPad: Profile → Claude Code on my Mac, then enter").font(.system(size: 12)).foregroundStyle(PB.ink2)
                     ForEach(bridge.addresses, id: \.ip) { a in
                         row("Address", "\(a.ip):\(DeviceBridgeConfig.port)", note: a.tailscale ? "Tailscale · works away from home" : "This Wi-Fi only")
@@ -494,7 +494,7 @@ struct DeviceBridgeSection: View {
                             .help("Unpairs every device; enter the new code on each one")
                     }
                 }
-                .padding(.leading, 34)
+                .padding(.leading, 32)
             }
         }
         .padding(12)
@@ -503,7 +503,7 @@ struct DeviceBridgeSection: View {
     }
 
     private func row(_ label: String, _ value: String, note: String?) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Text(label).pbLabelStyle().frame(width: 60, alignment: .leading)
             Text(value).font(.system(size: 14, weight: .semibold, design: .monospaced)).textSelection(.enabled)
             if let note { Text(note).font(.system(size: 11)).foregroundStyle(PB.muted) }
@@ -532,7 +532,7 @@ struct TimeFormatSection: View {
                 Text(sample).font(.system(size: 12, design: .monospaced)).foregroundStyle(PB.muted)
             }
         }
-        .toggleStyle(CheckboxToggleStyle())
+        .toggleStyle(CheckboxToggleStyle(labeled: true))
     }
 }
 
@@ -543,8 +543,8 @@ struct EmojiCleanupSection: View {
     @State private var result: String?
 
     var body: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text("Remove emoji").font(.system(size: 14, weight: .semibold))
                 Text(result ?? "Clean every document, session, role and problem. Syncs to all your devices.")
                     .font(.system(size: 12)).foregroundStyle(result == nil ? PB.muted : PB.cobalt).fixedSize(horizontal: false, vertical: true)

@@ -54,10 +54,10 @@ struct RootView: View {
     private var wideShell: some View {
         HStack(alignment: .top, spacing: 0) {
             VStack(spacing: 12) {
-                PrepBoardLogo(size: 48).help("PrepBoard").padding(.bottom, 6)
+                PrepBoardLogo(size: 48).help("PrepBoard").padding(.bottom, 8)
                 Button { app.showProfile = true } label: {
                     ProfileAvatar(size: 48)
-                        .padding(2)
+                        .padding(4)
                         .overlay(Circle().strokeBorder(PB.line2, lineWidth: 1.5))
                         .overlay(alignment: .topTrailing) {
                             Circle().fill(PB.sun).frame(width: 12, height: 12)
@@ -66,7 +66,7 @@ struct RootView: View {
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain).help("Profile")
-                .padding(.bottom, 18)
+                .padding(.bottom, 16)
                 ForEach(Section.allCases) { s in
                     CircleIconButton(systemImage: s.icon, size: 48, active: app.section == s, label: s.rawValue) { app.section = s }
                 }
@@ -86,15 +86,15 @@ struct RootView: View {
                 CircleIconButton(systemImage: "square.and.arrow.down", size: 48, label: "Import JSON") { app.showImporter = true }
                 CircleIconButton(systemImage: "square.and.arrow.up", size: 48, label: "Export JSON") { app.prepareExport(context) }
             }
-            .padding(.vertical, 20)
+            .padding(.vertical, 24)
             .frame(width: 80)
             #if os(macOS)
-            .padding(.top, 18)
+            .padding(.top, 16)
             #endif
 
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 24) {
                 topBar
-                HStack(alignment: .top, spacing: 18) {
+                HStack(alignment: .top, spacing: 16) {
                     content.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     if let v = app.sideVideo {
                         VStack { SideVideoPanel(video: v); Spacer(minLength: 0) }
@@ -103,7 +103,7 @@ struct RootView: View {
                     }
                     #if os(macOS)
                     if app.showClaude && claude.isReady {
-                        ClaudePanel().frame(width: app.claudeTerminal ? 640 : 400).padding(.bottom, 20)
+                        ClaudePanel().frame(width: app.claudeTerminal ? 640 : 400).padding(.bottom, 24)
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
                     #endif
@@ -111,9 +111,9 @@ struct RootView: View {
                 .animation(.snappy, value: app.showClaude)
                 .animation(.snappy, value: app.sideVideo)
             }
-            .padding(.top, 20).padding(.trailing, 24)
+            .padding(.top, 24).padding(.trailing, 24)
             #if os(macOS)
-            .padding(.top, 10)
+            .padding(.top, 12)
             #endif
         }
     }
@@ -133,7 +133,7 @@ struct RootView: View {
                 ForEach(Section.allCases) { s in
                     Button { app.section = s } label: {
                         Text(s.rawValue).font(.system(size: 14, weight: .medium))
-                            .padding(.horizontal, 18).frame(height: 40)
+                            .padding(.horizontal, 16).frame(height: 40)
                             .foregroundStyle(app.section == s ? Color.white : PB.ink2)
                             .background(Capsule().fill(app.section == s ? PB.cobalt : Color.clear))
                             .contentShape(Capsule())
@@ -164,7 +164,7 @@ struct RootView: View {
             Button("Role") { app.newRole(context) }
         } label: {
             Label("New", systemImage: "plus").font(.system(size: 14, weight: .semibold))
-                .padding(.horizontal, 20).frame(height: 44)
+                .padding(.horizontal, 24).frame(height: 44)
                 .foregroundStyle(.white)
                 .background(Capsule().fill(PB.cobalt))
                 .contentShape(Capsule())
@@ -175,15 +175,59 @@ struct RootView: View {
     // MARK: iPhone — tab bar
 
     #if os(iOS)
+    /// iPhone tabs: the four most-used sections, then PrepBoard's own "More" (one top bar, no nested navigation).
+    private static let primaryTabs: [Section] = [.dashboard, .timeline, .practice, .documents]
+    private static let moreTabs: [Section] = Section.allCases.filter { !primaryTabs.contains($0) }
+
     private var compactShell: some View {
-        @Bindable var app = app
-        return TabView(selection: $app.section) {
-            ForEach(Section.allCases) { s in
-                NavigationStack {
+        let selection = Binding<String>(
+            get: { Self.primaryTabs.contains(app.section) ? app.section.rawValue : "more" },
+            set: { tag in
+                if let s = Self.primaryTabs.first(where: { $0.rawValue == tag }) { app.section = s }
+                else if Self.primaryTabs.contains(app.section) { app.section = .essentials }
+            })
+        return TabView(selection: selection) {
+            ForEach(Self.primaryTabs) { s in
+                compactPage { content }
+                    .tabItem { Label(s.rawValue, systemImage: s.icon) }
+                    .tag(s.rawValue)
+            }
+            compactPage {
+                VStack(alignment: .leading, spacing: 16) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(Self.moreTabs) { s in
+                                Button { app.section = s } label: {
+                                    Label(s.rawValue, systemImage: s.icon).font(.system(size: 14, weight: .semibold))
+                                        .padding(.horizontal, 16).frame(height: 40)
+                                        .foregroundStyle(app.section == s ? Color.white : PB.ink)
+                                        .background(Capsule().fill(app.section == s ? PB.cobalt : PB.card))
+                                        .overlay(Capsule().strokeBorder(app.section == s ? Color.clear : PB.line))
+                                        .contentShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
                     content
+                }
+            }
+            .tabItem { Label("More", systemImage: "ellipsis") }
+            .tag("more")
+        }
+        // iPhone: the video docks at the top and keeps playing across tabs.
+        .safeAreaInset(edge: .top) {
+            if let v = app.sideVideo { SideVideoPanel(video: v, compact: true).padding(.horizontal, 16).padding(.bottom, 8).background(PB.background) }
+        }
+    }
+
+    private func compactPage<V: View>(@ViewBuilder _ page: () -> V) -> some View {
+        NavigationStack {
+                    page()
                         .padding(.horizontal, 16).padding(.top, 8)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                         .background(PB.background)
+                        .navigationBarTitleDisplayMode(.inline)
                         .toolbar {
                             ToolbarItem(placement: .principal) { PrepBoardMark().frame(width: 22, height: 26) }
                             ToolbarItem(placement: .topBarTrailing) { newMenu.scaleEffect(0.85) }
@@ -192,17 +236,9 @@ struct RootView: View {
                                     Button("Profile") { app.showProfile = true }
                                     Button("Import JSON") { app.showImporter = true }
                                     Button("Export JSON") { app.prepareExport(context) }
-                                } label: { ProfileAvatar(size: 30) }
+                                } label: { ProfileAvatar(size: 32) }
                             }
                         }
-                }
-                .tabItem { Label(s.rawValue, systemImage: s.icon) }
-                .tag(s)
-            }
-        }
-        // iPhone: the video docks at the top and keeps playing across tabs.
-        .safeAreaInset(edge: .top) {
-            if let v = app.sideVideo { SideVideoPanel(video: v, compact: true).padding(.horizontal, 12).padding(.bottom, 6).background(PB.background) }
         }
     }
     #endif

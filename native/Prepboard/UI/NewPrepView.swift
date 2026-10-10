@@ -126,7 +126,7 @@ struct NewPrepView: View {
                         Color.clear.frame(height: 1).id("end")
                     }
                     .frame(maxWidth: 760)
-                    .padding(.horizontal, 20).padding(.vertical, 20)
+                    .padding(.horizontal, 24).padding(.vertical, 24)
                     .frame(maxWidth: .infinity)
                 }
                 .onChange(of: messages.count) { withAnimation { proxy.scrollTo("end") } }
@@ -135,7 +135,7 @@ struct NewPrepView: View {
 
             if !attachments.isEmpty { attachmentChips.frame(maxWidth: 760).padding(.horizontal, 16).padding(.bottom, 8) }
 
-            HStack(alignment: .bottom, spacing: 10) {
+            HStack(alignment: .bottom, spacing: 12) {
                 Button { importing = true } label: {
                     Image(systemName: "paperclip").font(.system(size: 16, weight: .medium)).foregroundStyle(PB.ink2)
                         .frame(width: 36, height: 42)
@@ -162,7 +162,7 @@ struct NewPrepView: View {
             .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(PB.line2))
             .shadow(color: Color(hex: 0x3C2D14).opacity(0.07), radius: 14, y: 8)
             .frame(maxWidth: 760)
-            .padding(.horizontal, 16).padding(.bottom, 20)
+            .padding(.horizontal, 16).padding(.bottom, 24)
         }
         .background(PB.background)
         .onAppear { focused = true }
@@ -181,7 +181,7 @@ struct NewPrepView: View {
             Text("What are you preparing for?").font(.system(size: 42, weight: .bold)).kerning(-1.6).multilineTextAlignment(.center)
             Text("Tell me the role, paste the job posting, and when the interview is. I'll build your timeline, sessions and study guides.")
                 .foregroundStyle(PB.muted).multilineTextAlignment(.center).frame(maxWidth: 520)
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 if usingClaudeCode { ClaudeMark().frame(width: 12, height: 12) }
                 Text(usingClaudeCode ? "Using your Claude Code" : "Using your Anthropic key (Profile → AI)")
                     .font(.system(size: 12)).foregroundStyle(PB.muted)
@@ -193,13 +193,13 @@ struct NewPrepView: View {
             }
             .frame(maxWidth: 620)
         }
-        .padding(.top, 50)
+        .padding(.top, 48)
     }
 
     private var attachmentChips: some View {
         FlowLayout(spacing: 8) {
             ForEach($attachments) { $a in
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Image(systemName: "doc.richtext").foregroundStyle(PB.cobalt)
                     Text(a.name).font(.system(size: 12, weight: .medium)).lineLimit(1)
                     Menu(a.kind.rawValue) {
@@ -211,7 +211,7 @@ struct NewPrepView: View {
                             .buttonStyle(.plain).foregroundStyle(PB.muted).accessibilityLabel("Remove \(a.name)")
                     }
                 }
-                .padding(.horizontal, 10).frame(height: 32)
+                .padding(.horizontal, 12).frame(height: 32)
                 .background(Capsule().fill(PB.card)).overlay(Capsule().strokeBorder(PB.line))
             }
         }
@@ -245,30 +245,30 @@ struct NewPrepView: View {
             return acc + b.timeIntervalSince(a) / 3600
         }
         let days = Set(p.sessions.compactMap { DateCoding.date($0.start).map { Calendar.current.startOfDay(for: $0) } }).count
-        return VStack(alignment: .leading, spacing: 14) {
+        return VStack(alignment: .leading, spacing: 16) {
             Text("Your plan").pbLabelStyle()
             Text("\(p.role.company) — \(p.role.title)").font(.system(size: 20, weight: .bold)).kerning(-0.4)
             if let at = DateCoding.date(p.role.interview_at) {
                 Text("\(at.pbFull) · \(p.role.interview_note)").font(.system(size: 13)).foregroundStyle(PB.muted)
             }
             Text(p.summary).font(.system(size: 14)).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 stat("Days", "\(days)"); stat("Sessions", "\(work.count)"); stat("Prep hours", String(format: "%.1f", hours))
             }
             Text("Study guides").pbLabelStyle()
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(p.docs, id: \.key) { Text("• \($0.title)").font(.system(size: 13)).foregroundStyle(PB.ink2) }
             }
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 Button("Create plan") { apply(p) }.buttonStyle(PillButtonStyle())
                 Text("You can keep chatting to change it first.").font(.system(size: 12)).foregroundStyle(PB.muted)
             }
         }
-        .pbCard(padding: 20, radius: 24)
+        .pbCard(padding: 24, radius: 24)
     }
 
     private func stat(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(label).pbLabelStyle()
             Text(value).font(.system(size: 22, weight: .bold))
         }

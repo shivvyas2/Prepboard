@@ -29,6 +29,17 @@ enum PB {
 
     static let rXL: CGFloat = 28, rLG: CGFloat = 20, rMD: CGFloat = 14
 
+    /// 8-point grid. Spacing and padding use these steps (4 is the half step for tight pairs).
+    static let s1: CGFloat = 4, s2: CGFloat = 8, s3: CGFloat = 12, s4: CGFloat = 16, s6: CGFloat = 24, s8: CGFloat = 32, s12: CGFloat = 48
+    /// Minimum tap target (Apple HIG): 44 pt on touch screens; the Mac uses a pointer.
+    #if os(iOS)
+    static let minTap: CGFloat = 44
+    static func controlHeight(compact: Bool) -> CGFloat { compact ? 40 : 48 }
+    #else
+    static let minTap: CGFloat = 0
+    static func controlHeight(compact: Bool) -> CGFloat { compact ? 32 : 40 }
+    #endif
+
     static var background: some View {
         LinearGradient(colors: [bg, bg2], startPoint: .top, endPoint: .bottom).ignoresSafeArea()
     }
@@ -55,7 +66,7 @@ struct CardModifier: ViewModifier {
 }
 
 extension View {
-    func pbCard(padding: CGFloat = 20, fill: Color = PB.card, radius: CGFloat = PB.rXL) -> some View {
+    func pbCard(padding: CGFloat = 24, fill: Color = PB.card, radius: CGFloat = PB.rXL) -> some View {
         modifier(CardModifier(padding: padding, fill: fill, radius: radius))
     }
     func pbLabelStyle() -> some View {
@@ -69,8 +80,8 @@ struct PillButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: compact ? 13 : 14, weight: filled ? .semibold : .medium))
-            .padding(.horizontal, compact ? 14 : 20)
-            .frame(height: compact ? 34 : 44)
+            .padding(.horizontal, compact ? 16 : 24)
+            .frame(height: PB.controlHeight(compact: compact))
             .foregroundStyle(filled ? Color.white : PB.ink2)
             .background(Capsule().fill(filled ? PB.cobalt : Color.clear))
             .overlay(Capsule().strokeBorder(filled ? Color.clear : PB.line2))
@@ -94,7 +105,8 @@ struct CircleIconButton: View {
                 .foregroundStyle(active ? Color.white : PB.ink2)
                 .background(Circle().fill(active ? PB.cobalt : PB.card))
                 .overlay(Circle().strokeBorder(active ? PB.cobalt : PB.line))
-                .contentShape(Circle())
+                // Touch: at least 44 pt to tap, even when the circle is drawn smaller.
+                .contentShape(Rectangle().inset(by: -max(0, PB.minTap - size) / 2))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label.isEmpty ? systemImage : label)
@@ -105,8 +117,29 @@ struct CircleIconButton: View {
 /// Square checkbox (no switches) — matches the web app.
 struct CheckboxToggleStyle: ToggleStyle {
     var inverted = false
+    /// Show the toggle's label beside the box (the whole row is the tap target).
+    var labeled = false
     func makeBody(configuration: Configuration) -> some View {
-        Button { configuration.isOn.toggle() } label: {
+        if labeled {
+            Button { configuration.isOn.toggle() } label: {
+                HStack(spacing: 8) {
+                    box(configuration)
+                    configuration.label.font(.system(size: 14, weight: .medium)).foregroundStyle(PB.ink).fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(minHeight: 32)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(configuration.isOn ? [.isSelected] : [])
+        } else {
+            Button { configuration.isOn.toggle() } label: { box(configuration) }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Done")
+                .accessibilityAddTraits(configuration.isOn ? [.isSelected] : [])
+        }
+    }
+
+    private func box(_ configuration: Configuration) -> some View {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(configuration.isOn ? (inverted ? PB.sun : PB.cobalt) : Color.clear)
                 .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous)
@@ -120,10 +153,6 @@ struct CheckboxToggleStyle: ToggleStyle {
                 .frame(width: 22, height: 22)
                 .contentShape(Rectangle())
                 .animation(.easeOut(duration: 0.12), value: configuration.isOn)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Done")
-        .accessibilityAddTraits(configuration.isOn ? [.isSelected] : [])
     }
 }
 
@@ -134,7 +163,7 @@ struct Chip: View {
     var body: some View {
         Text(text)
             .font(.system(size: 11, weight: .semibold))
-            .padding(.horizontal, 10).padding(.vertical, 4)
+            .padding(.horizontal, 12).padding(.vertical, 4)
             .foregroundStyle(style == .plain ? PB.ink2 : .white)
             .background(RoundedRectangle(cornerRadius: 8).fill(style == .dark ? PB.cobalt : style == .red ? PB.red : PB.surface))
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(style == .plain ? PB.line : .clear))
@@ -169,7 +198,7 @@ struct PBTextField: View {
             TextField(label, text: $text, axis: axis)
                 .textFieldStyle(.plain)
                 .lineLimit(axis == .vertical ? 4...12 : 1...1)
-                .padding(.horizontal, 12).padding(.vertical, 10)
+                .padding(.horizontal, 12).padding(.vertical, 12)
                 .background(RoundedRectangle(cornerRadius: 12).fill(PB.surface))
                 .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(PB.line))
         }

@@ -38,7 +38,7 @@ struct AuthView: View {
 
     private func formScroll(maxWidth: CGFloat) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 24) {
                 header
                 fields
                 if let message { banner(message) }
@@ -53,18 +53,18 @@ struct AuthView: View {
         .safeAreaInset(edge: .bottom) {
             primaryButton
                 .frame(maxWidth: maxWidth)
-                .padding(.horizontal, 24).padding(.top, 10).padding(.bottom, 12)
+                .padding(.horizontal, 24).padding(.top, 12).padding(.bottom, 12)
                 .frame(maxWidth: .infinity)
         }
     }
 
     private var brandPanel: some View {
-        VStack(alignment: .leading, spacing: 26) {
+        VStack(alignment: .leading, spacing: 24) {
             HStack(spacing: 12) {
                 PrepBoardLogo(size: 52)
                 Text("PrepBoard").font(.system(size: 22, weight: .bold)).kerning(-0.5).foregroundStyle(.white)
             }
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 Text("Prepare for the job you want, one session at a time.")
                     .font(.system(size: 44, weight: .bold)).kerning(-1.6).foregroundStyle(.white)
                     .minimumScaleFactor(0.6)
@@ -85,8 +85,8 @@ struct AuthView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
                 PrepBoardLogo(size: 36)
                 Text("PrepBoard").font(.system(size: 17, weight: .bold)).kerning(-0.3)
             }
@@ -160,12 +160,12 @@ struct AuthView: View {
     }
 
     private func field<Content: View>(_ label: String, @ViewBuilder _ content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(label).pbLabelStyle()
             content()
                 .textFieldStyle(.plain)
                 .font(.system(size: 17))
-                .padding(.horizontal, 14).frame(minHeight: 52)
+                .padding(.horizontal, 16).frame(minHeight: 52)
                 .background(RoundedRectangle(cornerRadius: PB.rMD, style: .continuous).fill(PB.card))
                 .overlay(RoundedRectangle(cornerRadius: PB.rMD, style: .continuous).strokeBorder(PB.line2))
         }

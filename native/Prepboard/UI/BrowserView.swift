@@ -100,7 +100,7 @@ struct BrowserView: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: PB.rLG, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: PB.rLG, style: .continuous).strokeBorder(PB.line))
-            .padding(.bottom, 20)
+            .padding(.bottom, 24)
         }
         .onAppear {
             if let u = app.browserURL { browser.load(u); app.browserURL = nil }
@@ -113,11 +113,11 @@ struct BrowserView: View {
     private var toolbar: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                CircleIconButton(systemImage: "chevron.left", size: 36, label: "Back") { browser.webView.goBack() }
+                CircleIconButton(systemImage: "chevron.left", size: 40, label: "Back") { browser.webView.goBack() }
                     .disabled(!browser.canGoBack).opacity(browser.canGoBack ? 1 : 0.4)
-                CircleIconButton(systemImage: "chevron.right", size: 36, label: "Forward") { browser.webView.goForward() }
+                CircleIconButton(systemImage: "chevron.right", size: 40, label: "Forward") { browser.webView.goForward() }
                     .disabled(!browser.canGoForward).opacity(browser.canGoForward ? 1 : 0.4)
-                CircleIconButton(systemImage: browser.isLoading ? "xmark" : "arrow.clockwise", size: 36, label: browser.isLoading ? "Stop" : "Reload") {
+                CircleIconButton(systemImage: browser.isLoading ? "xmark" : "arrow.clockwise", size: 40, label: browser.isLoading ? "Stop" : "Reload") {
                     if browser.isLoading { browser.webView.stopLoading() } else { _ = browser.webView.reload() }
                 }
                 HStack(spacing: 8) {
@@ -130,7 +130,7 @@ struct BrowserView: View {
                         .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.webSearch)
                         #endif
                 }
-                .padding(.horizontal, 14).frame(height: 40)
+                .padding(.horizontal, 16).frame(height: 40)
                 .background(Capsule().fill(PB.card)).overlay(Capsule().strokeBorder(PB.line))
                 Button { if let u = browser.url { openURL(u) } } label: {
                     Label("Safari", systemImage: "safari").font(.system(size: 13, weight: .medium))
@@ -147,7 +147,7 @@ struct BrowserView: View {
 
     private var startPage: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Browse").pbLabelStyle()
                     Text("Research without leaving PrepBoard").font(.system(size: 28, weight: .bold)).kerning(-0.8)
@@ -157,7 +157,7 @@ struct BrowserView: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 12)], spacing: 12) {
                     ForEach(quickLinks, id: \.0) { name, url, icon in
                         Button { browser.load(URL(string: url)!) } label: {
-                            HStack(spacing: 10) {
+                            HStack(spacing: 12) {
                                 Image(systemName: icon).font(.system(size: 16)).foregroundStyle(PB.cobalt)
                                     .frame(width: 36, height: 36).background(Circle().fill(PB.cobaltSoft))
                                 Text(name).font(.system(size: 14, weight: .semibold))
@@ -172,7 +172,7 @@ struct BrowserView: View {
                     }
                 }
             }
-            .padding(28)
+            .padding(32)
         }
         .background(PB.surface)
     }

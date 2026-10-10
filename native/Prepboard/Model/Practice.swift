@@ -1,6 +1,7 @@
 import Foundation
 #if os(iOS)
 import JavaScriptCore
+import WebKit
 #endif
 
 /// LeetCode/CoderPad-style practice: languages, running code, and the AI that writes problems and assists like CoderPad's.
@@ -10,12 +11,13 @@ enum CodeLang: String, CaseIterable, Identifiable {
     var label: String { switch self { case .swift: "Swift"; case .python: "Python"; case .javascript: "JavaScript" } }
     var ext: String { switch self { case .swift: "swift"; case .python: "py"; case .javascript: "js" } }
 
-    /// Whether "Run" works on this device. iPhone/iPad run JavaScript on-device; the Mac runs all three.
-    var runsHere: Bool {
+    /// Where "Run" happens: the Mac compiles everything locally; iPhone/iPad run JavaScript and Python
+    /// (Pyodide, CPython in WebAssembly) on the device and send Swift to the paired Mac.
+    var runnerNote: String {
         #if os(macOS)
-        true
+        "Runs on this Mac"
         #else
-        self == .javascript
+        self == .swift ? "Runs on your paired Mac" : "Runs on this device"
         #endif
     }
 }
@@ -30,7 +32,7 @@ struct ProblemPayload: Codable {
 
 enum CodeRunner {
     /// Runs the whole file (the user's solution plus the starter's test harness) and returns its output.
-    static func run(_ code: String, lang: CodeLang) async -> String {
+    @MainActor static func run(_ code: String, lang: CodeLang, mac: ClaudeCode? = nil) async -> String {
         #if os(macOS)
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("prepboard-run-\(UUID().uuidString.prefix(8))")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -67,8 +69,16 @@ enum CodeRunner {
             }
         }
         #else
-        guard lang == .javascript else {
-            return "\(lang.label) runs in the Mac app. On iPhone and iPad you can run JavaScript, or tap Review to have AI check your solution."
+        switch lang {
+        case .swift:
+            guard let mac, mac.paired else {
+                return "Swift compiles on your Mac. Pair this device in Profile → Claude Code on my Mac (with PrepBoard open on the Mac), or tap Review to have AI check your solution."
+            }
+            do { return try await mac.exec(code, lang: lang.rawValue) } catch { return error.localizedDescription }
+        case .python:
+            return await PythonRunner.shared.run(code)
+        case .javascript:
+            break
         }
         return await MainActor.run {
             var lines: [String] = []
@@ -194,3 +204,77 @@ extension Problem {
         ])
     }
 }
+
+#if os(iOS)
+/// Python on iPhone/iPad: Pyodide (CPython 3.12 + standard library, compiled to WebAssembly) in a hidden web view.
+/// Loaded once (about 10 MB, then cached); stdout/stderr are captured; runs over 30 s are stopped.
+@MainActor
+final class PythonRunner: NSObject, WKNavigationDelegate {
+    static let shared = PythonRunner()
+    private var web: WKWebView?
+    private var ready = false
+    private var loaded = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    private static let page = """
+    <!doctype html><html><head><meta charset="utf-8">
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+    <script>
+      window.pyReady = loadPyodide().then(py => { window.py = py; return true; });
+      window.runPy = async (code) => {
+        await window.pyReady;
+        let out = [];
+        py.setStdout({ batched: s => out.push(s) });
+        py.setStderr({ batched: s => out.push(s) });
+        const t0 = performance.now();
+        try {
+          await py.runPythonAsync(code, { globals: py.toPy({}) });
+        } catch (e) { out.push(String(e.message || e)); }
+        return out.join("\\n") + "\\n— " + ((performance.now() - t0) / 1000).toFixed(2) + "s (Python 3.12, on this device)";
+      };
+    </script></head><body></body></html>
+    """
+
+    private func makeWeb() -> WKWebView {
+        let v = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+        v.navigationDelegate = self
+        loaded = false
+        v.loadHTMLString(Self.page, baseURL: URL(string: "https://prepboard.shivvyas.com/"))
+        web = v
+        return v
+    }
+
+    nonisolated func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        Task { @MainActor in self.loaded = true; self.waiters.forEach { $0.resume() }; self.waiters = [] }
+    }
+
+    /// The page (and pyodide.js) must finish loading before window.runPy exists.
+    private func waitForPage() async {
+        if loaded { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func run(_ code: String) async -> String {
+        let v = web ?? makeWeb()
+        let first = !ready
+        let result: String = await withTaskGroup(of: String?.self) { group in
+            group.addTask { @MainActor in
+                do {
+                    await self.waitForPage()
+                    let r = try await v.callAsyncJavaScript("return await window.runPy(code)", arguments: ["code": code], contentWorld: .page)
+                    return (r as? String) ?? "(no output)"
+                } catch {
+                    let detail = (error as NSError).userInfo["WKJavaScriptExceptionMessage"] as? String ?? error.localizedDescription
+                    return "Python couldn't start: \(detail). The first run downloads Python once, so check your connection."
+                }
+            }
+            group.addTask { try? await Task.sleep(for: .seconds(first ? 90 : 30)); return nil }
+            let r = await group.next() ?? nil
+            group.cancelAll()
+            return r ?? "Stopped after \(first ? 90 : 30)s (infinite loop?). Python restarts on the next run."
+        }
+        if result.hasPrefix("Stopped after") { web = nil; ready = false } else { ready = true }
+        return result
+    }
+}
+#endif

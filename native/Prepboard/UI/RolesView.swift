@@ -12,7 +12,7 @@ struct RolesView: View {
             RoleDetailView(role: role)
         } else {
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 16) {
                     HStack(alignment: .bottom) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Pipeline").pbLabelStyle()
@@ -22,10 +22,10 @@ struct RolesView: View {
                         Button("+ New role") { app.newRole(context) }.buttonStyle(PillButtonStyle())
                     }
                     PipelineView(roles: roles, tasks: tasks, showAdd: true)
-                        .pbCard(padding: 14, fill: PB.surface.opacity(0.7))
+                        .pbCard(padding: 16, fill: PB.surface.opacity(0.7))
                     VStack(alignment: .leading, spacing: 0) {
                         CardHeader(title: "All roles")
-                        if roles.isEmpty { Text("No roles yet.").foregroundStyle(PB.muted).frame(maxWidth: .infinity).padding(30) }
+                        if roles.isEmpty { Text("No roles yet.").foregroundStyle(PB.muted).frame(maxWidth: .infinity).padding(32) }
                         ForEach(roles) { r in
                             Button { app.openRole(r.id) } label: {
                                 HStack(spacing: 12) {
@@ -33,13 +33,15 @@ struct RolesView: View {
                                         .font(.pbMono).frame(width: 36, height: 36)
                                         .background(RoundedRectangle(cornerRadius: 12).fill(PB.surface))
                                         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(PB.line))
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("\(r.company) — \(r.title)").font(.system(size: 14, weight: .medium)).lineLimit(1)
+                                    // Title, details and progress stack, so nothing is cut off on a phone.
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("\(r.company) — \(r.title)").font(.system(size: 14, weight: .medium)).lineLimit(2)
+                                            .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
                                         Text([r.stage.rawValue, r.interviewAt?.pbFull].compactMap { $0 }.joined(separator: " · "))
-                                            .font(.system(size: 12)).foregroundStyle(PB.muted)
+                                            .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
+                                        ProgressBar(value: tasks.progress(for: r.id)).frame(maxWidth: 240)
                                     }
-                                    Spacer()
-                                    ProgressBar(value: tasks.progress(for: r.id)).frame(width: 110)
+                                    Spacer(minLength: 0)
                                 }
                                 .padding(8).contentShape(Rectangle())
                             }
@@ -48,7 +50,7 @@ struct RolesView: View {
                     }
                     .pbCard()
                 }
-                .padding(.bottom, 30)
+                .padding(.bottom, 32)
             }
             .scrollIndicators(.hidden)
         }
@@ -71,19 +73,19 @@ struct RoleDetailView: View {
 
         GeometryReader { geo in
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 16) {
                     header
                     stageCard(progress)
                     if geo.size.width > 920 {
-                        HStack(alignment: .top, spacing: 18) {
-                            VStack(spacing: 18) { details; docsCard(docs) }
+                        HStack(alignment: .top, spacing: 16) {
+                            VStack(spacing: 16) { details; docsCard(docs) }
                             tasksCard(tasks).frame(width: 340)
                         }
                     } else {
                         details; tasksCard(tasks); docsCard(docs)
                     }
                 }
-                .padding(.bottom, 30)
+                .padding(.bottom, 32)
             }
             .scrollIndicators(.hidden)
         }
@@ -100,7 +102,7 @@ struct RoleDetailView: View {
     private var header: some View {
         HStack(alignment: .center, spacing: 12) {
             CircleIconButton(systemImage: "arrow.left", label: "Back") { app.selectedRoleID = nil }
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(role.team.isEmpty ? "Role" : role.team).pbLabelStyle()
                 Text(role.company).font(.pbDisplay).kerning(-1.4).lineLimit(1)
                 Text(role.title).foregroundStyle(PB.muted)
@@ -118,7 +120,7 @@ struct RoleDetailView: View {
                 Text("\(Int(progress * 100))% prep").font(.pbMono).foregroundStyle(PB.muted)
             }
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     ForEach(Stage.allCases) { s in
                         let current = s == role.stage, past = s.index < role.stage.index
                         Button { withAnimation(.snappy) { role.stage = s } } label: {
@@ -127,7 +129,7 @@ struct RoleDetailView: View {
                                     .foregroundStyle(current ? .white : past ? PB.cobalt : PB.muted)
                                 Text(s.rawValue).font(.system(size: 13, weight: .medium))
                             }
-                            .padding(.horizontal, 14).frame(height: 36)
+                            .padding(.horizontal, 16).frame(height: 36)
                             .foregroundStyle(current ? Color.white : past ? PB.cobalt : PB.ink2)
                             .background(Capsule().fill(current ? PB.cobalt : past ? PB.cobaltSoft : PB.card))
                             .overlay(Capsule().strokeBorder(current ? PB.cobalt : past ? PB.cobaltSoft : PB.line2))
@@ -149,7 +151,7 @@ struct RoleDetailView: View {
                     Button("Open posting") { openURL(url) }.buttonStyle(PillButtonStyle(filled: false, compact: true))
                 }
             }
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 10)], alignment: .leading, spacing: 10) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], alignment: .leading, spacing: 12) {
                 PBTextField(label: "Company", text: $role.company)
                 PBTextField(label: "Title", text: $role.title)
                 PBTextField(label: "Team", text: $role.team)
@@ -184,11 +186,11 @@ struct RoleDetailView: View {
         let byDay = Dictionary(grouping: tasks) { Calendar.current.startOfDay(for: $0.start) }
         return VStack(alignment: .leading, spacing: 0) {
             CardHeader(title: "Plan", count: "\(tasks.filter(\.done).count)/\(tasks.count)") {
-                CircleIconButton(systemImage: "plus", size: 34, label: "New session") { app.newSession(roleId: role.id) }
+                CircleIconButton(systemImage: "plus", size: 32, label: "New session") { app.newSession(roleId: role.id) }
             }
-            if tasks.isEmpty { Text("No sessions yet.").foregroundStyle(PB.muted).frame(maxWidth: .infinity).padding(30) }
+            if tasks.isEmpty { Text("No sessions yet.").foregroundStyle(PB.muted).frame(maxWidth: .infinity).padding(32) }
             ForEach(byDay.keys.sorted(), id: \.self) { day in
-                Text(day.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())).pbLabelStyle().padding(.top, 12).padding(.bottom, 2)
+                Text(day.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())).pbLabelStyle().padding(.top, 12).padding(.bottom, 4)
                 ForEach(byDay[day] ?? []) { ChecklistRow(task: $0) }
             }
             Button("Open timeline") { app.timelineRoleID = role.id; app.section = .timeline }
@@ -200,9 +202,9 @@ struct RoleDetailView: View {
     private func docsCard(_ docs: [Doc]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             CardHeader(title: "Documents", count: "\(docs.count)") {
-                CircleIconButton(systemImage: "plus", size: 34, label: "New document") { app.newDoc(context, roleId: role.id) }
+                CircleIconButton(systemImage: "plus", size: 32, label: "New document") { app.newDoc(context, roleId: role.id) }
             }
-            if docs.isEmpty { Text("No documents for this role yet.").foregroundStyle(PB.muted).frame(maxWidth: .infinity).padding(30) }
+            if docs.isEmpty { Text("No documents for this role yet.").foregroundStyle(PB.muted).frame(maxWidth: .infinity).padding(32) }
             ForEach(docs) { d in DocRow(doc: d, roleName: role.company) { app.openDoc(d.id) } }
         }
         .pbCard()

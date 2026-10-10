@@ -20,10 +20,10 @@ struct SessionLearnRow: View {
         VStack(alignment: .leading, spacing: 8) {
             if !task.videos.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) { ForEach(task.videos) { VideoThumb(video: $0) } }
+                    HStack(spacing: 12) { ForEach(task.videos) { VideoThumb(video: $0) } }
                 }
             }
-            HStack(spacing: 6) {
+            FlowLayout(spacing: 8) {
                 pill("Quiz me", dot: true) { app.quizSessionID = task.id }
                 if task.videos.isEmpty {
                     pill(searching ? "Searching YouTube…" : "▶ Find videos") { findVideos() }.disabled(searching)
@@ -36,11 +36,11 @@ struct SessionLearnRow: View {
 
     private func pill(_ title: String, dot: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 if dot { Circle().fill(PB.sun).frame(width: 7, height: 7) }
-                Text(title).font(.system(size: 12, weight: .semibold))
+                Text(title).font(.system(size: 12, weight: .semibold)).lineLimit(1).fixedSize()
             }
-            .padding(.horizontal, 11).frame(height: 28)
+            .padding(.horizontal, 12).frame(height: 32)
             .foregroundStyle(inverted ? Color.white : PB.ink2)
             .overlay(Capsule().strokeBorder(inverted ? Color.white.opacity(0.35) : PB.line2))
             .contentShape(Capsule())
@@ -75,7 +75,7 @@ struct VideoThumb: View {
                 AsyncImage(url: video.thumbnailURL) { img in img.resizable().scaledToFill() } placeholder: { Color.black.opacity(0.85) }
                     .frame(width: 200, height: 112).clipped()
                     .overlay { Image(systemName: "play.fill").font(.system(size: 20)).foregroundStyle(.white).shadow(radius: 4) }
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(video.title).font(.system(size: 12, weight: .semibold)).lineLimit(2).foregroundStyle(PB.ink)
                     Text(video.channel).font(.system(size: 11)).foregroundStyle(PB.muted).lineLimit(1)
                 }
@@ -115,16 +115,16 @@ struct QuizSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 KindLabel(kind: .mock).overlay(alignment: .leading) { EmptyView() }
                 Text(topic).font(.system(size: 14, weight: .semibold)).lineLimit(1)
                 Spacer()
                 if source == "claude-code" { HStack(spacing: 4) { ClaudeMark().frame(width: 12, height: 12); Text("Claude Code").font(.system(size: 11)).foregroundStyle(PB.muted) } }
-                CircleIconButton(systemImage: "xmark", size: 30, label: "Close") { dismiss() }
+                CircleIconButton(systemImage: "xmark", size: 32, label: "Close") { dismiss() }
             }
-            .padding(.horizontal, 22).padding(.vertical, 16)
+            .padding(.horizontal, 24).padding(.vertical, 16)
             .overlay(alignment: .bottom) { Rectangle().fill(PB.line).frame(height: 1) }
-            ScrollView { content.padding(22) }
+            ScrollView { content.padding(24) }
         }
         .frame(minWidth: 560, idealWidth: 640, minHeight: 520)
         .background(PB.card)
@@ -135,11 +135,11 @@ struct QuizSheet: View {
     private var content: some View {
         switch phase {
         case .loading:
-            VStack(spacing: 10) {
+            VStack(spacing: 12) {
                 ProgressView()
                 Text("Claude is writing your quiz…").foregroundStyle(PB.muted)
             }
-            .frame(maxWidth: .infinity).padding(.vertical, 60)
+            .frame(maxWidth: .infinity).padding(.vertical, 64)
         case .error(let msg):
             VStack(alignment: .leading, spacing: 12) {
                 Text(msg).font(.system(size: 13)).foregroundStyle(Color(hex: 0x9A3412))
@@ -159,7 +159,7 @@ struct QuizSheet: View {
     private var questionView: some View {
         let q = questions[index]
         let chosen = answers[index]
-        return VStack(alignment: .leading, spacing: 14) {
+        return VStack(alignment: .leading, spacing: 16) {
             ProgressBar(value: Double(index + (chosen == nil ? 0 : 1)) / Double(max(1, questions.count)))
             Text("Question \(index + 1) of \(questions.count) · \(q.topic)").pbLabelStyle()
             Text(q.question).font(.system(size: 19, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
@@ -167,7 +167,7 @@ struct QuizSheet: View {
                 let isRight = chosen != nil && k == q.answer
                 let isWrong = chosen == k && k != q.answer
                 Button { if chosen == nil { answers[index] = k } } label: {
-                    HStack(alignment: .top, spacing: 10) {
+                    HStack(alignment: .top, spacing: 12) {
                         Text(String("ABCD".map { $0 }[k])).font(.system(size: 12, weight: .bold, design: .monospaced))
                             .frame(width: 24, height: 24)
                             .foregroundStyle(isRight || isWrong ? .white : PB.ink)
@@ -252,7 +252,7 @@ struct ResultsView: View {
                     .padding(12).frame(maxWidth: .infinity, alignment: .leading).background(RoundedRectangle(cornerRadius: 12).fill(PB.cobaltSoft))
             } else {
                 Text("Learn more").pbLabelStyle()
-                FlowLayout(spacing: 6) {
+                FlowLayout(spacing: 8) {
                     ForEach(attempt.weakTopics, id: \.self) { w in
                         Text(w).font(.system(size: 11, weight: .bold)).foregroundStyle(Color(hex: 0xC2410C))
                             .padding(.horizontal, 8).padding(.vertical, 4).background(RoundedRectangle(cornerRadius: 8).fill(Color(hex: 0xFBE4D8)))
@@ -261,7 +261,7 @@ struct ResultsView: View {
             }
             Text("Answers").pbLabelStyle()
             ForEach(Array(attempt.items.enumerated()), id: \.offset) { k, it in
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text("\(k + 1). \(it.question)").font(.system(size: 13, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
                     Text((it.isCorrect ? "✓ Your answer: " : "✗ Your answer: ") + (it.chosen.flatMap { $0 < it.options.count ? it.options[$0] : nil } ?? "—"))
                         .font(.system(size: 13, weight: .semibold)).foregroundStyle(it.isCorrect ? Color(hex: 0x2F7D4F) : Color(hex: 0xC2410C))
@@ -307,29 +307,29 @@ struct ScoresView: View {
 
         return GeometryReader { geo in
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 16) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Leaderboard").pbLabelStyle()
                         Text("Scores").font(.pbDisplay).kerning(-1.4)
                     }
                     if attempts.isEmpty {
-                        VStack(spacing: 10) {
+                        VStack(spacing: 12) {
                             Text("No quizzes yet").font(.system(size: 18, weight: .semibold))
                             Text("Open any session on the timeline and tap Quiz me. Claude writes questions from that session's study guides, and your results land here.")
                                 .foregroundStyle(PB.muted).multilineTextAlignment(.center).frame(maxWidth: 480)
                             Button("Go to timeline") { app.section = .timeline }.buttonStyle(PillButtonStyle())
                         }
-                        .frame(maxWidth: .infinity).padding(50).pbCard()
+                        .frame(maxWidth: .infinity).padding(48).pbCard()
                     } else {
                         stats(quizzes: attempts.count, accuracy: answered == 0 ? 0 : Double(right) / Double(answered), answered: answered, weak: weak.count)
                         if geo.size.width > 980 {
-                            HStack(alignment: .top, spacing: 18) { leaderboard(board); VStack(spacing: 18) { learnMore(Array(weak)); history }.frame(width: 420) }
+                            HStack(alignment: .top, spacing: 16) { leaderboard(board); VStack(spacing: 16) { learnMore(Array(weak)); history }.frame(width: 420) }
                         } else {
                             leaderboard(board); learnMore(Array(weak)); history
                         }
                     }
                 }
-                .padding(.bottom, 30)
+                .padding(.bottom, 32)
             }
             .scrollIndicators(.hidden)
         }
@@ -343,7 +343,7 @@ struct ScoresView: View {
                 Text("\(Int(accuracy * 100))%").font(.system(size: 26, weight: .bold))
                 ProgressBar(value: accuracy)
             }
-            .pbCard(padding: 14, fill: PB.surface, radius: PB.rLG)
+            .pbCard(padding: 16, fill: PB.surface, radius: PB.rLG)
             cell("Questions answered", "\(answered)")
             cell("Topics to revisit", "\(weak)", highlight: weak > 0)
         }
@@ -354,7 +354,7 @@ struct ScoresView: View {
             Text(label).pbLabelStyle()
             Text(value).font(.system(size: 26, weight: .bold))
         }
-        .pbCard(padding: 14, fill: highlight ? PB.sunSoft : PB.surface, radius: PB.rLG)
+        .pbCard(padding: 16, fill: highlight ? PB.sunSoft : PB.surface, radius: PB.rLG)
     }
 
     private func leaderboard(_ board: [TopicScore]) -> some View {
@@ -379,7 +379,7 @@ struct ScoresView: View {
                     Text("\(t.pct)%").font(.system(size: 13, weight: .bold, design: .monospaced)).frame(width: 50, alignment: .trailing)
                     Text("\(t.right)/\(t.total)").font(.system(size: 12)).foregroundStyle(PB.muted).frame(width: 44, alignment: .trailing)
                 }
-                .padding(.vertical, 10)
+                .padding(.vertical, 12)
                 .overlay(alignment: .bottom) { if i < board.count - 1 { Rectangle().fill(PB.line).frame(height: 1) } }
             }
         }
@@ -387,7 +387,7 @@ struct ScoresView: View {
     }
 
     private func learnMore(_ weak: [TopicScore]) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             CardHeader(title: "Learn more", count: "\(weak.count)")
             if weak.isEmpty {
                 Text("Everything is at 70% or better. Keep it up.").font(.system(size: 13)).foregroundStyle(PB.cobalt)
@@ -406,9 +406,9 @@ struct ScoresView: View {
                         Text(w.topic).font(.system(size: 14, weight: .semibold))
                         Spacer()
                         Text("\(w.pct)%").font(.system(size: 11, weight: .bold)).foregroundStyle(Color(hex: 0xC2410C))
-                            .padding(.horizontal, 8).padding(.vertical, 3).background(RoundedRectangle(cornerRadius: 8).fill(Color(hex: 0xFBE4D8)))
+                            .padding(.horizontal, 8).padding(.vertical, 4).background(RoundedRectangle(cornerRadius: 8).fill(Color(hex: 0xFBE4D8)))
                     }
-                    FlowLayout(spacing: 6) {
+                    FlowLayout(spacing: 8) {
                         if let (d, h) = section { RefChip(ref: DocRef(docId: d.id, heading: h), doc: d) }
                         if let s = session {
                             Button("Session") { app.gotoSession(s) }.buttonStyle(PillButtonStyle(filled: false, compact: true))
@@ -432,14 +432,14 @@ struct ScoresView: View {
             ForEach(attempts.prefix(20)) { a in
                 Button { app.reviewQuizID = a.id } label: {
                     HStack {
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 4) {
                             Text(a.topic).font(.system(size: 14, weight: .semibold)).lineLimit(1)
                             Text(a.createdAt.pbFull + (a.source == "claude-code" ? " · Claude Code" : "")).font(.system(size: 12)).foregroundStyle(PB.muted)
                         }
                         Spacer()
                         Text("\(a.score)/\(a.total)").font(.system(size: 13, weight: .bold, design: .monospaced))
                     }
-                    .padding(.vertical, 10).contentShape(Rectangle())
+                    .padding(.vertical, 12).contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .overlay(alignment: .bottom) { Rectangle().fill(PB.line).frame(height: 1) }

@@ -6,12 +6,15 @@ import SwiftUI
 #if os(macOS)
 struct CodeEditor: NSViewRepresentable {
     @Binding var text: String
+    var lang: CodeLang = .swift
+    static let font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
 
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSTextView.scrollableTextView()
         let tv = scroll.documentView as! NSTextView
         tv.delegate = context.coordinator
-        tv.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
+        tv.font = Self.font
+        tv.typingAttributes = [.font: Self.font, .foregroundColor: SyntaxHighlighter.plain]
         tv.isAutomaticQuoteSubstitutionEnabled = false
         tv.isAutomaticDashSubstitutionEnabled = false
         tv.isAutomaticTextReplacementEnabled = false
@@ -23,30 +26,44 @@ struct CodeEditor: NSViewRepresentable {
         tv.textColor = NSColor(PB.ink)
         tv.insertionPointColor = NSColor(PB.cobalt)
         tv.string = text
+        if let ts = tv.textStorage { SyntaxHighlighter.highlight(ts, lang: lang, font: Self.font) }
         scroll.drawsBackground = false
         return scroll
     }
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         let tv = scroll.documentView as! NSTextView
-        if tv.string != text { tv.string = text }
+        context.coordinator.parent = self
+        if tv.string != text || context.coordinator.lang != lang {
+            if tv.string != text { tv.string = text }
+            context.coordinator.lang = lang
+            if let ts = tv.textStorage { SyntaxHighlighter.highlight(ts, lang: lang, font: Self.font) }
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: CodeEditor
-        init(_ p: CodeEditor) { parent = p }
-        func textDidChange(_ n: Notification) { parent.text = (n.object as! NSTextView).string }
+        var lang: CodeLang
+        init(_ p: CodeEditor) { parent = p; lang = p.lang }
+        func textDidChange(_ n: Notification) {
+            let tv = n.object as! NSTextView
+            if let ts = tv.textStorage { SyntaxHighlighter.highlight(ts, lang: parent.lang, font: CodeEditor.font) }
+            parent.text = tv.string
+        }
     }
 }
 #else
 struct CodeEditor: UIViewRepresentable {
     @Binding var text: String
+    var lang: CodeLang = .swift
+    static let font = UIFont.monospacedSystemFont(ofSize: 14, weight: .regular)
 
     func makeUIView(context: Context) -> UITextView {
         let tv = UITextView()
         tv.delegate = context.coordinator
-        tv.font = .monospacedSystemFont(ofSize: 14, weight: .regular)
+        tv.font = Self.font
+        tv.typingAttributes = [.font: Self.font, .foregroundColor: SyntaxHighlighter.plain]
         tv.smartQuotesType = .no
         tv.smartDashesType = .no
         tv.smartInsertDeleteType = .no
@@ -59,16 +76,28 @@ struct CodeEditor: UIViewRepresentable {
         tv.tintColor = UIColor(PB.cobalt)
         tv.textContainerInset = UIEdgeInsets(top: 12, left: 8, bottom: 12, right: 8)
         tv.text = text
+        SyntaxHighlighter.highlight(tv.textStorage, lang: lang, font: Self.font)
         return tv
     }
 
-    func updateUIView(_ tv: UITextView, context: Context) { if tv.text != text { tv.text = text } }
+    func updateUIView(_ tv: UITextView, context: Context) {
+        context.coordinator.parent = self
+        if tv.text != text || context.coordinator.lang != lang {
+            if tv.text != text { tv.text = text }
+            context.coordinator.lang = lang
+            SyntaxHighlighter.highlight(tv.textStorage, lang: lang, font: Self.font)
+        }
+    }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     final class Coordinator: NSObject, UITextViewDelegate {
         var parent: CodeEditor
-        init(_ p: CodeEditor) { parent = p }
-        func textViewDidChange(_ tv: UITextView) { parent.text = tv.text }
+        var lang: CodeLang
+        init(_ p: CodeEditor) { parent = p; lang = p.lang }
+        func textViewDidChange(_ tv: UITextView) {
+            if tv.markedTextRange == nil { SyntaxHighlighter.highlight(tv.textStorage, lang: parent.lang, font: CodeEditor.font) }
+            parent.text = tv.text
+        }
     }
 }
 #endif
@@ -120,14 +149,14 @@ struct PracticeView: View {
                     .onAppear { if problems.isEmpty { let p = Problem.sample(); context.insert(p); try? context.save(); selectedID = p.id } }
             }
         }
-        .padding(.bottom, 20)
+        .padding(.bottom, 24)
         .sheet(isPresented: $showNew) { NewProblemSheet { selectedID = $0 } }
     }
 
     // MARK: layout
 
     private func wide(_ p: Problem, width: CGFloat) -> some View {
-        HStack(alignment: .top, spacing: 14) {
+        HStack(alignment: .top, spacing: 16) {
             if showLibrary && width >= 1000 {
                 library.frame(width: 260).frame(maxHeight: .infinity).pbCard(padding: 0, radius: PB.rXL)
             }
@@ -144,7 +173,7 @@ struct PracticeView: View {
             .pbCard(padding: 0, radius: PB.rXL)
 
             VStack(spacing: 0) {
-                CodeEditor(text: $code).frame(maxHeight: .infinity)
+                CodeEditor(text: $code, lang: lang).frame(maxHeight: .infinity)
                 Divider()
                 console.frame(height: 190)
             }
@@ -155,7 +184,7 @@ struct PracticeView: View {
     }
 
     private func compact(_ p: Problem) -> some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             Picker("", selection: $pane) {
                 Text("All").tag(4); Text("Problem").tag(0); Text("Code").tag(1); Text("Output").tag(2)
                 if aiAllowed { Text("AI").tag(3) }
@@ -163,7 +192,7 @@ struct PracticeView: View {
             .pickerStyle(.segmented).labelsHidden()
             Group {
                 switch pane {
-                case 1: CodeEditor(text: $code)
+                case 1: CodeEditor(text: $code, lang: lang)
                 case 2: console
                 case 3 where aiAllowed: assistant(p)
                 case 4: library
@@ -175,51 +204,89 @@ struct PracticeView: View {
         }
     }
 
+    @ViewBuilder
     private func toolbar(_ p: Problem, compact: Bool) -> some View {
-        HStack(spacing: 8) {
-            if !compact {
-                CircleIconButton(systemImage: "sidebar.left", size: 36, active: showLibrary, label: "All problems") { showLibrary.toggle() }
-            }
-            Menu {
-                Button("New problem…") { showNew = true }
-                Divider()
-                ForEach(problems) { q in
-                    Button((q.solved ? "✓ " : "") + "\(q.title) · \(q.difficulty)") { save(); selectedID = q.id }
+        if compact {
+            // iPhone: two rows so nothing is squeezed or cut off.
+            VStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    problemMenu(p).layoutPriority(1)
+                    difficultyChip(p.difficulty)
+                    Spacer(minLength: 0)
+                    languagePicker
                 }
-            } label: {
-                HStack(spacing: 6) {
-                    Text(p.title).font(.system(size: 15, weight: .semibold)).lineLimit(1)
-                    Image(systemName: "chevron.up.chevron.down").font(.system(size: 10))
+                HStack(spacing: 8) {
+                    Toggle("AI", isOn: $aiAllowed).toggleStyle(CheckboxToggleStyle(labeled: true))
+                    Spacer(minLength: 0)
+                    moreMenu(p)
+                    if aiAllowed { reviewButton(p) }
+                    runButton
                 }
-                .padding(.horizontal, 14).frame(height: 36)
-                .overlay(Capsule().strokeBorder(PB.line2))
             }
-            .menuStyle(.button).buttonStyle(.plain).fixedSize()
-            difficultyChip(p.difficulty)
-            Picker("", selection: Binding(get: { lang }, set: { switchLanguage(to: $0) })) {
-                ForEach(CodeLang.allCases) { Text($0.label).tag($0) }
-            }
-            .labelsHidden().pickerStyle(.menu).fixedSize()
-            Spacer(minLength: 0)
-            if !compact { timer }
-            Toggle("AI", isOn: $aiAllowed).toggleStyle(CheckboxToggleStyle())
-                .help("Allow the AI assistant (like CoderPad's). Turn off to practice a no-AI round.")
-            Menu {
-                Button("Reset to starter code") { code = p.starters[lang.rawValue] ?? ""; save() }
-                Button(p.solved ? "Mark unsolved" : "Mark solved") { p.solved.toggle(); save() }
-                Button("Delete problem", role: .destructive) { context.delete(p); try? context.save(); selectedID = "" }
-            } label: { Image(systemName: "ellipsis").frame(width: 32, height: 32) }
-            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
-            Button { run() } label: {
-                Label(running ? "Running…" : "Run", systemImage: "play.fill").font(.system(size: 13, weight: .semibold))
-            }
-            .buttonStyle(PillButtonStyle(compact: true)).disabled(running)
-            .keyboardShortcut(.return, modifiers: .command)
-            .help(lang.runsHere ? "Run the file, including its tests (⌘↩)" : "\(lang.label) runs in the Mac app")
-            if aiAllowed {
-                Button("Review") { review(p) }.buttonStyle(PillButtonStyle(filled: false, compact: true)).disabled(aiThinking)
+        } else {
+            HStack(spacing: 8) {
+                CircleIconButton(systemImage: "sidebar.left", size: 40, active: showLibrary, label: "All problems") { showLibrary.toggle() }
+                problemMenu(p)
+                difficultyChip(p.difficulty)
+                languagePicker
+                Spacer(minLength: 0)
+                timer
+                Toggle("AI assistant", isOn: $aiAllowed).toggleStyle(CheckboxToggleStyle(labeled: true))
+                    .help("Allow the AI assistant (like CoderPad's). Turn off to practice a no-AI round.")
+                moreMenu(p)
+                if aiAllowed { reviewButton(p) }
+                runButton
             }
         }
+    }
+
+    private func problemMenu(_ p: Problem) -> some View {
+        Menu {
+            Button("New problem…") { showNew = true }
+            Divider()
+            ForEach(problems) { q in
+                Button((q.solved ? "✓ " : "") + "\(q.title) · \(q.difficulty)") { save(); selectedID = q.id }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Text(p.title).font(.system(size: 15, weight: .semibold)).lineLimit(1).truncationMode(.tail)
+                Image(systemName: "chevron.up.chevron.down").font(.system(size: 10))
+            }
+            .padding(.horizontal, 16).frame(height: 40)
+            .overlay(Capsule().strokeBorder(PB.line2))
+            .contentShape(Capsule())
+        }
+        .menuStyle(.button).buttonStyle(.plain)
+    }
+
+    private var languagePicker: some View {
+        Picker("", selection: Binding(get: { lang }, set: { switchLanguage(to: $0) })) {
+            ForEach(CodeLang.allCases) { Text($0.label).tag($0) }
+        }
+        .labelsHidden().pickerStyle(.menu).fixedSize()
+    }
+
+    private func moreMenu(_ p: Problem) -> some View {
+        Menu {
+            Button("Reset to starter code") { code = p.starters[lang.rawValue] ?? ""; save() }
+            Button(p.solved ? "Mark unsolved" : "Mark solved") { p.solved.toggle(); save() }
+            Button("Delete problem", role: .destructive) { context.delete(p); try? context.save(); selectedID = "" }
+        } label: { Image(systemName: "ellipsis").frame(width: 40, height: 40).contentShape(Rectangle()) }
+        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+        .accessibilityLabel("More actions")
+    }
+
+    private var runButton: some View {
+        Button { run() } label: {
+            Label(running ? "Running…" : "Run", systemImage: "play.fill").font(.system(size: 13, weight: .semibold))
+        }
+        .buttonStyle(PillButtonStyle(compact: true)).fixedSize().disabled(running)
+        .keyboardShortcut(.return, modifiers: .command)
+        .help("Run the file, including its tests (⌘↩). \(lang.runnerNote).")
+    }
+
+    private func reviewButton(_ p: Problem) -> some View {
+        Button("Review") { review(p) }.buttonStyle(PillButtonStyle(filled: false, compact: true)).fixedSize().disabled(aiThinking)
     }
 
     /// Every coding problem in one place: filter by status and difficulty, search titles and topics.
@@ -231,12 +298,12 @@ struct PracticeView: View {
                 && (q.isEmpty || p.title.lowercased().contains(q) || p.topics.contains { $0.lowercased().contains(q) })
         }
         return VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Text("Problems").font(.system(size: 15, weight: .semibold))
                     Text("\(problems.filter(\.solved).count)/\(problems.count) solved").font(.system(size: 12)).foregroundStyle(PB.muted)
                     Spacer(minLength: 0)
-                    CircleIconButton(systemImage: "plus", size: 30, label: "New problem") { showNew = true }
+                    CircleIconButton(systemImage: "plus", size: 32, label: "New problem") { showNew = true }
                 }
                 TextField("Search title or topic", text: $libSearch).textFieldStyle(.plain).font(.system(size: 13))
                     .padding(.horizontal, 12).frame(height: 32)
@@ -252,24 +319,24 @@ struct PracticeView: View {
                 LazyVStack(spacing: 0) {
                     ForEach(list) { q in
                         Button { save(); selectedID = q.id; if pane == 4 { pane = 0 } } label: {
-                            HStack(alignment: .top, spacing: 10) {
+                            HStack(alignment: .top, spacing: 12) {
                                 Image(systemName: q.solved ? "checkmark.square.fill" : "square")
                                     .foregroundStyle(q.solved ? PB.cobalt : PB.muted).font(.system(size: 15))
-                                VStack(alignment: .leading, spacing: 3) {
+                                VStack(alignment: .leading, spacing: 4) {
                                     Text(q.title).font(.system(size: 13, weight: .semibold)).multilineTextAlignment(.leading).lineLimit(2)
                                     Text(([q.difficulty] + q.topics.prefix(2)).joined(separator: " · "))
                                         .font(.system(size: 11)).foregroundStyle(PB.muted).lineLimit(1)
                                 }
                                 Spacer(minLength: 0)
                             }
-                            .padding(.horizontal, 12).padding(.vertical, 10)
+                            .padding(.horizontal, 12).padding(.vertical, 12)
                             .background(q.id == problem?.id ? PB.cobaltSoft : Color.clear)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }
                     if list.isEmpty {
-                        Text("No problems match.").font(.system(size: 13)).foregroundStyle(PB.muted).padding(20)
+                        Text("No problems match.").font(.system(size: 13)).foregroundStyle(PB.muted).padding(24)
                     }
                 }
             }
@@ -298,9 +365,9 @@ struct PracticeView: View {
     }
 
     private func difficultyChip(_ d: String) -> some View {
-        Text(d).font(.system(size: 11, weight: .bold))
+        Text(d).font(.system(size: 11, weight: .bold)).fixedSize()
             .foregroundStyle(d == "Easy" ? Color(hex: 0x2F7D4F) : d == "Hard" ? PB.red : PB.onSun)
-            .padding(.horizontal, 8).padding(.vertical, 3)
+            .padding(.horizontal, 8).padding(.vertical, 4)
             .background(Capsule().fill(d == "Easy" ? Color(hex: 0xDDEEDF) : d == "Hard" ? Color(hex: 0xFBE4D8) : PB.sunSoft))
     }
 
@@ -309,8 +376,8 @@ struct PracticeView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text(p.title).font(.system(size: 22, weight: .bold)).kerning(-0.4)
                 if !p.topics.isEmpty {
-                    FlowLayout(spacing: 6) {
-                        ForEach(p.topics, id: \.self) { Text($0).font(.system(size: 11, weight: .medium)).padding(.horizontal, 8).padding(.vertical, 3)
+                    FlowLayout(spacing: 8) {
+                        ForEach(p.topics, id: \.self) { Text($0).font(.system(size: 11, weight: .medium)).padding(.horizontal, 8).padding(.vertical, 4)
                             .background(Capsule().fill(PB.surface)).overlay(Capsule().strokeBorder(PB.line)) }
                     }
                 }
@@ -320,7 +387,7 @@ struct PracticeView: View {
                     MarkdownView(blocks: MarkdownParser.parse(p.notes))
                 }
             }
-            .padding(18).frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16).frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -331,7 +398,7 @@ struct PracticeView: View {
                 .foregroundStyle(output.isEmpty ? PB.muted : PB.ink)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(14)
+                .padding(16)
         }
         .background(PB.surface)
     }
@@ -340,7 +407,7 @@ struct PracticeView: View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 12) {
                         if aiMessages.isEmpty {
                             Text("Ask about an approach, an API or an error, like CoderPad's AI assistant. It sees the problem and your code, and gives hints rather than full answers unless you ask.")
                                 .font(.system(size: 13)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
@@ -349,18 +416,18 @@ struct PracticeView: View {
                             Group {
                                 if m.role == "user" {
                                     Text(m.content).font(.system(size: 13)).foregroundStyle(.white)
-                                        .padding(10).background(RoundedRectangle(cornerRadius: 14).fill(PB.cobalt))
+                                        .padding(12).background(RoundedRectangle(cornerRadius: 14).fill(PB.cobalt))
                                         .frame(maxWidth: .infinity, alignment: .trailing)
                                 } else {
                                     MarkdownView(blocks: MarkdownParser.parse(m.content))
-                                        .padding(10).background(RoundedRectangle(cornerRadius: 14).fill(PB.surface))
+                                        .padding(12).background(RoundedRectangle(cornerRadius: 14).fill(PB.surface))
                                 }
                             }
                         }
-                        if aiThinking { HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Thinking…").font(.system(size: 12)).foregroundStyle(PB.muted) } }
+                        if aiThinking { HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Thinking…").font(.system(size: 12)).foregroundStyle(PB.muted) } }
                         Color.clear.frame(height: 1).id("end")
                     }
-                    .padding(14)
+                    .padding(16)
                 }
                 .onChange(of: aiMessages.count) { withAnimation { proxy.scrollTo("end") } }
             }
@@ -371,7 +438,7 @@ struct PracticeView: View {
                 Button { ask(aiInput, p) } label: { Image(systemName: "arrow.up").foregroundStyle(.white).frame(width: 30, height: 30).background(Circle().fill(PB.cobalt)) }
                     .buttonStyle(.plain).disabled(aiThinking || aiInput.trimmingCharacters(in: .whitespaces).isEmpty)
             }
-            .padding(10)
+            .padding(12)
         }
     }
 
@@ -405,7 +472,7 @@ struct PracticeView: View {
         if pane != 3 { pane = 2 }
         let src = code, l = lang
         Task {
-            output = await CodeRunner.run(src, lang: l)
+            output = await CodeRunner.run(src, lang: l, mac: claude)
             running = false
             if output.contains("Passed "), let p = problem,
                let m = output.range(of: #"Passed (\d+)/(\d+)"#, options: .regularExpression) {
@@ -471,7 +538,7 @@ struct NewProblemSheet: View {
     @State private var error: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text("New practice problem").font(.system(size: 20, weight: .bold))
                 Spacer()
@@ -480,10 +547,10 @@ struct NewProblemSheet: View {
             Text("Describe a topic and AI writes a LeetCode-style problem with tests in Swift, Python and JavaScript. Or paste a problem (e.g. from LeetCode) to practice it here.")
                 .font(.system(size: 13)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
             PBTextField(label: "Topic", text: $topic)
-            HStack(spacing: 14) {
+            HStack(spacing: 16) {
                 Text("Difficulty").pbLabelStyle()
                 ForEach(["Easy", "Medium", "Hard"], id: \.self) { d in
-                    Toggle(d, isOn: Binding(get: { difficulty == d }, set: { if $0 { difficulty = d } })).toggleStyle(CheckboxToggleStyle())
+                    Toggle(d, isOn: Binding(get: { difficulty == d }, set: { if $0 { difficulty = d } })).toggleStyle(CheckboxToggleStyle(labeled: true))
                 }
             }
             VStack(alignment: .leading, spacing: 4) {

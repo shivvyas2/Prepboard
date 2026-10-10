@@ -53,18 +53,18 @@ struct EssentialsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 16) {
                 header
                 if let error {
                     Text(error).font(.system(size: 13)).foregroundStyle(PB.red)
                         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
                         .background(RoundedRectangle(cornerRadius: 12).fill(PB.red.opacity(0.08)))
                 }
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 14)], spacing: 14) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 16)], spacing: 16) {
                     ForEach(Self.topics) { t in card(t) }
                 }
             }
-            .padding(.bottom, 30)
+            .padding(.bottom, 32)
         }
         .scrollIndicators(.hidden)
     }
@@ -74,26 +74,40 @@ struct EssentialsView: View {
         return VStack(alignment: .leading, spacing: 8) {
             Text("Essentials").pbLabelStyle()
             Text("Leadership & essential preparation").font(.pbDisplay).kerning(-1.4).lineLimit(2).minimumScaleFactor(0.7)
-            HStack(spacing: 10) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) { rolePicker; aiNote; Spacer(minLength: 0); generateAll(empty) }
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 12) { rolePicker; Spacer(minLength: 0); generateAll(empty) }
+                    aiNote
+                }
+            }
+        }
+    }
+
+    private var rolePicker: some View {
                 Menu {
                     Button("General (no role)") { app.timelineRoleID = nil }
                     ForEach(roles) { r in Button("\(r.company) — \(r.title)") { app.timelineRoleID = r.id } }
                 } label: {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         Text(role.map { "\($0.company) — \($0.title)" } ?? "General").font(.system(size: 13, weight: .medium)).lineLimit(1)
                         Image(systemName: "chevron.up.chevron.down").font(.system(size: 10))
                     }
-                    .padding(.horizontal, 14).frame(height: 36).overlay(Capsule().strokeBorder(PB.line2))
+                    .padding(.horizontal, 16).frame(height: 36).overlay(Capsule().strokeBorder(PB.line2))
                 }
-                .menuStyle(.button).buttonStyle(.plain).fixedSize()
-                Text(claude.isReady ? "Generates with your Claude Code" : "Generates with your Anthropic key")
-                    .font(.system(size: 12)).foregroundStyle(PB.muted)
-                Spacer(minLength: 0)
-                if !empty.isEmpty {
-                    Button("Generate all empty (\(empty.count))") { for t in empty { generate(t) } }
-                        .buttonStyle(PillButtonStyle(compact: true)).disabled(!generating.isEmpty)
-                }
-            }
+                .menuStyle(.button).buttonStyle(.plain).fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var aiNote: some View {
+        Text(claude.isReady ? "Generates with your Claude Code" : "Generates with your Anthropic key")
+            .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize()
+    }
+
+    @ViewBuilder
+    private func generateAll(_ empty: [Topic]) -> some View {
+        if !empty.isEmpty {
+            Button("Generate all (\(empty.count))") { for t in empty { generate(t) } }
+                .buttonStyle(PillButtonStyle(compact: true)).fixedSize().disabled(!generating.isEmpty)
         }
     }
 
@@ -101,8 +115,8 @@ struct EssentialsView: View {
         let d = doc(t, role: role)
         let words = d?.body.split(whereSeparator: \.isWhitespace).count ?? 0
         let busy = generating.contains(t.id)
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
                 Image(systemName: t.icon).font(.system(size: 16)).foregroundStyle(PB.cobalt)
                     .frame(width: 36, height: 36).background(Circle().fill(PB.cobaltSoft))
                 Text(t.title).font(.system(size: 16, weight: .semibold)).lineLimit(2)
@@ -128,7 +142,7 @@ struct EssentialsView: View {
             }
         }
         .frame(minHeight: 170, alignment: .top)
-        .pbCard(padding: 18, radius: PB.rLG)
+        .pbCard(padding: 16, radius: PB.rLG)
     }
 
     @discardableResult

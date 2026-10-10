@@ -6,13 +6,13 @@ struct CardHeader<Trailing: View>: View {
     var count: String? = nil
     @ViewBuilder var trailing: () -> Trailing
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Text(title).font(.system(size: 15, weight: .semibold))
             if let count { Text(count).font(.pbMono).foregroundStyle(PB.muted) }
             Spacer(minLength: 0)
             trailing()
         }
-        .padding(.bottom, 10)
+        .padding(.bottom, 12)
     }
 }
 
@@ -37,7 +37,7 @@ struct KindLabel: View {
     let kind: SessionKind
     var inverted = false
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             RoundedRectangle(cornerRadius: 2).frame(width: 7, height: 7)
             Text(kind.label.uppercased()).font(.system(size: 11, weight: .bold)).kerning(0.9)
         }
@@ -99,13 +99,14 @@ struct RefChip: View {
                         .overlay(Circle().strokeBorder(inverted ? PB.sun : PB.line))
                     Text(ref.heading.isEmpty ? (doc.title.components(separatedBy: CharacterSet(charactersIn: ":—")).first ?? doc.title)
                                              : TimeFmt.cleanHeading(ref.heading))
-                        .font(.system(size: 12, weight: .medium)).lineLimit(1)
+                        .font(.system(size: 12, weight: .medium)).lineLimit(2).multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.leading, 4).padding(.trailing, 12).frame(height: 30)
+                .padding(.leading, 4).padding(.trailing, 12).padding(.vertical, 4).frame(minHeight: 32)
                 .foregroundStyle(inverted ? Color.white : PB.ink)
-                .background(Capsule().fill(inverted ? Color.white.opacity(0.08) : PB.surface))
-                .overlay(Capsule().strokeBorder(inverted ? Color.white.opacity(0.18) : PB.line))
-                .contentShape(Capsule())
+                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(inverted ? Color.white.opacity(0.08) : PB.surface))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(inverted ? Color.white.opacity(0.18) : PB.line))
+                .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
             .buttonStyle(.plain)
             .help(doc.title + (ref.heading.isEmpty ? "" : " › " + ref.heading))
@@ -146,7 +147,7 @@ struct AgendaRow: View {
     var body: some View {
         let st = task.status(at: now)
         Button { app.gotoSession(task) } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text(TimeFmt.hm(task.start)).font(.system(size: 12, design: .monospaced)).foregroundStyle(PB.muted)
                     .frame(width: 42, alignment: .leading)
                 Circle()
@@ -163,7 +164,7 @@ struct AgendaRow: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
             }
-            .padding(.vertical, 7)
+            .padding(.vertical, 8)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -194,7 +195,7 @@ struct ChecklistRow: View {
             Text(TimeFmt.hm(task.start)).font(.system(size: 12, design: .monospaced))
                 .foregroundStyle(st == .current ? PB.cobalt : PB.muted)
         }
-        .padding(.vertical, 16).padding(.horizontal, 2)
+        .padding(.vertical, 16).padding(.horizontal, 4)
         .overlay(alignment: .bottom) { Rectangle().fill(PB.line2).frame(height: 1) }
     }
 }
@@ -207,11 +208,11 @@ struct AddTaskRow: View {
     @State private var title = ""
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 16) {
             Image(systemName: "plus").font(.system(size: 18, weight: .light)).foregroundStyle(PB.ink2).frame(width: 22)
             TextField("Add a task", text: $title).textFieldStyle(.plain).font(.system(size: 15)).onSubmit(add)
         }
-        .padding(.vertical, 14).padding(.horizontal, 2)
+        .padding(.vertical, 16).padding(.horizontal, 4)
         .overlay(alignment: .bottom) { Rectangle().fill(PB.line2).frame(height: 1) }
     }
 
@@ -242,7 +243,7 @@ struct SessionEditorSheet: View {
     @Query private var tasks: [PrepTask]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text(draft.taskId == nil ? "New session" : "Edit session").font(.system(size: 18, weight: .semibold))
                 Spacer()
@@ -280,29 +281,29 @@ struct SessionEditorSheet: View {
                     .labelsHidden().pickerStyle(.menu).tint(PB.ink)
                 }
             }
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text("Linked documents").pbLabelStyle()
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 4) {
                         ForEach(docs) { d in
                             let linked = draft.refs.contains { $0.docId == d.id }
                             Button {
                                 if linked { draft.refs.removeAll { $0.docId == d.id } }
                                 else { draft.refs.append(DocRef(docId: d.id)) }
                             } label: {
-                                HStack(spacing: 10) {
+                                HStack(spacing: 12) {
                                     Image(systemName: linked ? "checkmark.circle.fill" : "circle")
                                         .foregroundStyle(linked ? PB.cobalt : PB.line2)
                                     Text(String(format: "%02d", min(d.order, 99))).font(.pbMono).foregroundStyle(PB.muted)
                                     Text(d.title.isEmpty ? "Untitled" : d.title).font(.system(size: 13)).lineLimit(1)
                                     Spacer(minLength: 0)
                                 }
-                                .padding(.vertical, 5).contentShape(Rectangle())
+                                .padding(.vertical, 4).contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                         }
                     }
-                    .padding(10)
+                    .padding(12)
                 }
                 .frame(maxHeight: 200)
                 .background(RoundedRectangle(cornerRadius: 12).fill(PB.surface))
@@ -318,7 +319,7 @@ struct SessionEditorSheet: View {
                     .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(22)
+        .padding(24)
         .frame(minWidth: 420)
         .background(PB.card)
         .presentationDetents([.large])
@@ -351,7 +352,7 @@ struct DocRow: View {
                     .frame(width: 36, height: 36)
                     .background(RoundedRectangle(cornerRadius: 12).fill(PB.surface))
                     .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(PB.line))
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(doc.title.isEmpty ? "Untitled" : doc.title).font(.system(size: 14, weight: .medium)).lineLimit(1)
                     Text("\(roleName) · \(doc.updatedAt.formatted(.relative(presentation: .named)))")
                         .font(.system(size: 12)).foregroundStyle(PB.muted).lineLimit(1)
@@ -379,7 +380,7 @@ struct PipelineView: View {
             HStack(alignment: .top, spacing: 12) {
                 ForEach(Stage.allCases) { stage in column(stage) }
             }
-            .padding(2)
+            .padding(4)
         }
     }
 
@@ -391,19 +392,19 @@ struct PipelineView: View {
                 Spacer()
                 Text(String(format: "%02d", items.count)).font(.pbMono).foregroundStyle(PB.muted)
             }
-            .padding(.horizontal, 6).padding(.top, 4).padding(.bottom, 4)
+            .padding(.horizontal, 8).padding(.top, 4).padding(.bottom, 4)
             ForEach(items) { role in tile(role) }
             if showAdd {
                 Button { app.newRole(context, stage: stage) } label: {
                     Text("+ Add").font(.system(size: 13)).foregroundStyle(PB.muted)
-                        .frame(maxWidth: .infinity).padding(10)
+                        .frame(maxWidth: .infinity).padding(12)
                         .overlay(RoundedRectangle(cornerRadius: PB.rMD).strokeBorder(PB.line2, style: StrokeStyle(lineWidth: 1, dash: [4])))
                 }
                 .buttonStyle(.plain)
             }
             Spacer(minLength: 0)
         }
-        .padding(10)
+        .padding(12)
         .frame(width: 210, alignment: .topLeading)
         .frame(minHeight: 160, alignment: .top)
         .background(RoundedRectangle(cornerRadius: PB.rLG).fill(PB.surface))
@@ -423,7 +424,7 @@ struct PipelineView: View {
                 Text(role.company).font(.system(size: 14, weight: .semibold))
                 Text(role.title).font(.system(size: 13)).opacity(0.65).fixedSize(horizontal: false, vertical: true)
                 if let at = role.interviewAt { Text(at.pbShort).font(.pbMono).opacity(0.65) }
-                ProgressBar(value: tasks.progress(for: role.id), inverted: hot).padding(.top, 6)
+                ProgressBar(value: tasks.progress(for: role.id), inverted: hot).padding(.top, 8)
             }
             .foregroundStyle(hot ? Color.white : PB.ink)
             .padding(12)

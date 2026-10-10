@@ -47,6 +47,7 @@
 		7E1B01F0D9DB36B25A0A7B8F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D5A22B3E3CDDECC8B7D281BA /* Assets.xcassets */; };
 		854E512FCDDBBE633249ED1F /* EssentialsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 863595FE71E5D6B79DB81E8B /* EssentialsView.swift */; };
 		85E174DE9B0DE79BDD585C4B /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = C8E722470B85C18A600A5BAA /* SwiftTerm */; };
+		88297BEE959A45436DE8FED8 /* SyntaxHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C91DB912635B8A6592F9B8FA /* SyntaxHighlighter.swift */; };
 		9194350FF0CD45498CD29074 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D5A22B3E3CDDECC8B7D281BA /* Assets.xcassets */; };
 		9258A319E668D1008D056D2F /* LearnViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB8E4C959CF417900DFFC346 /* LearnViews.swift */; };
 		98A27C8C015DFFF7FC1D5352 /* Cloud.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A4A493B86B1E3BAC90CEF43 /* Cloud.swift */; };
@@ -59,6 +60,7 @@
 		A9E40F7AD888D8D86D8283E9 /* TextClean.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F3F85AEB7443FD9579A22E0 /* TextClean.swift */; };
 		AB96521CB18B51F737A936C5 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = B73BFD19624466AB957B8B72 /* Models.swift */; };
 		AC53B5797598656B1BB7FEE3 /* Practice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B209C3AE9C59D4538BB7F70 /* Practice.swift */; };
+		B04F4A74080410999B6320DB /* SyntaxHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C91DB912635B8A6592F9B8FA /* SyntaxHighlighter.swift */; };
 		B32BE904B3B91DA420C56A27 /* ClaudeCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA84D9C3ECFFFF00DCDB21C1 /* ClaudeCode.swift */; };
 		B44B1D5ED20ED385CF2CC9C0 /* ClaudePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECC76875631FCA668A14AE13 /* ClaudePanel.swift */; };
 		B84175618128F07C8E1EAB21 /* Learning.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB9073FEB4AD369E9018B0DD /* Learning.swift */; };
@@ -109,6 +111,7 @@
 		BC0CFBC3448067B5F781BF89 /* Transfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transfer.swift; sourceTree = "<group>"; };
 		BC754F719792244FD3C57AC4 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
 		C570E7B529A79775F8DB3F03 /* PracticeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PracticeView.swift; sourceTree = "<group>"; };
+		C91DB912635B8A6592F9B8FA /* SyntaxHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntaxHighlighter.swift; sourceTree = "<group>"; };
 		CA84D9C3ECFFFF00DCDB21C1 /* ClaudeCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCode.swift; sourceTree = "<group>"; };
 		CB9073FEB4AD369E9018B0DD /* Learning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Learning.swift; sourceTree = "<group>"; };
 		D5A22B3E3CDDECC8B7D281BA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -170,6 +173,7 @@
 				6E02443C80B213288CCA76C4 /* RolesView.swift */,
 				6835F58BDD8C6B80BFB23B64 /* RootView.swift */,
 				3010B879EF992187C633DB93 /* SearchView.swift */,
+				C91DB912635B8A6592F9B8FA /* SyntaxHighlighter.swift */,
 				A4E1D6952B06D2384BCBEBBD /* Theme.swift */,
 				D6FC5742992DC2E095BDEF27 /* TimelineView.swift */,
 			);
@@ -354,6 +358,7 @@
 				DCDA9A4BB6FAAA8D4DC26E03 /* RolesView.swift in Sources */,
 				CBAF4E46FA6085154FF96B96 /* RootView.swift in Sources */,
 				1A3EBEF4782C9479A7053560 /* SearchView.swift in Sources */,
+				88297BEE959A45436DE8FED8 /* SyntaxHighlighter.swift in Sources */,
 				C65E7E59B27C42246189F8D6 /* TextClean.swift in Sources */,
 				A4D59312DF82A1E45270AD98 /* Theme.swift in Sources */,
 				454D906927D158A44AAF2099 /* TimelineView.swift in Sources */,
@@ -394,6 +399,7 @@
 				D603F61B60BDA4622982A67E /* RolesView.swift in Sources */,
 				15EF66572198B463544C9213 /* RootView.swift in Sources */,
 				5589EF6DC5389E19055FFD28 /* SearchView.swift in Sources */,
+				B04F4A74080410999B6320DB /* SyntaxHighlighter.swift in Sources */,
 				A9E40F7AD888D8D86D8283E9 /* TextClean.swift in Sources */,
 				2785839BA6299D47FC207CCC /* Theme.swift in Sources */,
 				5567A6BCB0A41DF8F1D58E2C /* TimelineView.swift in Sources */,

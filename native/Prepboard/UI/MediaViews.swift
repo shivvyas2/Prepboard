@@ -121,20 +121,20 @@ struct SideVideoPanel: View {
         VStack(alignment: .leading, spacing: 0) {
             YouTubePlayer(video: video).id(video.id)
             HStack(alignment: .top, spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(video.title).font(.system(size: 13, weight: .semibold)).lineLimit(2)
                     Text(video.channel).font(.system(size: 12)).foregroundStyle(PB.muted).lineLimit(1)
                 }
                 Spacer(minLength: 0)
-                CircleIconButton(systemImage: "arrow.up.left.and.arrow.down.right", size: 30, label: "Full size") {
+                CircleIconButton(systemImage: "arrow.up.left.and.arrow.down.right", size: 32, label: "Full size") {
                     app.sideVideo = nil; app.playingVideo = video
                 }
-                CircleIconButton(systemImage: "arrow.up.right.square", size: 30, label: "Open on YouTube") { openURL(video.watchURL) }
-                CircleIconButton(systemImage: "xmark", size: 30, label: "Close video") { app.sideVideo = nil }
+                CircleIconButton(systemImage: "arrow.up.right.square", size: 32, label: "Open on YouTube") { openURL(video.watchURL) }
+                CircleIconButton(systemImage: "xmark", size: 32, label: "Close video") { app.sideVideo = nil }
             }
             .padding(compact ? 10 : 14)
             if !compact && !video.why.isEmpty {
-                Text(video.why).font(.system(size: 12)).foregroundStyle(PB.ink2).padding(.horizontal, 14).padding(.bottom, 14)
+                Text(video.why).font(.system(size: 12)).foregroundStyle(PB.ink2).padding(.horizontal, 16).padding(.bottom, 16)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -154,9 +154,9 @@ struct VideoPlayerSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             YouTubePlayer(video: video)
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .top, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text(video.title).font(.system(size: 15, weight: .semibold))
                         Text(video.channel).font(.system(size: 13)).foregroundStyle(PB.muted)
                     }
@@ -175,7 +175,7 @@ struct VideoPlayerSheet: View {
                 Text("If the video says it can't play here (some channels block embedding), use “YouTube ↗”.")
                     .font(.system(size: 12)).foregroundStyle(PB.muted)
             }
-            .padding(18)
+            .padding(16)
         }
         .background(PB.card)
         #if os(macOS)

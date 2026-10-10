@@ -47,7 +47,7 @@ final class ClaudeCode {
         guard paired else { connection = .unknown; return }
         connection = .checking
         do {
-            let (data, _) = try await request("status", body: nil, timeout: 8)
+            let (data, _) = try await request("status", body: nil, timeout: 25)
             let s = try JSONDecoder().decode(Status.self, from: data)
             connection = s.ok ? .connected(s.version ?? "Claude Code") : .signedOut
         } catch {
@@ -86,6 +86,21 @@ final class ClaudeCode {
         if let e = reply.error { throw Learning.Failure.message(e) }
         if reply.is_error == true { throw Learning.Failure.message(reply.result ?? "Claude Code returned an error.") }
         return ((reply.result ?? "").withoutEmoji, reply.session_id)
+    }
+
+    /// Compiles and runs Practice code on the paired Mac (used for Swift, which can't compile on iPhone/iPad).
+    func exec(_ code: String, lang: String) async throws -> String {
+        struct Body: Encodable { let code: String; let lang: String }
+        struct Reply: Decodable { let output: String?; let error: String? }
+        do {
+            let (data, _) = try await request("exec", body: try JSONEncoder().encode(Body(code: code, lang: lang)), timeout: 60)
+            let r = try JSONDecoder().decode(Reply.self, from: data)
+            if let e = r.error { throw Learning.Failure.message(e) }
+            return r.output ?? ""
+        } catch let e as URLError {
+            connection = .unreachable(e.localizedDescription)
+            throw Learning.Failure.message("Couldn't reach PrepBoard on your Mac. Open it there, then try again.")
+        }
     }
 
     /// Runs a one-shot prompt on the Mac and decodes the JSON in its reply.

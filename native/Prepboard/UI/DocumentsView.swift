@@ -51,7 +51,7 @@ struct DocumentsView: View {
             let wide = geo.size.width > 600   // iPad portrait and up: list + document side by side
             let selected = allDocs.first { $0.id == app.selectedDocID }
             if wide {
-                HStack(alignment: .top, spacing: 18) {
+                HStack(alignment: .top, spacing: 16) {
                     list.frame(width: geo.size.width > 1000 ? 310 : 250)
                     if let doc = selected ?? groups.first?.docs.first {
                         DocEditorView(doc: doc, tasks: tasks, roles: roles).id(doc.id)
@@ -73,7 +73,7 @@ struct DocumentsView: View {
     }
 
     private var list: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Menu {
                     Button("All documents") { app.docFilter = "all" }
@@ -86,7 +86,7 @@ struct DocumentsView: View {
                         Image(systemName: "chevron.up.chevron.down").font(.system(size: 10))
                     }
                     .font(.system(size: 13, weight: .medium))
-                    .padding(.horizontal, 14).frame(height: 36)
+                    .padding(.horizontal, 16).frame(height: 36)
                     .overlay(Capsule().strokeBorder(PB.line2))
                     .contentShape(Capsule())
                 }
@@ -104,12 +104,12 @@ struct DocumentsView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(groups, id: \.title) { group in
-                        Text(group.title).pbLabelStyle().padding(.top, 10).padding(.horizontal, 4)
+                        Text(group.title).pbLabelStyle().padding(.top, 12).padding(.horizontal, 4)
                         ForEach(group.docs) { docCard($0) }
                     }
-                    if allDocs.isEmpty { Text("No documents.").foregroundStyle(PB.muted).padding(30) }
+                    if allDocs.isEmpty { Text("No documents.").foregroundStyle(PB.muted).padding(32) }
                 }
-                .padding(2)
+                .padding(4)
             }
             .scrollIndicators(.hidden)
         }
@@ -127,11 +127,11 @@ struct DocumentsView: View {
         let active = d.id == (app.selectedDocID ?? groups.first?.docs.first?.id)
         let next = tasks.first { t in !t.done && t.end > .now && t.refs.contains { $0.docId == d.id } }
         return Button { app.selectedDocID = d.id; app.docEditing = false } label: {
-            HStack(alignment: .top, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
                 Text(d.isPDF ? "PDF" : d.tags.contains("research") ? "Rs" : String(format: "%02d", min(d.order, 99)))
                     .font(.system(size: 12, weight: .semibold, design: .monospaced)).foregroundStyle(PB.muted)
                     .frame(width: 24, alignment: .leading)
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(d.title.isEmpty ? "Untitled" : d.title).font(.system(size: 14, weight: .semibold))
                         .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
                     Text(next.map { "Next: \($0.start.formatted(.dateTime.weekday(.abbreviated))) \(TimeFmt.hm($0.start))" }
@@ -140,7 +140,7 @@ struct DocumentsView: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 14).padding(.vertical, 12)
+            .padding(.horizontal, 16).padding(.vertical, 12)
             .background(RoundedRectangle(cornerRadius: PB.rLG, style: .continuous).fill(PB.card))
             .overlay(RoundedRectangle(cornerRadius: PB.rLG, style: .continuous).strokeBorder(active ? PB.cobalt : PB.line, lineWidth: active ? 1.5 : 1))
             .contentShape(RoundedRectangle(cornerRadius: PB.rLG))
@@ -197,7 +197,7 @@ struct DocEditorView: View {
                 CircleIconButton(systemImage: "square.and.arrow.down", size: 32, label: "Export Markdown") { exporting = true }
                 CircleIconButton(systemImage: "trash", size: 32, label: "Delete document") { confirmDelete = true }
             }
-            .padding(.horizontal, 18).padding(.vertical, 12)
+            .padding(.horizontal, 16).padding(.vertical, 12)
             .overlay(alignment: .bottom) { Rectangle().fill(PB.line).frame(height: 1) }
 
             ScrollViewReader { proxy in
@@ -221,7 +221,7 @@ struct DocEditorView: View {
                                 .background(Capsule().fill(PB.surface)).overlay(Capsule().strokeBorder(PB.line))
                                 .frame(maxWidth: 260)
                         }
-                        .padding(.top, 6).padding(.bottom, 18)
+                        .padding(.top, 8).padding(.bottom, 16)
 
                         if !schedule.isEmpty { scheduleCard(schedule) }
 
@@ -239,7 +239,7 @@ struct DocEditorView: View {
                             MarkdownView(blocks: blocks).frame(maxWidth: 820, alignment: .leading)
                         }
                     }
-                    .padding(.horizontal, 40).padding(.vertical, 28)
+                    .padding(.horizontal, 40).padding(.vertical, 32)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .onAppear { blocks = parsedBody(); scrollToHeading(proxy) }
@@ -266,11 +266,11 @@ struct DocEditorView: View {
     }
 
     private func scheduleCard(_ schedule: [PrepTask]) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("On your timeline").pbLabelStyle().padding(.bottom, 2)
+        VStack(alignment: .leading, spacing: 8) {
+            Text("On your timeline").pbLabelStyle().padding(.bottom, 4)
             ForEach(schedule) { t in
                 Button { app.gotoSession(t) } label: {
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
                         Text("\(t.start.formatted(.dateTime.weekday(.abbreviated).day())) · \(TimeFmt.hm(t.start))")
                             .font(.system(size: 12, design: .monospaced)).foregroundStyle(PB.ink2).frame(width: 110, alignment: .leading)
                         Text((t.done ? "✓ " : "") + t.title).font(.system(size: 13))
@@ -284,10 +284,10 @@ struct DocEditorView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 16).padding(.vertical, 14)
+        .padding(.horizontal, 16).padding(.vertical, 16)
         .background(RoundedRectangle(cornerRadius: PB.rLG).fill(PB.surface))
         .overlay(RoundedRectangle(cornerRadius: PB.rLG).strokeBorder(PB.line))
-        .padding(.bottom, 22)
+        .padding(.bottom, 24)
     }
 
     /// Parsed body, minus a leading "# Title" that just repeats the document title shown above it.

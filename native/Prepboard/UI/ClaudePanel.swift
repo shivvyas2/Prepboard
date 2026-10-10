@@ -44,7 +44,7 @@ struct ClaudePanel: View {
             } else {
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 16) {
                         if claude.messages.isEmpty { intro(ctx) }
                         ForEach(claude.messages) { m in bubble(m, ctx: ctx).id(m.id) }
                         if let status = claude.status {
@@ -72,7 +72,7 @@ struct ClaudePanel: View {
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             ClaudeMark().frame(width: 18, height: 18)
                 .frame(width: 30, height: 30).background(Circle().fill(Color(hex: 0xF5EDE4)))
             VStack(alignment: .leading, spacing: 1) {
@@ -94,14 +94,14 @@ struct ClaudePanel: View {
                 Text("Tools allowed: read files, search the web")
             } label: { Image(systemName: "ellipsis").frame(width: 30, height: 30) }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
-            CircleIconButton(systemImage: "xmark", size: 30, label: "Close Claude") { app.showClaude = false }
+            CircleIconButton(systemImage: "xmark", size: 32, label: "Close Claude") { app.showClaude = false }
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
         .overlay(alignment: .bottom) { Rectangle().fill(PB.line).frame(height: 1) }
     }
 
     private func intro(_ ctx: Context?) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             Text("Ask your local Claude Code about what you're studying. It can read your prep folder and search the web.")
                 .font(.system(size: 13)).foregroundStyle(PB.ink2).fixedSize(horizontal: false, vertical: true)
             Text("Try").pbLabelStyle().padding(.top, 4)
@@ -109,7 +109,7 @@ struct ClaudePanel: View {
                 Button { send(s, ctx: ctx) } label: {
                     Text(s).font(.system(size: 13, weight: .medium)).multilineTextAlignment(.leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 12).padding(.vertical, 10)
+                        .padding(.horizontal, 12).padding(.vertical, 12)
                         .background(RoundedRectangle(cornerRadius: 12).fill(PB.surface))
                         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(PB.line))
                         .contentShape(Rectangle())
@@ -133,15 +133,15 @@ struct ClaudePanel: View {
         Group {
             if m.role == .user {
                 Text(m.text).font(.system(size: 13, weight: .medium)).foregroundStyle(.white)
-                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .padding(.horizontal, 16).padding(.vertical, 12)
                     .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(PB.cobalt))
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .textSelection(.enabled)
             } else {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 12) {
                     MarkdownView(blocks: MarkdownParser.parse(m.text))
                     if !claude.isRunning || m.id != claude.messages.last?.id {
-                        HStack(spacing: 6) {
+                        HStack(spacing: 8) {
                             Button("Save as document") { save(m, ctx: ctx) }
                                 .buttonStyle(PillButtonStyle(filled: false, compact: true))
                             Button("Copy") {
@@ -169,7 +169,7 @@ struct ClaudePanel: View {
                     .textFieldStyle(.plain).lineLimit(1...6).font(.system(size: 14))
                     .focused($inputFocused)
                     .onSubmit { send(input, ctx: ctx) }
-                    .padding(.horizontal, 14).padding(.vertical, 11)
+                    .padding(.horizontal, 16).padding(.vertical, 12)
                     .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(PB.surface))
                     .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(PB.line))
                 if claude.isRunning {
@@ -180,7 +180,7 @@ struct ClaudePanel: View {
                 }
             }
         }
-        .padding(14)
+        .padding(16)
         .overlay(alignment: .top) { Rectangle().fill(PB.line).frame(height: 1) }
         .onAppear { inputFocused = true }
     }

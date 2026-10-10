@@ -22,7 +22,7 @@ struct SearchView: View {
         @Bindable var app = app
         let q = app.searchText.trimmingCharacters(in: .whitespaces)
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Search").pbLabelStyle()
                     Text(q.isEmpty ? "Find anything" : "“\(q)”").font(.pbDisplay).kerning(-1.4).lineLimit(2)
@@ -56,7 +56,7 @@ struct SearchView: View {
                 }
             }
             .frame(maxWidth: 900, alignment: .leading)
-            .padding(.bottom, 30)
+            .padding(.bottom, 32)
         }
         .scrollIndicators(.hidden)
     }
