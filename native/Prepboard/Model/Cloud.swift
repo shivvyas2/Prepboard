@@ -4,10 +4,14 @@ import Supabase
 import SwiftData
 
 /// Supabase connection. The anon key is public by design; Row Level Security protects each user's rows.
-/// Leave both empty to run Prepboard locally without accounts.
+/// Both values come from native/Secrets.xcconfig (gitignored) through Info.plist; without that file
+/// they're empty and Prepboard runs locally without accounts.
 enum CloudConfig {
-    static let url = "https://abxwxpwhkcqtotjqsmxb.supabase.co"
-    static let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFieHd4cHdoa2NxdG90anFzbXhiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0NTYxMjQsImV4cCI6MjEwMjAzMjEyNH0.YCUZsaqsn7iQuOQIvcWqX9QwhrokZTGoB6XIVOfSIYo"
+    static let url = info("SupabaseURL")
+    static let anonKey = info("SupabaseAnonKey")
+    private static func info(_ key: String) -> String {
+        (Bundle.main.object(forInfoDictionaryKey: key) as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+    }
     /// Launch with `-PrepboardLocalOnly YES` to run without accounts (development/testing).
     static var isConfigured: Bool { !url.isEmpty && !anonKey.isEmpty && !UserDefaults.standard.bool(forKey: "PrepboardLocalOnly") }
 }

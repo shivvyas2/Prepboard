@@ -16,3 +16,7 @@ supabase/.temp/
 *.xcodeproj/project.xcworkspace/xcuserdata/
 node_modules/
 .vercel
+
+# Supabase keys (generated / local only)
+web/config.js
+native/Secrets.xcconfig

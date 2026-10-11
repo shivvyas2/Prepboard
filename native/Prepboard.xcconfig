@@ -1,0 +1,3 @@
+// Shared build settings. Supabase values live in Secrets.xcconfig (gitignored); copy
+// Secrets.example.xcconfig to create it. Without it the app builds and runs local-only.
+#include? "Secrets.xcconfig"

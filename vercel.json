@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "buildCommand": "",
+  "buildCommand": "node scripts/write-web-config.mjs",
   "outputDirectory": "web",
   "cleanUrls": true,
   "headers": [

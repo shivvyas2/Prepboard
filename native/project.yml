@@ -5,6 +5,9 @@ options:
     iOS: "17.0"
     macOS: "14.0"
   createIntermediateGroups: true
+configFiles:
+  Debug: Prepboard.xcconfig
+  Release: Prepboard.xcconfig
 settings:
   base:
     SWIFT_VERSION: "5.0"
@@ -40,6 +43,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.shivvyas.prepboard
         # Sandbox off so the app can launch the user's local `claude` CLI.
         ENABLE_APP_SANDBOX: NO
+        INFOPLIST_FILE: Prepboard-macOS-Info.plist
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
         CODE_SIGN_IDENTITY: "-"
   Prepboard-iOS:
