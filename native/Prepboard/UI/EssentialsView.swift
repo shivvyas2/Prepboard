@@ -8,6 +8,7 @@ struct EssentialsView: View {
     @Environment(AppState.self) private var app
     @Environment(Cloud.self) private var cloud
     @Environment(ClaudeCode.self) private var claude
+    @Environment(GitHub.self) private var github
     @Environment(\.modelContext) private var context
     @Query(sort: \Role.createdAt) private var roles: [Role]
     @Query private var docs: [Doc]
@@ -25,6 +26,9 @@ struct EssentialsView: View {
     static let topics: [Topic] = [
         Topic(id: "intro", title: "Tell me about yourself", blurb: "Your pitch in 30 seconds and 2 minutes, tailored to this role.",
               icon: "person.wave.2", headings: ["30-second version", "2-minute version", "Tailoring to this role", "Delivery tips"]),
+        Topic(id: "projects", title: "Your projects (from GitHub)", blurb: "Your strongest repos as interview stories, the questions they invite, and project ideas for this role.",
+              icon: "chevron.left.forwardslash.chevron.right", headings: ["Project summaries", "Deep-dive stories", "Technical questions to expect",
+                                                                          "How your work maps to this role", "Project ideas to build next"]),
         Topic(id: "leadership", title: "Leadership & behavioral stories", blurb: "A STAR story bank from your résumé: ownership, influence, mentoring.",
               icon: "person.3", headings: ["Story bank overview", "Leading without authority", "Ownership and delivering results",
                                            "Mentoring and raising the bar", "Handling ambiguity", "Practice prompts"]),
@@ -40,6 +44,9 @@ struct EssentialsView: View {
         Topic(id: "salary", title: "Compensation & negotiation", blurb: "Market range, your numbers and what to say when asked.",
               icon: "dollarsign.circle", headings: ["Market range", "Your numbers", "Answering compensation questions", "Negotiation script"]),
     ]
+
+    /// Topics written from the user's own work, so they also get their GitHub repositories as material.
+    static let usesGitHub: Set<String> = ["intro", "projects", "leadership", "conflict", "why"]
 
     private var role: Role? {
         roles.first { $0.id == app.timelineRoleID }
@@ -74,6 +81,7 @@ struct EssentialsView: View {
         return VStack(alignment: .leading, spacing: 8) {
             Text("Essentials").pbLabelStyle()
             Text("Leadership & essential preparation").font(.pbDisplay).kerning(-1.4).lineLimit(2).minimumScaleFactor(0.7)
+            githubRow
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 12) { rolePicker; aiNote; Spacer(minLength: 0); generateAll(empty) }
                 VStack(alignment: .leading, spacing: 8) {
@@ -96,6 +104,31 @@ struct EssentialsView: View {
                     .padding(.horizontal, 16).frame(height: 36).overlay(Capsule().strokeBorder(PB.line2))
                 }
                 .menuStyle(.button).buttonStyle(.plain).fixedSize(horizontal: false, vertical: true)
+    }
+
+    @State private var githubDraft = ""
+
+    /// Where "your story" material comes from: the GitHub account (detected from `gh` on the Mac) and its repos.
+    private var githubRow: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "chevron.left.forwardslash.chevron.right").font(.system(size: 12)).foregroundStyle(PB.cobalt)
+            if github.username.isEmpty {
+                TextField("GitHub username, to write your story from your repos", text: $githubDraft)
+                    .textFieldStyle(.plain).font(.system(size: 13)).frame(maxWidth: 320)
+                    .onSubmit { github.username = githubDraft.trimmingCharacters(in: .whitespaces); Task { await github.load(force: true) } }
+            } else {
+                Text("GitHub: \(github.username)").font(.system(size: 13, weight: .medium))
+                Text(github.loading ? "reading repos…" : github.error ?? (github.repos.isEmpty ? "repos load when you generate" : "\(github.repos.count) recent repos"))
+                    .font(.system(size: 12)).foregroundStyle(github.error == nil ? PB.muted : PB.red).lineLimit(1)
+                Button("Refresh") { Task { await github.load(force: true) } }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(PB.cobalt)
+                    .disabled(github.loading)
+                Button("Change") { githubDraft = github.username; github.username = "" }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(PB.muted)
+            }
+        }
+        .task(id: cloud.user?.id) {
+            github.use(account: cloud.user?.id.uuidString)
+            await github.detect()
+        }
     }
 
     private var aiNote: some View {
@@ -178,9 +211,18 @@ struct EssentialsView: View {
         let material = docs.filter { $0.roleId == (r?.id ?? "") && !$0.isPDF && !$0.tags.contains("essentials")
                                      && ($0.tags.contains("resume") || $0.tags.contains("job-posting") || $0.title.localizedCaseInsensitiveContains("research")) }
             .map { "<document title=\"\($0.title)\">\n\($0.body.prefix(12_000))\n</document>" }.joined(separator: "\n")
-        let ctx = Self.formatRules + "\n\n" + (material.isEmpty ? "(No résumé or research documents yet. Write general guidance and mark personal parts \"To fill in:\".)" : material)
+        let github = github
         Task {
             defer { generating.remove(t.id) }
+            var sources = material
+            if Self.usesGitHub.contains(t.id) {
+                await github.load()
+                if !github.context.isEmpty { sources += (sources.isEmpty ? "" : "\n") + github.context }
+            }
+            var ctx = Self.formatRules + "\n\n" + (sources.isEmpty ? "(No résumé, GitHub or research documents yet. Write general guidance and mark personal parts \"To fill in:\".)" : sources)
+            if t.id == "projects" {
+                ctx += "\n\nFor this page: pick the 3-5 repositories that best show senior engineering for this role. For each, under \"### <repo name>\": what it does, the stack, the hardest technical problem and how it was solved, and what the user would do differently, using only what the material shows (mark gaps \"To fill in:\"). In \"Project ideas to build next\", suggest 3-5 small, concrete projects (a weekend to two weeks each) that would strengthen the user's case for this specific role; these are suggestions, so label them as ideas."
+            }
             do {
                 var body: String
                 if claude.isReady {

@@ -21,6 +21,27 @@ struct RolesView: View {
                         Spacer()
                         Button("+ New role") { app.newRole(context) }.buttonStyle(PillButtonStyle())
                     }
+                    #if os(macOS)
+                    JobSyncCard()
+                    #endif
+                    let needPlan = roles.filter { r in (r.interviewAt ?? .distantPast) > .now && !tasks.contains { $0.roleId == r.id } }
+                    if !needPlan.isEmpty {
+                        VStack(alignment: .leading, spacing: 0) {
+                            CardHeader(title: "Interviews without a plan", count: "\(needPlan.count)")
+                            ForEach(needPlan) { r in
+                                HStack(spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text("\(r.company) — \(r.title)").font(.system(size: 14, weight: .medium)).lineLimit(2)
+                                        Text(r.interviewAt?.pbFull ?? "").font(.system(size: 12)).foregroundStyle(PB.muted)
+                                    }
+                                    Spacer(minLength: 8)
+                                    Button("Generate prep plan") { app.planForRole(r.id) }.buttonStyle(PillButtonStyle(compact: true))
+                                }
+                                .padding(.vertical, 8)
+                            }
+                        }
+                        .pbCard(fill: PB.sun.opacity(0.18))
+                    }
                     PipelineView(roles: roles, tasks: tasks, showAdd: true)
                         .pbCard(padding: 16, fill: PB.surface.opacity(0.7))
                     VStack(alignment: .leading, spacing: 0) {
@@ -75,6 +96,17 @@ struct RoleDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     header
+                    if (role.interviewAt ?? .distantPast) > .now && tasks.isEmpty {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Interview scheduled").pbLabelStyle()
+                                Text(role.interviewAt?.pbFull ?? "").font(.system(size: 15, weight: .semibold))
+                            }
+                            Spacer(minLength: 8)
+                            Button("Generate prep plan") { app.planForRole(role.id) }.buttonStyle(PillButtonStyle())
+                        }
+                        .pbCard(fill: PB.sun.opacity(0.18))
+                    }
                     stageCard(progress)
                     if geo.size.width > 920 {
                         HStack(alignment: .top, spacing: 16) {
@@ -160,6 +192,8 @@ struct RoleDetailView: View {
                 PBTextField(label: "Role #", text: $role.roleNumber)
                 PBTextField(label: "Posting URL", text: $role.link)
                 PBTextField(label: "Interview format", text: $role.interviewNote)
+                PBTextField(label: "Recruiter", text: $role.recruiter)
+                PBTextField(label: "Recruiter email", text: $role.recruiterEmail)
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text("Interview").pbLabelStyle()
@@ -178,6 +212,8 @@ struct RoleDetailView: View {
             }
             .padding(.top, 12)
             PBTextField(label: "Notes", text: $role.notes, axis: .vertical).padding(.top, 12)
+            PBTextField(label: role.source.isEmpty ? "Activity" : "Activity · found in \(role.source == "linkedin" ? "LinkedIn" : "Gmail")",
+                        text: $role.activity, axis: .vertical).padding(.top, 12)
         }
         .pbCard()
     }
@@ -210,3 +246,40 @@ struct RoleDetailView: View {
         .pbCard()
     }
 }
+
+#if os(macOS)
+/// Gmail & LinkedIn sync status, "Sync now", and the automatic schedule.
+struct JobSyncCard: View {
+    @Environment(JobSync.self) private var sync
+    @Environment(ClaudeCode.self) private var claude
+
+    var body: some View {
+        @Bindable var sync = sync
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Gmail & LinkedIn").font(.system(size: 14, weight: .semibold))
+                Text(status).font(.system(size: 12)).foregroundStyle(sync.error == nil ? PB.muted : PB.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Toggle("Check every 3 hours", isOn: $sync.auto).toggleStyle(.checkbox).font(.system(size: 12))
+            if sync.isRunning {
+                ProgressView().controlSize(.small)
+            } else {
+                Button("Sync now") { Task { await sync.run() } }
+                    .buttonStyle(PillButtonStyle(filled: false, compact: true))
+                    .disabled(!claude.isReady)
+            }
+        }
+        .pbCard(padding: 16)
+    }
+
+    private var status: String {
+        if sync.isRunning { return "Checking your inbox and LinkedIn… this can take a few minutes." }
+        if let e = sync.error { return e }
+        if !claude.isReady { return "Connect Claude Code in Profile to track applications automatically." }
+        guard let last = sync.lastRun else { return "Finds applications, recruiters and interviews. Not synced yet." }
+        return "Last checked \(last.formatted(.relative(presentation: .named)))" + (sync.lastSummary.map { " · \($0)" } ?? "")
+    }
+}
+#endif

@@ -8,8 +8,10 @@ struct PrepboardApp: App {
     @State private var cloud = Cloud()
     @State private var browser = BrowserModel()
     @State private var claude = ClaudeCode()
+    @State private var github = GitHub()
     #if os(macOS)
     @State private var deviceBridge = DeviceBridge()
+    @State private var jobSync = JobSync()
     #endif
     @Environment(\.scenePhase) private var scenePhase
     let container: ModelContainer
@@ -36,6 +38,7 @@ struct PrepboardApp: App {
                 .task { cloud.attach(container: container, profile: profile) }
                 .preferredColorScheme(.light)
                 .environment(claude)
+                .environment(github)
                 // Bring in other devices' changes whenever the app comes back to the front.
                 .onChange(of: scenePhase) { if scenePhase == .active { cloud.refreshIfStale() } }
                 #if os(iOS)
@@ -59,9 +62,11 @@ struct PrepboardApp: App {
                 #endif
                 #if os(macOS)
                 .environment(deviceBridge)
+                .environment(jobSync)
                 .task {
                     await claude.checkConnection()   // picks up an installed, signed-in Claude Code on launch
                     deviceBridge.attach(claude)
+                    jobSync.attach(container: container, claude: claude)
                 }
                 .frame(minWidth: 1000, minHeight: 680)
                 #endif

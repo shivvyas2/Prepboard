@@ -262,7 +262,7 @@ struct AppSheets: ViewModifier {
         return content
             .sheet(item: $app.sessionEditor) { SessionEditorSheet(draft: $0) }
             .sheet(isPresented: $app.showProfile) { ProfileSheet() }
-            .sheet(isPresented: $app.showNewPrep) { NewPrepView() }
+            .sheet(isPresented: $app.showNewPrep, onDismiss: { app.newPrepRoleID = nil }) { NewPrepView() }
             .sheet(item: $app.playingVideo) { VideoPlayerSheet(video: $0) }
             .sheet(item: Binding(get: { app.quizSessionID.map(IdentifiedString.init) }, set: { app.quizSessionID = $0?.id })) { QuizSheet(sessionID: $0.id) }
             .sheet(item: Binding(get: { app.reviewQuizID.map(IdentifiedString.init) }, set: { app.reviewQuizID = $0?.id })) { QuizSheet(reviewID: $0.id) }

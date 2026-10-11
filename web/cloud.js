@@ -75,9 +75,11 @@
   const roleToRow = (r) => ({ id: r.id, company: r.company || "", title: r.title || "", team: r.team || "", location: r.location || "",
     role_number: r.roleNumber || "", salary: r.salary || "", link: r.link || "", stage: r.stage || "Saved",
     interview_at: r.interviewAt || null, interview_note: r.interviewNote || "", notes: r.notes || "",
+    recruiter: r.recruiter || "", recruiter_email: r.recruiterEmail || "", source: r.source || "", applied_at: r.appliedAt || null, activity: r.activity || "",
     created_at: r.createdAt || new Date().toISOString() });
   const roleFromRow = (x) => ({ id: x.id, company: x.company, title: x.title, team: x.team, location: x.location, roleNumber: x.role_number,
-    salary: x.salary, link: x.link, stage: x.stage, interviewAt: x.interview_at || "", interviewNote: x.interview_note, notes: x.notes, createdAt: x.created_at });
+    salary: x.salary, link: x.link, stage: x.stage, interviewAt: x.interview_at || "", interviewNote: x.interview_note, notes: x.notes,
+    recruiter: x.recruiter || "", recruiterEmail: x.recruiter_email || "", source: x.source || "", appliedAt: x.applied_at || "", activity: x.activity || "", createdAt: x.created_at });
   const docToRow = (d) => ({ id: d.id, role_id: d.roleId || "", title: d.title || "", body: d.body || "", tags: d.tags || [],
     sort_order: d.order ?? 999, file_type: d.fileType || "md", file_path: d.filePath || "", updated_at: d.updatedAt || new Date().toISOString() });
   const docFromRow = (x) => ({ id: x.id, roleId: x.role_id, title: x.title, body: x.body, tags: x.tags || [], order: x.sort_order, fileType: x.file_type || "md", filePath: x.file_path || "", updatedAt: x.updated_at });

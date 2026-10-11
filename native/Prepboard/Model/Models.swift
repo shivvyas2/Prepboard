@@ -24,6 +24,12 @@ final class Role {
     var interviewNote: String
     var notes: String
     var createdAt: Date
+    // Filled by job sync (Mac) or by hand.
+    var recruiter: String = ""
+    var recruiterEmail: String = ""
+    var source: String = ""             // "" (added by hand), "gmail" or "linkedin"
+    var appliedAt: Date?
+    var activity: String = ""           // Markdown lines, newest last: "- 2026-10-09 · Gmail · Recruiter reached out"
 
     init(id: String = "role-" + UUID().uuidString.prefix(8).lowercased(),
          company: String = "New company", title: String = "Role title", team: String = "",

@@ -20,6 +20,9 @@ struct RoleRow: Codable {
     var company, title, team, location, role_number, salary, link, stage: String
     var interview_at: String?
     var interview_note, notes: String
+    var recruiter, recruiter_email, source: String?
+    var applied_at: String?
+    var activity: String?
     var created_at: String?
     var updated_at: String?
 }
@@ -82,6 +85,17 @@ struct ProfileRow: Codable {
     var avatar: Int
     var photo: String
     var updated_at: String?
+}
+
+extension RoleRow {
+    func makeRole() -> Role {
+        let m = Role(id: id, company: company, title: title, team: team, location: location, roleNumber: role_number,
+                     salary: salary, link: link, stage: Stage(rawValue: stage) ?? .saved, interviewAt: Stamp.date(interview_at),
+                     interviewNote: interview_note, notes: notes, createdAt: Stamp.date(created_at) ?? .now)
+        m.recruiter = recruiter ?? ""; m.recruiterEmail = recruiter_email ?? ""; m.source = source ?? ""
+        m.appliedAt = Stamp.date(applied_at); m.activity = activity ?? ""
+        return m
+    }
 }
 
 enum Stamp {
@@ -420,7 +434,8 @@ struct SyncSnapshot {
         for r in (try? context.fetch(FetchDescriptor<Role>())) ?? [] {
             let row = RoleRow(id: r.id, company: r.company, title: r.title, team: r.team, location: r.location, role_number: r.roleNumber,
                               salary: r.salary, link: r.link, stage: r.stageRaw, interview_at: Stamp.string(r.interviewAt),
-                              interview_note: r.interviewNote, notes: r.notes, created_at: Stamp.string(r.createdAt))
+                              interview_note: r.interviewNote, notes: r.notes, recruiter: r.recruiter, recruiter_email: r.recruiterEmail,
+                              source: r.source, applied_at: Stamp.string(r.appliedAt), activity: r.activity, created_at: Stamp.string(r.createdAt))
             roleRows[r.id] = row; roles[r.id] = key(row)
         }
         for d in (try? context.fetch(FetchDescriptor<Doc>())) ?? [] {
@@ -474,14 +489,14 @@ struct RemoteData {
         let localRoles = try existing(Role.self, keep: Set(roles.map(\.id))) { $0.id }
         for r in roles {
             guard let m = localRoles[r.id] else {
-                context.insert(Role(id: r.id, company: r.company, title: r.title, team: r.team, location: r.location, roleNumber: r.role_number,
-                                    salary: r.salary, link: r.link, stage: Stage(rawValue: r.stage) ?? .saved, interviewAt: Stamp.date(r.interview_at),
-                                    interviewNote: r.interview_note, notes: r.notes, createdAt: Stamp.date(r.created_at) ?? .now))
+                context.insert(r.makeRole())
                 continue
             }
             set(m, \.company, r.company); set(m, \.title, r.title); set(m, \.team, r.team); set(m, \.location, r.location)
             set(m, \.roleNumber, r.role_number); set(m, \.salary, r.salary); set(m, \.link, r.link); set(m, \.stageRaw, r.stage)
             set(m, \.interviewAt, Stamp.date(r.interview_at)); set(m, \.interviewNote, r.interview_note); set(m, \.notes, r.notes)
+            set(m, \.recruiter, r.recruiter ?? ""); set(m, \.recruiterEmail, r.recruiter_email ?? ""); set(m, \.source, r.source ?? "")
+            set(m, \.appliedAt, Stamp.date(r.applied_at)); set(m, \.activity, r.activity ?? "")
         }
 
         let localDocs = try existing(Doc.self, keep: Set(docs.map(\.id))) { $0.id }
@@ -559,11 +574,7 @@ struct RemoteData {
             context.insert(QuizAttempt(id: q.id, roleId: q.role_id, sessionId: q.session_id, topic: q.topic, items: q.items,
                                        source: q.source, createdAt: Stamp.date(q.created_at) ?? .now))
         }
-        for r in roles {
-            context.insert(Role(id: r.id, company: r.company, title: r.title, team: r.team, location: r.location, roleNumber: r.role_number,
-                                salary: r.salary, link: r.link, stage: Stage(rawValue: r.stage) ?? .saved, interviewAt: Stamp.date(r.interview_at),
-                                interviewNote: r.interview_note, notes: r.notes, createdAt: Stamp.date(r.created_at) ?? .now))
-        }
+        for r in roles { context.insert(r.makeRole()) }
         for d in docs {
             let doc = Doc(id: d.id, roleId: d.role_id, title: d.title, body: d.body, tags: d.tags,
                           updatedAt: Stamp.date(d.updated_at) ?? .now, order: d.sort_order)

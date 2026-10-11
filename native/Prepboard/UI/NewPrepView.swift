@@ -165,7 +165,10 @@ struct NewPrepView: View {
             .padding(.horizontal, 16).padding(.bottom, 24)
         }
         .background(PB.background)
-        .onAppear { focused = true }
+        .onAppear {
+            focused = true
+            if messages.isEmpty, let role = targetRole { send(Self.seed(for: role)) }
+        }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.pdf], allowsMultipleSelection: true) { result in
             guard case let .success(urls) = result else { return }
             attachments += urls.compactMap(PlannerAttachment.init(url:))
@@ -312,11 +315,41 @@ struct NewPrepView: View {
         }
     }
 
+    /// The existing role this plan is for (opened from a role's "Generate prep plan"), if any.
+    private var targetRole: Role? {
+        guard let id = app.newPrepRoleID else { return nil }
+        return try? context.fetch(FetchDescriptor<Role>(predicate: #Predicate { $0.id == id })).first
+    }
+
+    /// The first message for a role found by job sync, so the planner starts from what's already known.
+    static func seed(for r: Role) -> String {
+        var lines = ["Build my prep plan for \(r.company) — \(r.title)."]
+        if let at = r.interviewAt { lines.append("The interview is \(DateCoding.string(at))\(r.interviewNote.isEmpty ? "" : " (\(r.interviewNote))").") }
+        if !r.stage.rawValue.isEmpty { lines.append("Current stage: \(r.stage.rawValue).") }
+        if !r.location.isEmpty { lines.append("Location: \(r.location).") }
+        if !r.link.isEmpty { lines.append("Job posting: \(r.link)") }
+        if !r.recruiter.isEmpty { lines.append("Recruiter: \(r.recruiter)\(r.recruiterEmail.isEmpty ? "" : " <\(r.recruiterEmail)>").") }
+        if !r.activity.isEmpty { lines.append("What's happened so far:\n\(r.activity)") }
+        if !r.notes.isEmpty { lines.append("Notes: \(r.notes)") }
+        return lines.joined(separator: "\n")
+    }
+
     private func apply(_ p: Plan) {
-        let role = Role(company: p.role.company, title: p.role.title, team: p.role.team, location: p.role.location,
+        let interviewAt = DateCoding.date(p.role.interview_at)
+        let role: Role
+        if let existing = targetRole {
+            role = existing
+            if role.team.isEmpty { role.team = p.role.team }
+            if role.location.isEmpty { role.location = p.role.location }
+            if role.link.isEmpty { role.link = p.role.link }
+            if let interviewAt, role.interviewAt == nil { role.interviewAt = interviewAt }
+            if role.interviewNote.isEmpty { role.interviewNote = p.role.interview_note }
+        } else {
+            role = Role(company: p.role.company, title: p.role.title, team: p.role.team, location: p.role.location,
                         link: p.role.link, stage: Stage(rawValue: p.role.stage) ?? .saved,
-                        interviewAt: DateCoding.date(p.role.interview_at), interviewNote: p.role.interview_note, notes: p.role.notes)
-        context.insert(role)
+                        interviewAt: interviewAt, interviewNote: p.role.interview_note, notes: p.role.notes)
+            context.insert(role)
+        }
         var docIds: [String: String] = [:]
         var created: [(Doc, Plan.Doc)] = []
         for (i, d) in p.docs.enumerated() {
