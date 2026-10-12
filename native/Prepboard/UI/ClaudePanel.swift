@@ -86,6 +86,10 @@ struct ClaudePanel: View {
             }
             .pickerStyle(.segmented).labelsHidden().fixedSize()
             .help("Terminal runs the full Claude Code in your prep folder (⇧⌘J)")
+            if !WorkspaceManager.shared.isDetached(.claude) {
+                Button { WorkspaceManager.shared.open(.claude) } label: { Image(systemName: "macwindow.on.rectangle").frame(width: 30, height: 30) }
+                    .buttonStyle(.plain).help("Open Claude in its own window, to put it on another screen")
+            }
             Menu {
                 Button("New conversation") { claude.reset() }
                 Button("Restart terminal") { ClaudeTerminal.shared.restart(in: claude.workingDirectory) }

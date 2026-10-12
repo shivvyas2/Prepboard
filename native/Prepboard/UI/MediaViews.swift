@@ -173,6 +173,11 @@ struct SideVideoPanel: View {
                     app.sideVideo = nil; app.playingVideo = video
                 }
                 CircleIconButton(systemImage: "arrow.up.right.square", size: 32, label: "Open on YouTube") { openURL(video.watchURL) }
+                #if os(macOS)
+                if !compact && !WorkspaceManager.shared.isDetached(.video) {
+                    CircleIconButton(systemImage: "macwindow.on.rectangle", size: 32, label: "Own window") { WorkspaceManager.shared.open(.video) }
+                }
+                #endif
                 CircleIconButton(systemImage: "xmark", size: 32, label: "Close video") { app.sideVideo = nil }
             }
             .padding(compact ? 10 : 14)

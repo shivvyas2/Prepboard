@@ -63,6 +63,19 @@ struct PrepboardApp: App {
                 #if os(macOS)
                 .environment(deviceBridge)
                 .environment(jobSync)
+                .environment(WorkspaceManager.shared)
+                .task {
+                    // Extra windows get the same models and store as the main one (their own AppState for sections).
+                    let (profile, cloud, browser, claude, github, deviceBridge, jobSync, container) = (profile, cloud, browser, claude, github, deviceBridge, jobSync, container)
+                    WorkspaceManager.shared.configure(app: app, claudeAvailable: { claude.isReady }) { view, state in
+                        AnyView(view
+                            .environment(state).environment(profile).environment(cloud).environment(browser)
+                            .environment(claude).environment(github).environment(deviceBridge).environment(jobSync)
+                            .environment(WorkspaceManager.shared)
+                            .modelContainer(container)
+                            .preferredColorScheme(.light))
+                    }
+                }
                 .task {
                     await claude.checkConnection()   // picks up an installed, signed-in Claude Code on launch
                     deviceBridge.attach(claude)
@@ -75,7 +88,10 @@ struct PrepboardApp: App {
         #if os(macOS)
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1440, height: 920)
-        .commands { PrepboardCommands(app: app, container: container) }
+        .commands {
+            PrepboardCommands(app: app, container: container)
+            WorkspaceCommands(workspace: WorkspaceManager.shared)
+        }
         #endif
     }
 }

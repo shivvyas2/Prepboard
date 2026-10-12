@@ -7,6 +7,7 @@ struct RootView: View {
     @Environment(\.modelContext) private var context
     #if os(macOS)
     @Environment(ClaudeCode.self) private var claude
+    @Environment(WorkspaceManager.self) private var workspace
     #endif
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -31,23 +32,20 @@ struct RootView: View {
         .foregroundStyle(PB.ink)
         .tint(PB.cobalt)
         .modifier(AppSheets())
+        #if os(macOS)
+        .background(HostWindowReader { workspace.registerMain($0) })
+        .overlay(alignment: .top) {
+            if let s = workspace.suggestion {
+                WorkspaceBanner(layouts: s).padding(.top, 20).padding(.horizontal, 120)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy, value: workspace.suggestion)
+        #endif
         .onChange(of: cloud.needsOnboarding) { if cloud.needsOnboarding { cloud.needsOnboarding = false; app.showNewPrep = true } }
     }
 
-    @ViewBuilder
-    private var content: some View {
-        switch app.section {
-        case .timeline: PrepTimelineView()
-        case .dashboard: DashboardView()
-        case .roles: RolesView()
-        case .documents: DocumentsView()
-        case .practice: PracticeView()
-        case .essentials: EssentialsView()
-        case .scores: ScoresView()
-        case .browse: BrowserView()
-        case .search: SearchView()
-        }
-    }
+    private var content: some View { SectionContent(section: app.section) }
 
     // MARK: Mac / iPad — rail + pill tabs, like the web app
 
@@ -72,6 +70,16 @@ struct RootView: View {
                 .padding(.bottom, 16)
                 ForEach(Section.allCases) { s in
                     CircleIconButton(systemImage: s.icon, size: 48, active: app.section == s, label: s.rawValue) { app.section = s }
+                        #if os(macOS)
+                        .contextMenu {
+                            Button("Open in New Window") { workspace.open(.section(s)) }
+                            if workspace.screens.count > 1 {
+                                Menu("Open on") {
+                                    ForEach(workspace.screens) { sc in Button(sc.name) { workspace.open(.section(s), on: sc) } }
+                                }
+                            }
+                        }
+                        #endif
                 }
                 Spacer()
                 #if os(macOS)
@@ -84,6 +92,7 @@ struct RootView: View {
                             .contentShape(Circle())
                     }
                     .buttonStyle(.plain).help("Ask Claude Code (⌘J)")
+                    .contextMenu { Button("Open Claude in Its Own Window") { workspace.open(.claude) } }
                 }
                 #endif
                 CircleIconButton(systemImage: "square.and.arrow.down", size: 48, label: "Import JSON") { app.showImporter = true }
@@ -104,13 +113,13 @@ struct RootView: View {
                 topBar
                 HStack(alignment: .top, spacing: 16) {
                     content.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    if let v = app.sideVideo {
+                    if let v = app.sideVideo, !videoDetached {
                         VStack { SideVideoPanel(video: v); Spacer(minLength: 0) }
                             .frame(width: app.showClaude ? 360 : 440)
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
                     #if os(macOS)
-                    if app.showClaude && claude.isReady {
+                    if app.showClaude && claude.isReady && !workspace.isDetached(.claude) {
                         ClaudePanel().frame(width: app.claudeTerminal ? 640 : 400).padding(.bottom, 24)
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
@@ -124,6 +133,14 @@ struct RootView: View {
             .padding(.top, 12)
             #endif
         }
+    }
+
+    private var videoDetached: Bool {
+        #if os(macOS)
+        workspace.isDetached(.video)
+        #else
+        false
+        #endif
     }
 
     private var topBar: some View {
@@ -278,5 +295,24 @@ struct AppSheets: ViewModifier {
             .alert(app.message ?? "", isPresented: Binding(get: { app.message != nil }, set: { if !$0 { app.message = nil } })) {
                 Button("OK", role: .cancel) {}
             }
+    }
+}
+
+/// The view for one section; used by the main window and by detached section windows.
+struct SectionContent: View {
+    let section: Section
+
+    var body: some View {
+        switch section {
+        case .timeline: PrepTimelineView()
+        case .dashboard: DashboardView()
+        case .roles: RolesView()
+        case .documents: DocumentsView()
+        case .practice: PracticeView()
+        case .essentials: EssentialsView()
+        case .scores: ScoresView()
+        case .browse: BrowserView()
+        case .search: SearchView()
+        }
     }
 }
