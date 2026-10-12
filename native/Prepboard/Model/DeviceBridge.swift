@@ -207,9 +207,11 @@ final class DeviceBridge {
             guard !executing else { return reply(conn, 429, ["error": "Your Mac is already running code. Try again in a moment."]) }
             executing = true
             lastUsed = .now
-            let output = await CodeRunner.run(code, lang: lang)
+            let result = await CodeRunner.run(code, lang: lang)
             executing = false
-            reply(conn, 200, ["output": output])
+            // `output` is the whole run as text for older iPhone/iPad builds; newer ones read the structured `result`.
+            let structured = (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(result))) ?? NSNull()
+            reply(conn, 200, ["output": result.text, "result": structured])
         default:
             reply(conn, 404, ["error": "Not found"])
         }

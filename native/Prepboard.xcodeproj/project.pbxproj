@@ -14,6 +14,7 @@
 		161A2B6E4D95A8C986A55DAE /* GitHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2927B8FFF21E41F481AE774A /* GitHub.swift */; };
 		1A3EBEF4782C9479A7053560 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3010B879EF992187C633DB93 /* SearchView.swift */; };
 		1F38974CBA61CC0503AE383A /* ClaudeMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 022B1F5544DC07FF847C9C04 /* ClaudeMark.swift */; };
+		1F76FDF88D3924E666D8BBE0 /* RunConsole.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91267B629C53613C5DDDC396 /* RunConsole.swift */; };
 		2166638E5EA8352CDC98E214 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B116C2CC40AD6A20444100E /* DashboardView.swift */; };
 		2396B7BD6D8533F36C91AF76 /* NewPrepView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1011E204D4362832B715B72 /* NewPrepView.swift */; };
 		23F4D9C73501199D741B0945 /* Avatars.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C674D8FFA5AF52B25B4BEC7 /* Avatars.swift */; };
@@ -22,6 +23,7 @@
 		28BF1BC3998A822335E85FF4 /* MediaViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C2237C2FE9593FEE15E0D76 /* MediaViews.swift */; };
 		2CC5C178D9E49DAD3A6D580D /* Cloud.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A4A493B86B1E3BAC90CEF43 /* Cloud.swift */; };
 		2D8F40774A3CBE0D418AF486 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = B73BFD19624466AB957B8B72 /* Models.swift */; };
+		30872CC70DC4F2CE2EC7D48E /* RunConsole.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91267B629C53613C5DDDC396 /* RunConsole.swift */; };
 		329DAC5A24BEABCF0EA4C439 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BC5297DFE0F267A5635C878 /* Components.swift */; };
 		334895BDE253677F5EFEE4F0 /* ClaudeCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA84D9C3ECFFFF00DCDB21C1 /* ClaudeCode.swift */; };
 		36B0EF1674F7E2533FC9F678 /* ClaudeTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E1CC0FAAB100F95D87884E0 /* ClaudeTerminalView.swift */; };
@@ -69,6 +71,7 @@
 		B84175618128F07C8E1EAB21 /* Learning.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB9073FEB4AD369E9018B0DD /* Learning.swift */; };
 		B9E0A3BA1365E39A7831F8C7 /* MarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 854854AA1F340A335592DD89 /* MarkdownView.swift */; };
 		C65E7E59B27C42246189F8D6 /* TextClean.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F3F85AEB7443FD9579A22E0 /* TextClean.swift */; };
+		C98654A8D565DC7AF0ED768D /* RunResultTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17B3B3595BEDAAFB0AE256F /* RunResultTests.swift */; };
 		CA8659DC0A096365222A099D /* Learning.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB9073FEB4AD369E9018B0DD /* Learning.swift */; };
 		CBAF4E46FA6085154FF96B96 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6835F58BDD8C6B80BFB23B64 /* RootView.swift */; };
 		D1D13F5B11A8D252E719D4B5 /* MacBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC34C8528365ECCD58D9852 /* MacBridge.swift */; };
@@ -84,13 +87,25 @@
 		E8C0F0C55171374A3A028D60 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B116C2CC40AD6A20444100E /* DashboardView.swift */; };
 		ECC11F2A5615B638B3D8078A /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BC5297DFE0F267A5635C878 /* Components.swift */; };
 		F87CA30ED64246DF8B4946C3 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7680513B119FE9D73EC93F5B /* Keychain.swift */; };
+		FD84D652173075FCCB5F790C /* CodeRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22401A38A881162C1A4CBA48 /* CodeRunnerTests.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		8D0D194831DBD79BDA24B064 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CDEA19C2A1ABDCCBD7B9F39B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1D9152DD461C51FAEB98FF8A;
+			remoteInfo = "Prepboard-macOS";
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		022B1F5544DC07FF847C9C04 /* ClaudeMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeMark.swift; sourceTree = "<group>"; };
 		086CF94B83674AF95AC590A7 /* Brand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Brand.swift; sourceTree = "<group>"; };
 		0EC03837C9B766275F4AE786 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		1B209C3AE9C59D4538BB7F70 /* Practice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Practice.swift; sourceTree = "<group>"; };
+		22401A38A881162C1A4CBA48 /* CodeRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeRunnerTests.swift; sourceTree = "<group>"; };
 		2927B8FFF21E41F481AE774A /* GitHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitHub.swift; sourceTree = "<group>"; };
 		2B116C2CC40AD6A20444100E /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		3010B879EF992187C633DB93 /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
@@ -110,23 +125,26 @@
 		7F3F85AEB7443FD9579A22E0 /* TextClean.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextClean.swift; sourceTree = "<group>"; };
 		854854AA1F340A335592DD89 /* MarkdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownView.swift; sourceTree = "<group>"; };
 		863595FE71E5D6B79DB81E8B /* EssentialsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EssentialsView.swift; sourceTree = "<group>"; };
+		91267B629C53613C5DDDC396 /* RunConsole.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunConsole.swift; sourceTree = "<group>"; };
 		9E1CC0FAAB100F95D87884E0 /* ClaudeTerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeTerminalView.swift; sourceTree = "<group>"; };
 		A4E1D6952B06D2384BCBEBBD /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		B73BFD19624466AB957B8B72 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		BB8E4C959CF417900DFFC346 /* LearnViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearnViews.swift; sourceTree = "<group>"; };
 		BC0CFBC3448067B5F781BF89 /* Transfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transfer.swift; sourceTree = "<group>"; };
 		BC754F719792244FD3C57AC4 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
+		C17B3B3595BEDAAFB0AE256F /* RunResultTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunResultTests.swift; sourceTree = "<group>"; };
 		C570E7B529A79775F8DB3F03 /* PracticeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PracticeView.swift; sourceTree = "<group>"; };
 		C91DB912635B8A6592F9B8FA /* SyntaxHighlighter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyntaxHighlighter.swift; sourceTree = "<group>"; };
 		CA84D9C3ECFFFF00DCDB21C1 /* ClaudeCode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeCode.swift; sourceTree = "<group>"; };
 		CB9073FEB4AD369E9018B0DD /* Learning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Learning.swift; sourceTree = "<group>"; };
+		D458D51DB370EC1DC807906D /* Prepboard-macOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Prepboard-macOSTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		D5A22B3E3CDDECC8B7D281BA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		D6FC5742992DC2E095BDEF27 /* TimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineView.swift; sourceTree = "<group>"; };
 		DD39A0E9AB7F074D92994A4A /* BrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserView.swift; sourceTree = "<group>"; };
 		ECC76875631FCA668A14AE13 /* ClaudePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudePanel.swift; sourceTree = "<group>"; };
 		F1011E204D4362832B715B72 /* NewPrepView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewPrepView.swift; sourceTree = "<group>"; };
 		FAC34C8528365ECCD58D9852 /* MacBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacBridge.swift; sourceTree = "<group>"; };
-		"TEMP_A84FB5BF-6454-4053-8B2D-E8C744B732FC" /* Prepboard.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Prepboard.xcconfig; sourceTree = "<group>"; };
+		"TEMP_53FFE98A-C6D8-4C21-8212-4C16B1F4F813" /* Prepboard.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Prepboard.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -154,6 +172,7 @@
 			isa = PBXGroup;
 			children = (
 				3A41855E035E77AB34C5DDFF /* Prepboard */,
+				C5B128D892EA49DC0809624B /* PrepboardTests */,
 				3C0A2AD1FD4724788371CE0C /* Products */,
 			);
 			sourceTree = "<group>";
@@ -179,6 +198,7 @@
 				C570E7B529A79775F8DB3F03 /* PracticeView.swift */,
 				6E02443C80B213288CCA76C4 /* RolesView.swift */,
 				6835F58BDD8C6B80BFB23B64 /* RootView.swift */,
+				91267B629C53613C5DDDC396 /* RunConsole.swift */,
 				3010B879EF992187C633DB93 /* SearchView.swift */,
 				C91DB912635B8A6592F9B8FA /* SyntaxHighlighter.swift */,
 				A4E1D6952B06D2384BCBEBBD /* Theme.swift */,
@@ -203,8 +223,18 @@
 			children = (
 				4582BCDD2818F3F4AE01FEBF /* Prepboard-iOS.app */,
 				4D19EF654466009659F7DE8F /* Prepboard-macOS.app */,
+				D458D51DB370EC1DC807906D /* Prepboard-macOSTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		C5B128D892EA49DC0809624B /* PrepboardTests */ = {
+			isa = PBXGroup;
+			children = (
+				22401A38A881162C1A4CBA48 /* CodeRunnerTests.swift */,
+				C17B3B3595BEDAAFB0AE256F /* RunResultTests.swift */,
+			);
+			path = PrepboardTests;
 			sourceTree = "<group>";
 		};
 		F78B566C744750BCA75AF194 /* Model */ = {
@@ -227,10 +257,10 @@
 			path = Model;
 			sourceTree = "<group>";
 		};
-		"TEMP_707DFBD6-8E95-44E8-89CC-DABA50D658F2" /* native */ = {
+		"TEMP_514DD3E0-8AD3-4C63-A298-01D13F6FF78E" /* native */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_A84FB5BF-6454-4053-8B2D-E8C744B732FC" /* Prepboard.xcconfig */,
+				"TEMP_53FFE98A-C6D8-4C21-8212-4C16B1F4F813" /* Prepboard.xcconfig */,
 			);
 			path = native;
 			sourceTree = "<group>";
@@ -258,6 +288,24 @@
 			productName = "Prepboard-macOS";
 			productReference = 4D19EF654466009659F7DE8F /* Prepboard-macOS.app */;
 			productType = "com.apple.product-type.application";
+		};
+		3CA3DAB18F6D73084ADAAFC1 /* Prepboard-macOSTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 155EF9E08247146B5E3144BD /* Build configuration list for PBXNativeTarget "Prepboard-macOSTests" */;
+			buildPhases = (
+				B0D9107975272F72B68BC79E /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7A18296C71AE811FD9496348 /* PBXTargetDependency */,
+			);
+			name = "Prepboard-macOSTests";
+			packageProductDependencies = (
+			);
+			productName = "Prepboard-macOSTests";
+			productReference = D458D51DB370EC1DC807906D /* Prepboard-macOSTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
 		};
 		E9697887B89C54BC75222E6F /* Prepboard-iOS */ = {
 			isa = PBXNativeTarget;
@@ -292,6 +340,10 @@
 						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
 					};
+					3CA3DAB18F6D73084ADAAFC1 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
 					E9697887B89C54BC75222E6F = {
 						DevelopmentTeam = Z42YU5W6WY;
 						ProvisioningStyle = Automatic;
@@ -318,6 +370,7 @@
 			targets = (
 				E9697887B89C54BC75222E6F /* Prepboard-iOS */,
 				1D9152DD461C51FAEB98FF8A /* Prepboard-macOS */,
+				3CA3DAB18F6D73084ADAAFC1 /* Prepboard-macOSTests */,
 			);
 		};
 /* End PBXProject section */
@@ -376,6 +429,7 @@
 				D9208C24612868E1BC17D711 /* PrepboardApp.swift in Sources */,
 				DCDA9A4BB6FAAA8D4DC26E03 /* RolesView.swift in Sources */,
 				CBAF4E46FA6085154FF96B96 /* RootView.swift in Sources */,
+				30872CC70DC4F2CE2EC7D48E /* RunConsole.swift in Sources */,
 				1A3EBEF4782C9479A7053560 /* SearchView.swift in Sources */,
 				88297BEE959A45436DE8FED8 /* SyntaxHighlighter.swift in Sources */,
 				C65E7E59B27C42246189F8D6 /* TextClean.swift in Sources */,
@@ -419,6 +473,7 @@
 				6E71916771134F0651F48F90 /* PrepboardApp.swift in Sources */,
 				D603F61B60BDA4622982A67E /* RolesView.swift in Sources */,
 				15EF66572198B463544C9213 /* RootView.swift in Sources */,
+				1F76FDF88D3924E666D8BBE0 /* RunConsole.swift in Sources */,
 				5589EF6DC5389E19055FFD28 /* SearchView.swift in Sources */,
 				B04F4A74080410999B6320DB /* SyntaxHighlighter.swift in Sources */,
 				A9E40F7AD888D8D86D8283E9 /* TextClean.swift in Sources */,
@@ -428,12 +483,29 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B0D9107975272F72B68BC79E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FD84D652173075FCCB5F790C /* CodeRunnerTests.swift in Sources */,
+				C98654A8D565DC7AF0ED768D /* RunResultTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		7A18296C71AE811FD9496348 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 1D9152DD461C51FAEB98FF8A /* Prepboard-macOS */;
+			targetProxy = 8D0D194831DBD79BDA24B064 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		10744D7376C93E547E6FC5D0 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_A84FB5BF-6454-4053-8B2D-E8C744B732FC" /* Prepboard.xcconfig */;
+			baseConfigurationReference = "TEMP_53FFE98A-C6D8-4C21-8212-4C16B1F4F813" /* Prepboard.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -468,7 +540,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -485,7 +557,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = PrepBoard;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.3;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -511,6 +583,42 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.shivvyas.prepboard;
 				PRODUCT_NAME = Prepboard;
 				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		339BE4C339FD2E583A5E5455 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.shivvyas.prepboard.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Prepboard.app/Contents/MacOS/Prepboard";
+			};
+			name = Release;
+		};
+		812E8D68E39FC09DD485C8F8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.shivvyas.prepboard.tests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Prepboard.app/Contents/MacOS/Prepboard";
 			};
 			name = Debug;
 		};
@@ -579,7 +687,7 @@
 		};
 		DFD456A3EE378308373DEC56 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_A84FB5BF-6454-4053-8B2D-E8C744B732FC" /* Prepboard.xcconfig */;
+			baseConfigurationReference = "TEMP_53FFE98A-C6D8-4C21-8212-4C16B1F4F813" /* Prepboard.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -614,7 +722,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -637,7 +745,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = PrepBoard;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.3;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -651,6 +759,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		155EF9E08247146B5E3144BD /* Build configuration list for PBXNativeTarget "Prepboard-macOSTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				812E8D68E39FC09DD485C8F8 /* Debug */,
+				339BE4C339FD2E583A5E5455 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		31CF945A88DA9BE36F24D593 /* Build configuration list for PBXNativeTarget "Prepboard-iOS" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

@@ -52,9 +52,9 @@ struct PrepboardApp: App {
                         print("PrepboardBridgeTest:", claude.connection)
                         if claude.isReady { print("PrepboardBridgeTest run:", (try? await claude.runText("Reply with exactly: PONG", tools: "Read").text) ?? "failed") }
                         if UserDefaults.standard.bool(forKey: "PrepboardRunnerTest") {
-                            print("RUN js:", await CodeRunner.run("console.log([1,2,3].map(x => x * 2).join(','))", lang: .javascript, mac: claude))
-                            print("RUN py:", await CodeRunner.run("import heapq, collections\nprint(sum(range(10)), heapq.nsmallest(2, [5, 1, 3]), collections.Counter('aab'))", lang: .python, mac: claude))
-                            print("RUN swift:", await CodeRunner.run("print((1...4).reduce(0, +))", lang: .swift, mac: claude))
+                            print("RUN js:", await CodeRunner.run("console.log([1,2,3].map(x => x * 2).join(','))", lang: .javascript, mac: claude).text)
+                            print("RUN py:", await CodeRunner.run("import heapq, collections\nprint(sum(range(10)), heapq.nsmallest(2, [5, 1, 3]), collections.Counter('aab'))", lang: .python, mac: claude).text)
+                            print("RUN swift:", await CodeRunner.run("print((1...4).reduce(0, +))", lang: .swift, mac: claude).text)
                         }
                     }
                 }

@@ -116,7 +116,7 @@ struct PracticeView: View {
     @AppStorage("practice.problem") private var selectedID = ""
     @AppStorage("practice.ai") private var aiAllowed = true
     @State private var code = ""
-    @State private var output = ""
+    @State private var result: RunResult?
     @State private var running = false
     @State private var pane = 0                   // compact: 0 problem · 1 code · 2 output · 3 AI · 4 list
     @AppStorage("practice.library") private var showLibrary = true
@@ -181,7 +181,7 @@ struct PracticeView: View {
             VStack(spacing: 0) {
                 CodeEditor(text: $code, lang: lang).frame(maxHeight: .infinity)
                 Divider()
-                console.frame(height: 190)
+                console.frame(height: 220)
             }
             .clipShape(RoundedRectangle(cornerRadius: PB.rXL, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: PB.rXL, style: .continuous).strokeBorder(PB.line))
@@ -403,15 +403,7 @@ struct PracticeView: View {
     }
 
     private var console: some View {
-        ScrollView {
-            Text(output.isEmpty ? "Run your code to see the output and test results here." : output)
-                .font(.system(size: 12.5, design: .monospaced))
-                .foregroundStyle(output.isEmpty ? PB.muted : PB.ink)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
-        }
-        .background(PB.surface)
+        RunConsole(result: result, running: running, langLabel: lang.label)
     }
 
     private func assistant(_ p: Problem) -> some View {
@@ -457,7 +449,7 @@ struct PracticeView: View {
 
     private func load(_ p: Problem) {
         code = p.currentCode(p.language)
-        output = ""
+        result = nil
         aiMessages = []
         claudeSession = nil
     }
@@ -479,17 +471,14 @@ struct PracticeView: View {
     private func run() {
         save()
         running = true
-        output = "Running \(lang.label)…"
+        result = nil
         if pane != 3 { pane = 2 }
         let src = code, l = lang
         Task {
-            output = await CodeRunner.run(src, lang: l, mac: claude)
+            let r = await CodeRunner.run(src, lang: l, mac: claude)
+            result = r
             running = false
-            if output.contains("Passed "), let p = problem,
-               let m = output.range(of: #"Passed (\d+)/(\d+)"#, options: .regularExpression) {
-                let nums = output[m].dropFirst(7).split(separator: "/")
-                if nums.count == 2, nums[0] == nums[1], !p.solved { p.solved = true; try? context.save() }
-            }
+            if r.verdict == .accepted, let p = problem, !p.solved { p.solved = true; try? context.save() }
         }
     }
 

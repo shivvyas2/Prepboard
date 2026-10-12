@@ -26,6 +26,7 @@ enum PB {
     static let sunSoft = Color(hex: 0xEBDCAF)   // sand yellow
     static let onSun = Color(hex: 0x2B2410)
     static let red = Color(hex: 0xC2410C)
+    static let green = Color(hex: 0x2F7D4F)
 
     static let rXL: CGFloat = 28, rLG: CGFloat = 20, rMD: CGFloat = 14
 

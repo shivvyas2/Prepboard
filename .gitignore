@@ -1,6 +1,7 @@
 # Build output
 native/build/
 native/build-device/
+native/build-test/
 DerivedData/
 release/
 *.dmg

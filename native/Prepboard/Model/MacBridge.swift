@@ -89,14 +89,15 @@ final class ClaudeCode {
     }
 
     /// Compiles and runs Practice code on the paired Mac (used for Swift, which can't compile on iPhone/iPad).
-    func exec(_ code: String, lang: String) async throws -> String {
+    func exec(_ code: String, lang: String) async throws -> RunResult {
         struct Body: Encodable { let code: String; let lang: String }
-        struct Reply: Decodable { let output: String?; let error: String? }
+        struct Reply: Decodable { let output: String?; let result: RunResult?; let error: String? }
         do {
             let (data, _) = try await request("exec", body: try JSONEncoder().encode(Body(code: code, lang: lang)), timeout: 60)
             let r = try JSONDecoder().decode(Reply.self, from: data)
             if let e = r.error { throw Learning.Failure.message(e) }
-            return r.output ?? ""
+            // A Mac on an older PrepBoard sends only the combined text.
+            return r.result ?? RunResult(output: r.output ?? "", note: "Ran on your paired Mac")
         } catch let e as URLError {
             connection = .unreachable(e.localizedDescription)
             throw Learning.Failure.message("Couldn't reach PrepBoard on your Mac. Open it there, then try again.")

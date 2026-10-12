@@ -30,53 +30,161 @@ struct ProblemPayload: Codable {
     let starters: [String: String]
 }
 
+/// One "✓ Test N" / "✗ Test N: expected X, got Y" line from a starter's test harness.
+struct TestCase: Equatable {
+    let number: Int
+    let passed: Bool
+    let detail: String
+}
+
+/// A compiler or syntax-check message, located in the user's file.
+struct Diagnostic: Equatable {
+    enum Severity: String { case error, warning, note }
+    let line: Int
+    let column: Int?
+    let severity: Severity
+    let message: String
+}
+
+/// Everything a Run produced, kept apart the way LeetCode shows it: the compile step, the program's output, and the tests.
+struct RunResult: Codable, Equatable {
+    enum Verdict: String { case accepted, wrongAnswer, compileError, runtimeError, timeLimit, finished, couldNotRun }
+
+    /// Compiler (Swift) or syntax-check (Python, Node) log; nil when there was no compile step.
+    var compiler: String?
+    var compileStatus: Int32?
+    var compileSeconds: Double?
+    /// The program's stdout and stderr, interleaved as printed.
+    var output = ""
+    var exitCode: Int32?
+    var runSeconds: Double?
+    var timedOut = false
+    /// Where it ran or why it couldn't ("Interpreted on this device", "Node.js isn't installed…").
+    var note: String?
+    var couldNotRun = false
+
+    var compileFailed: Bool { (compileStatus ?? 0) != 0 }
+
+    var tests: [TestCase] {
+        output.split(separator: "\n").compactMap { raw in
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            guard let m = line.firstMatch(of: #/^([✓✗]) Test (\d+)(?::\s*(.*))?$/#), let n = Int(m.2) else { return nil }
+            return TestCase(number: n, passed: m.1 == "✓", detail: m.3.map(String.init) ?? "")
+        }
+    }
+
+    /// "Passed K/N" from the harness.
+    var passed: (Int, Int)? {
+        guard let m = output.firstMatch(of: #/Passed (\d+)\/(\d+)/#), let k = Int(m.1), let n = Int(m.2) else { return nil }
+        return (k, n)
+    }
+
+    /// What the program printed besides the harness's test lines.
+    var programOutput: String {
+        output.split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { l in
+                let t = l.trimmingCharacters(in: .whitespaces)
+                return !(t.hasPrefix("✓ Test") || t.hasPrefix("✗ Test") || t.firstMatch(of: #/^Passed \d+\/\d+$/#) != nil)
+            }
+            .joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var verdict: Verdict {
+        if couldNotRun { return .couldNotRun }
+        if compileFailed { return .compileError }
+        if timedOut { return .timeLimit }
+        if let code = exitCode, code != 0 { return .runtimeError }
+        if exitCode == nil, output.contains("Traceback (most recent call last)") || output.contains("\nError: ") { return .runtimeError }
+        if let p = passed { return p.0 == p.1 ? .accepted : .wrongAnswer }
+        if tests.contains(where: { !$0.passed }) { return .wrongAnswer }
+        return .finished
+    }
+
+    /// Compiler messages: Swift's "file:line:col: error: …", Python's `File "…", line N` + "XError: …", and Node's "file:N" + "SyntaxError: …".
+    var diagnostics: [Diagnostic] {
+        guard let log = compiler, !log.isEmpty else { return [] }
+        let lines = log.split(separator: "\n").map(String.init)
+        var found: [Diagnostic] = []
+        for l in lines {
+            if let m = l.firstMatch(of: #/^.*?:(\d+):(\d+): (error|warning|note): (.*)$/#), let line = Int(m.1) {
+                found.append(Diagnostic(line: line, column: Int(m.2), severity: Diagnostic.Severity(rawValue: String(m.3)) ?? .error, message: String(m.4)))
+            }
+        }
+        if !found.isEmpty { return found }
+        let lineNo = lines.lazy.compactMap { l -> Int? in
+            if let m = l.firstMatch(of: #/File ".*", line (\d+)/#) { return Int(m.1) }
+            if let m = l.firstMatch(of: #/^.*\.(?:js|py):(\d+)$/#) { return Int(m.1) }
+            return nil
+        }.first
+        if let lineNo, let msg = lines.first(where: { $0.firstMatch(of: #/^\w*Error: /#) != nil }) {
+            return [Diagnostic(line: lineNo, column: nil, severity: .error, message: msg)]
+        }
+        return []
+    }
+
+    /// The whole run as one block of text, for older paired iPhones/iPads that only read `output` from the bridge.
+    var text: String {
+        if couldNotRun { return note ?? "Couldn't run." }
+        var parts: [String] = []
+        if let c = compiler?.trimmingCharacters(in: .whitespacesAndNewlines), !c.isEmpty { parts.append(c) }
+        if !compileFailed { parts.append(output.isEmpty ? "(no output)" : output.trimmingCharacters(in: .newlines)) }
+        let status: String
+        if compileFailed { status = "Compile error" }
+        else if timedOut { status = "Stopped after 30s (infinite loop?)" }
+        else if let code = exitCode { status = "Exit \(code)" + (runSeconds.map { String(format: " · %.1fs", $0) } ?? "") }
+        else { status = runSeconds.map { String(format: "%.2fs", $0) } ?? "Done" }
+        parts.append("— \(status)")
+        return parts.joined(separator: "\n")
+    }
+}
+
 enum CodeRunner {
-    /// Runs the whole file (the user's solution plus the starter's test harness) and returns its output.
-    @MainActor static func run(_ code: String, lang: CodeLang, mac: ClaudeCode? = nil) async -> String {
+    /// Compiles (or syntax-checks), then runs the whole file: the user's solution plus the starter's test harness.
+    @MainActor static func run(_ code: String, lang: CodeLang, mac: ClaudeCode? = nil) async -> RunResult {
         #if os(macOS)
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("prepboard-run-\(UUID().uuidString.prefix(8))")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
         let file = dir.appendingPathComponent("main.\(lang.ext)")
-        do { try code.write(to: file, atomically: true, encoding: .utf8) } catch { return "Couldn't save the file: \(error.localizedDescription)" }
-        let (exe, args): (String, [String]) = switch lang {
-        case .swift: ("/usr/bin/xcrun", ["swift", file.path])
-        case .python: ("/usr/bin/env", ["python3", file.path])
-        case .javascript: ("/usr/bin/env", ["node", file.path])
+        do { try code.write(to: file, atomically: true, encoding: .utf8) } catch {
+            return RunResult(note: "Couldn't save the file: \(error.localizedDescription)", couldNotRun: true)
         }
-        return await withCheckedContinuation { cont in
-            let p = Process()
-            p.executableURL = URL(fileURLWithPath: exe)
-            p.arguments = args
-            p.currentDirectoryURL = dir
-            var env = ProcessInfo.processInfo.environment
-            env["PATH"] = ClaudeCode.searchPath
-            p.environment = env
-            let out = Pipe()
-            p.standardOutput = out; p.standardError = out
-            let started = Date()
-            p.terminationHandler = { proc in
-                let text = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-                let secs = String(format: "%.1fs", Date().timeIntervalSince(started))
-                let status = proc.terminationReason == .uncaughtSignal ? "Stopped after 30s (infinite loop?)" : "Exit \(proc.terminationStatus) · \(secs)"
-                cont.resume(returning: (text.isEmpty ? "(no output)" : text) + "\n— \(status)")
-            }
-            do {
-                try p.run()
-                DispatchQueue.global().asyncAfter(deadline: .now() + 30) { if p.isRunning { p.terminate() } }
-            } catch {
-                cont.resume(returning: lang == .javascript ? "Node.js isn't installed. Install it from nodejs.org, or use Swift or Python." : "Couldn't run: \(error.localizedDescription)")
-            }
+        let binary = dir.appendingPathComponent("main")
+        let (compileExe, compileArgs, runExe, runArgs): (String, [String], String, [String]) = switch lang {
+        case .swift: ("/usr/bin/xcrun", ["swiftc", file.path, "-o", binary.path], binary.path, [])
+        case .python: ("/usr/bin/env", ["python3", "-m", "py_compile", file.path], "/usr/bin/env", ["python3", file.path])
+        case .javascript: ("/usr/bin/env", ["node", "--check", file.path], "/usr/bin/env", ["node", file.path])
         }
+        let missing = lang == .javascript ? "Node.js isn't installed. Install it from nodejs.org, or use Swift or Python."
+            : lang == .python ? "Python 3 isn't installed. Run `xcode-select --install`, or use Swift."
+            : "The Swift compiler isn't installed. Run `xcode-select --install`."
+
+        var result = RunResult()
+        let compile = await exec(compileExe, compileArgs, in: dir, limit: 60)
+        if compile.launchError != nil || compile.status == 127 { return RunResult(note: missing, couldNotRun: true) }
+        result.compiler = compile.output
+        result.compileStatus = compile.timedOut ? -1 : compile.status
+        result.compileSeconds = compile.seconds
+        if result.compileFailed { return result }
+
+        let run = await exec(runExe, runArgs, in: dir, limit: 30)
+        if let e = run.launchError { return RunResult(note: "Couldn't run: \(e)", couldNotRun: true) }
+        result.output = run.output
+        result.exitCode = run.status
+        result.runSeconds = run.seconds
+        result.timedOut = run.timedOut
+        return result
         #else
         switch lang {
         case .swift:
             guard let mac, mac.paired else {
-                return "Swift compiles on your Mac. Pair this device in Profile → Claude Code on my Mac (with PrepBoard open on the Mac), or tap Review to have AI check your solution."
+                return RunResult(note: "Swift compiles on your Mac. Pair this device in Profile → Claude Code on my Mac (with PrepBoard open on the Mac), or tap Review to have AI check your solution.", couldNotRun: true)
             }
-            do { return try await mac.exec(code, lang: lang.rawValue) } catch { return error.localizedDescription }
+            do { return try await mac.exec(code, lang: lang.rawValue) } catch { return RunResult(note: error.localizedDescription, couldNotRun: true) }
         case .python:
-            return await PythonRunner.shared.run(code)
+            let text = await PythonRunner.shared.run(code)
+            if text.hasPrefix("Python couldn't start") { return RunResult(note: text, couldNotRun: true) }
+            return RunResult(output: text, timedOut: text.hasPrefix("Stopped after"), note: "Interpreted on this device (Python 3.12), no compile step")
         case .javascript:
             break
         }
@@ -93,11 +201,58 @@ enum CodeRunner {
             ctx.exceptionHandler = { _, e in failure = e?.toString() }
             let started = Date()
             ctx.evaluateScript(code)
-            let secs = String(format: "%.2fs", Date().timeIntervalSince(started))
-            return (lines.isEmpty ? "(no output)" : lines.joined(separator: "\n")) + (failure.map { "\nError: \($0)" } ?? "") + "\n— \(secs)"
+            return RunResult(output: lines.joined(separator: "\n") + (failure.map { "\nError: \($0)" } ?? ""),
+                             runSeconds: Date().timeIntervalSince(started), note: "Interpreted on this device, no compile step")
         }
         #endif
     }
+
+    #if os(macOS)
+    struct ProcessRun { var output = ""; var status: Int32 = 0; var seconds = 0.0; var timedOut = false; var launchError: String? }
+
+    /// Runs one process, reading its output as it arrives (so a chatty program can't fill the pipe and stall) and stopping it after `limit` seconds.
+    static func exec(_ exe: String, _ args: [String], in dir: URL, limit: Double) async -> ProcessRun {
+        await withCheckedContinuation { cont in
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: exe)
+            p.arguments = args
+            p.currentDirectoryURL = dir
+            var env = ProcessInfo.processInfo.environment
+            env["PATH"] = ClaudeCode.searchPath
+            p.environment = env
+            let pipe = Pipe()
+            p.standardOutput = pipe; p.standardError = pipe
+            let buffer = OutputBuffer()
+            pipe.fileHandleForReading.readabilityHandler = { h in buffer.append(h.availableData) }
+            let started = Date()
+            p.terminationHandler = { proc in
+                pipe.fileHandleForReading.readabilityHandler = nil
+                buffer.append(pipe.fileHandleForReading.readDataToEndOfFile())
+                cont.resume(returning: ProcessRun(output: buffer.text, status: proc.terminationStatus,
+                                                  seconds: Date().timeIntervalSince(started), timedOut: buffer.killed))
+            }
+            do {
+                try p.run()
+                DispatchQueue.global().asyncAfter(deadline: .now() + limit) { if p.isRunning { buffer.killed = true; p.terminate() } }
+            } catch {
+                cont.resume(returning: ProcessRun(launchError: error.localizedDescription))
+            }
+        }
+    }
+
+    /// Collects a process's output across threads; capped at 1 MB so a runaway print loop can't eat memory.
+    private final class OutputBuffer: @unchecked Sendable {
+        private let lock = NSLock()
+        private var data = Data()
+        private var _killed = false
+        var killed: Bool {
+            get { lock.withLock { _killed } }
+            set { lock.withLock { _killed = newValue } }
+        }
+        func append(_ d: Data) { lock.withLock { if data.count < 1_000_000 { data.append(d.prefix(1_000_000 - data.count)) } } }
+        var text: String { lock.withLock { String(decoding: data, as: UTF8.self) } }
+    }
+    #endif
 }
 
 enum PracticePrompt {
