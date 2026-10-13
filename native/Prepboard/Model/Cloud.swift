@@ -27,6 +27,7 @@ struct RoleRow: Codable {
     var recruiter, recruiter_email, source: String?
     var applied_at: String?
     var activity: String?
+    var resume_variant: String?
     var created_at: String?
     var updated_at: String?
 }
@@ -91,14 +92,62 @@ struct ProfileRow: Codable {
     var updated_at: String?
 }
 
+struct LeadRow: Codable {
+    var user_id: UUID?
+    var id: String
+    var company, title, location, link, role_number, source, jd: String
+    var score: Int
+    var score_reason, status, base_variant, base_reason, variant_name, pdf_doc_id: String
+    var coverage: [Coverage]
+    var answers: [FormAnswer]
+    var flagged, reason, role_id: String
+    var submit_requested: Bool
+    var found_at: String?
+    var updated_at: String?
+}
+
+struct HuntSettingsRow: Codable {
+    var user_id: UUID?
+    var regions, companies, keywords: [String]
+    var auto: Bool
+    var run_hour, min_score, daily_tailor_limit, daily_submit_limit: Int
+    var resume_folder: String?          // nil from phones, so only the Mac's path is ever stored
+    var answers: AnswerBank
+    var updated_at: String?
+}
+
 extension RoleRow {
     func makeRole() -> Role {
         let m = Role(id: id, company: company, title: title, team: team, location: location, roleNumber: role_number,
                      salary: salary, link: link, stage: Stage(rawValue: stage) ?? .saved, interviewAt: Stamp.date(interview_at),
                      interviewNote: interview_note, notes: notes, createdAt: Stamp.date(created_at) ?? .now)
         m.recruiter = recruiter ?? ""; m.recruiterEmail = recruiter_email ?? ""; m.source = source ?? ""
-        m.appliedAt = Stamp.date(applied_at); m.activity = activity ?? ""
+        m.appliedAt = Stamp.date(applied_at); m.activity = activity ?? ""; m.resumeVariant = resume_variant ?? ""
         return m
+    }
+}
+
+extension LeadRow {
+    func makeLead() -> Lead {
+        let m = Lead(id: id, company: company, title: title, location: location, link: link, roleNumber: role_number, source: source,
+                     jd: jd, score: score, scoreReason: score_reason, status: LeadStatus(rawValue: status) ?? .new,
+                     foundAt: Stamp.date(found_at) ?? .now, updatedAt: Stamp.date(updated_at) ?? .now)
+        m.baseVariant = base_variant; m.baseReason = base_reason; m.variantName = variant_name; m.pdfDocId = pdf_doc_id
+        m.coverage = coverage; m.answers = answers; m.flagged = flagged; m.reason = reason; m.roleId = role_id
+        m.submitRequested = submit_requested
+        return m
+    }
+}
+
+extension HuntSettingsRow {
+    /// Writes the row onto the model, touching only fields that differ. An empty remote folder keeps the Mac's own.
+    func apply(to m: HuntSettings) {
+        func set<V: Equatable>(_ kp: ReferenceWritableKeyPath<HuntSettings, V>, _ v: V) { if m[keyPath: kp] != v { m[keyPath: kp] = v } }
+        set(\.regions, regions); set(\.companies, companies); set(\.keywords, keywords); set(\.auto, auto); set(\.runHour, run_hour)
+        set(\.minScore, min_score); set(\.dailyTailorLimit, daily_tailor_limit); set(\.dailySubmitLimit, daily_submit_limit)
+        if let f = resume_folder, !f.isEmpty { set(\.resumeFolder, f) }
+        if m.answerBank != answers { m.answerBank = answers }
+        set(\.updatedAt, Stamp.date(updated_at) ?? m.updatedAt)
     }
 }
 
@@ -135,6 +184,7 @@ final class Cloud {
     private var pushing = false
     private var applyingRemote = false
     private var refreshing = false
+    private var saveGeneration = 0               // bumps on every local save, so a pull can tell it raced one
     private var lastPull = Date.distantPast
 
     var configured: Bool { client != nil }
@@ -155,7 +205,7 @@ final class Cloud {
         self.profile = profile
         profile.onChange = { [weak self] in self?.schedulePush() }
         NotificationCenter.default.addObserver(forName: ModelContext.didSave, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.schedulePush() }
+            Task { @MainActor in self?.saveGeneration += 1; self?.schedulePush() }
         }
         guard let client else { return }
         // Pull other devices' changes every minute while the app is open.
@@ -251,6 +301,8 @@ final class Cloud {
             try? context.delete(model: PrepTask.self)
             try? context.delete(model: QuizAttempt.self)
             try? context.delete(model: Problem.self)
+            try? context.delete(model: Lead.self)
+            try? context.delete(model: HuntSettings.self)
             try? context.save()
         }
     }
@@ -274,7 +326,10 @@ final class Cloud {
         defer { refreshing = false }
         await push()
         do {
+            let generation = saveGeneration
             let remote = try await pull()
+            // A save landed while pulling: merging would revert it before it's pushed, so leave it for the next refresh.
+            guard generation == saveGeneration else { schedulePush(); return }
             applyingRemote = true
             try remote.merge(into: context, profile: profile)
             applyingRemote = false
@@ -299,7 +354,10 @@ final class Cloud {
         async let profiles: [ProfileRow] = client.from("pb_profiles").select().eq("user_id", value: user.id).execute().value
         async let quizzes: [QuizRow] = client.from("pb_quiz_attempts").select().order("created_at", ascending: false).limit(500).execute().value
         async let problems: [ProblemRow] = client.from("pb_problems").select().execute().value
-        return try await RemoteData(roles: roles, docs: docs, sessions: sessions, quizzes: quizzes, problems: problems, profile: profiles.first)
+        async let leads: [LeadRow] = client.from("pb_leads").select().execute().value
+        async let hunt: [HuntSettingsRow] = client.from("pb_hunt_settings").select().eq("user_id", value: user.id).execute().value
+        return try await RemoteData(roles: roles, docs: docs, sessions: sessions, quizzes: quizzes, problems: problems, profile: profiles.first,
+                                    leads: leads, huntSettings: hunt.first)
     }
 
     func push() async {
@@ -328,17 +386,25 @@ final class Cloud {
             let problemRows = now.problems.filter { base.problems[$0.key] != $0.value }.compactMap { now.problemRows[$0.key] }
                 .map { r -> ProblemRow in var r = r; r.user_id = user.id; r.updated_at = stamp; return r }
             if !problemRows.isEmpty { try await client.from("pb_problems").upsert(problemRows, onConflict: "user_id,id").execute() }
+            let leadRows = now.leads.filter { base.leads[$0.key] != $0.value }.compactMap { now.leadRows[$0.key] }
+                .map { r -> LeadRow in var r = r; r.user_id = user.id; r.updated_at = stamp; return r }
+            if !leadRows.isEmpty { try await client.from("pb_leads").upsert(leadRows, onConflict: "user_id,id").execute() }
 
             for (table, removed) in [("pb_roles", Set(base.roles.keys).subtracting(now.roles.keys)),
                                      ("pb_docs", Set(base.docs.keys).subtracting(now.docs.keys)),
                                      ("pb_sessions", Set(base.sessions.keys).subtracting(now.sessions.keys)),
                                      ("pb_quiz_attempts", Set(base.quizzes.keys).subtracting(now.quizzes.keys)),
-                                     ("pb_problems", Set(base.problems.keys).subtracting(now.problems.keys))] where !removed.isEmpty {
+                                     ("pb_problems", Set(base.problems.keys).subtracting(now.problems.keys)),
+                                     ("pb_leads", Set(base.leads.keys).subtracting(now.leads.keys))] where !removed.isEmpty {
                 try await client.from(table).delete().eq("user_id", value: user.id).in("id", values: Array(removed)).execute()
             }
             if now.profileJSON != base.profileJSON, var p = now.profileRow {
                 p.user_id = user.id; p.updated_at = stamp
                 try await client.from("pb_profiles").upsert(p).execute()
+            }
+            if now.huntJSON != base.huntJSON, var h = now.huntRow {
+                h.user_id = user.id; h.updated_at = stamp
+                try await client.from("pb_hunt_settings").upsert(h).execute()
             }
             base = now
             synced = base
@@ -426,8 +492,11 @@ struct SyncSnapshot {
     var quizRows: [String: QuizRow] = [:]
     var problems: [String: String] = [:], problemRows: [String: ProblemRow] = [:]
     var roleRows: [String: RoleRow] = [:], docRows: [String: CloudDocRow] = [:], sessionRows: [String: SessionRow] = [:]
+    var leads: [String: String] = [:], leadRows: [String: LeadRow] = [:]
     var profileJSON: String = ""
     var profileRow: ProfileRow?
+    var huntJSON: String = ""
+    var huntRow: HuntSettingsRow?
 
     init() {}
 
@@ -439,7 +508,8 @@ struct SyncSnapshot {
             let row = RoleRow(id: r.id, company: r.company, title: r.title, team: r.team, location: r.location, role_number: r.roleNumber,
                               salary: r.salary, link: r.link, stage: r.stageRaw, interview_at: Stamp.string(r.interviewAt),
                               interview_note: r.interviewNote, notes: r.notes, recruiter: r.recruiter, recruiter_email: r.recruiterEmail,
-                              source: r.source, applied_at: Stamp.string(r.appliedAt), activity: r.activity, created_at: Stamp.string(r.createdAt))
+                              source: r.source, applied_at: Stamp.string(r.appliedAt), activity: r.activity, resume_variant: r.resumeVariant,
+                              created_at: Stamp.string(r.createdAt))
             roleRows[r.id] = row; roles[r.id] = key(row)
         }
         for d in (try? context.fetch(FetchDescriptor<Doc>())) ?? [] {
@@ -463,17 +533,37 @@ struct SyncSnapshot {
                                  videos: p.videos, created_at: Stamp.string(p.createdAt))
             problemRows[p.id] = row; problems[p.id] = key(row)
         }
+        for l in (try? context.fetch(FetchDescriptor<Lead>())) ?? [] {
+            let row = LeadRow(id: l.id, company: l.company, title: l.title, location: l.location, link: l.link, role_number: l.roleNumber,
+                              source: l.source, jd: l.jd, score: l.score, score_reason: l.scoreReason, status: l.statusRaw,
+                              base_variant: l.baseVariant, base_reason: l.baseReason, variant_name: l.variantName, pdf_doc_id: l.pdfDocId,
+                              coverage: l.coverage, answers: l.answers, flagged: l.flagged, reason: l.reason, role_id: l.roleId,
+                              submit_requested: l.submitRequested, found_at: Stamp.string(l.foundAt))
+            leadRows[l.id] = row; leads[l.id] = key(row)
+        }
         if let profile {
             let row = ProfileRow(name: profile.name, headline: profile.headline, avatar: profile.avatar,
                                  photo: profile.photo.map { "data:image/jpeg;base64," + $0.base64EncodedString() } ?? "")
             profileRow = row; profileJSON = key(row)
+        }
+        if let h = try? context.fetch(FetchDescriptor<HuntSettings>()).first {
+            #if os(macOS)
+            let folder: String? = h.resumeFolder
+            #else
+            let folder: String? = nil       // the folder is the Mac's; phones never overwrite it
+            #endif
+            let row = HuntSettingsRow(regions: h.regions, companies: h.companies, keywords: h.keywords, auto: h.auto, run_hour: h.runHour,
+                                      min_score: h.minScore, daily_tailor_limit: h.dailyTailorLimit, daily_submit_limit: h.dailySubmitLimit,
+                                      resume_folder: folder, answers: h.answerBank)
+            huntRow = row; huntJSON = key(row)
         }
     }
 }
 
 struct RemoteData {
     let roles: [RoleRow], docs: [CloudDocRow], sessions: [SessionRow], quizzes: [QuizRow], problems: [ProblemRow], profile: ProfileRow?
-    var isEmpty: Bool { roles.isEmpty && docs.isEmpty && sessions.isEmpty && quizzes.isEmpty && problems.isEmpty }
+    let leads: [LeadRow], huntSettings: HuntSettingsRow?
+    var isEmpty: Bool { roles.isEmpty && docs.isEmpty && sessions.isEmpty && quizzes.isEmpty && problems.isEmpty && leads.isEmpty }
 
     /// Makes the local store match the account, in place: changed records are updated field by field,
     /// new ones inserted, removed ones deleted, and untouched ones left alone. Open documents and code
@@ -500,7 +590,7 @@ struct RemoteData {
             set(m, \.roleNumber, r.role_number); set(m, \.salary, r.salary); set(m, \.link, r.link); set(m, \.stageRaw, r.stage)
             set(m, \.interviewAt, Stamp.date(r.interview_at)); set(m, \.interviewNote, r.interview_note); set(m, \.notes, r.notes)
             set(m, \.recruiter, r.recruiter ?? ""); set(m, \.recruiterEmail, r.recruiter_email ?? ""); set(m, \.source, r.source ?? "")
-            set(m, \.appliedAt, Stamp.date(r.applied_at)); set(m, \.activity, r.activity ?? "")
+            set(m, \.appliedAt, Stamp.date(r.applied_at)); set(m, \.activity, r.activity ?? ""); set(m, \.resumeVariant, r.resume_variant ?? "")
         }
 
         let localDocs = try existing(Doc.self, keep: Set(docs.map(\.id))) { $0.id }
@@ -553,6 +643,30 @@ struct RemoteData {
             if m.videos != (p.videos ?? []) { m.videos = p.videos ?? [] }
         }
 
+        let localLeads = try existing(Lead.self, keep: Set(leads.map(\.id))) { $0.id }
+        for l in leads {
+            guard let m = localLeads[l.id] else {
+                context.insert(l.makeLead())
+                continue
+            }
+            set(m, \.company, l.company); set(m, \.title, l.title); set(m, \.location, l.location); set(m, \.link, l.link)
+            set(m, \.roleNumber, l.role_number); set(m, \.source, l.source); set(m, \.jd, l.jd); set(m, \.score, l.score)
+            set(m, \.scoreReason, l.score_reason); set(m, \.statusRaw, l.status); set(m, \.baseVariant, l.base_variant)
+            set(m, \.baseReason, l.base_reason); set(m, \.variantName, l.variant_name); set(m, \.pdfDocId, l.pdf_doc_id)
+            set(m, \.flagged, l.flagged); set(m, \.reason, l.reason); set(m, \.roleId, l.role_id); set(m, \.submitRequested, l.submit_requested)
+            set(m, \.foundAt, Stamp.date(l.found_at) ?? m.foundAt); set(m, \.updatedAt, Stamp.date(l.updated_at) ?? m.updatedAt)
+            if m.coverage != l.coverage { m.coverage = l.coverage }
+            if m.answers != l.answers { m.answers = l.answers }
+        }
+
+        // Like the profile row: no remote row leaves the local settings alone (they push on the next save).
+        let localHunt = try context.fetch(FetchDescriptor<HuntSettings>())
+        if let h = huntSettings {
+            let m = localHunt.first ?? { let n = HuntSettings(); context.insert(n); return n }()
+            h.apply(to: m)
+        }
+        for extra in localHunt.dropFirst() { context.delete(extra) }
+
         try context.save()
         if let p = self.profile, let profile {
             profile.applyRemote(name: p.name, headline: p.headline, avatar: p.avatar, photoDataURL: p.photo)
@@ -567,6 +681,14 @@ struct RemoteData {
         try context.delete(model: PrepTask.self)
         try context.delete(model: QuizAttempt.self)
         try context.delete(model: Problem.self)
+        try context.delete(model: Lead.self)
+        try context.delete(model: HuntSettings.self)
+        for l in leads { context.insert(l.makeLead()) }
+        if let h = huntSettings {
+            let m = HuntSettings()
+            h.apply(to: m)
+            context.insert(m)
+        }
         for p in problems {
             let problem = Problem(id: p.id, roleId: p.role_id, title: p.title, difficulty: p.difficulty, topics: p.topics, statement: p.statement,
                                   starters: p.starters, code: p.code, language: p.language, solved: p.solved, notes: p.notes,

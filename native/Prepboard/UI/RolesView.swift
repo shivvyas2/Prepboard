@@ -86,6 +86,9 @@ struct RoleDetailView: View {
     @Query private var allTasks: [PrepTask]
     @Query(sort: \Doc.order) private var allDocs: [Doc]
     @State private var confirmDelete = false
+    #if os(macOS)
+    @Environment(JobHunt.self) private var hunt
+    #endif
 
     var body: some View {
         let tasks = allTasks.filter { $0.roleId == role.id && !$0.isBreak }.sorted { $0.start < $1.start }
@@ -194,6 +197,12 @@ struct RoleDetailView: View {
                 PBTextField(label: "Interview format", text: $role.interviewNote)
                 PBTextField(label: "Recruiter", text: $role.recruiter)
                 PBTextField(label: "Recruiter email", text: $role.recruiterEmail)
+                HStack(alignment: .bottom, spacing: PB.s2) {
+                    PBTextField(label: "Résumé variant", text: $role.resumeVariant)
+                    #if os(macOS)
+                    variantMenu
+                    #endif
+                }
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text("Interview").pbLabelStyle()
@@ -217,6 +226,25 @@ struct RoleDetailView: View {
         }
         .pbCard()
     }
+
+    #if os(macOS)
+    /// Picks one of the scanned résumé variants into the field.
+    private var variantMenu: some View {
+        Menu {
+            if hunt.variants.isEmpty { Text("No variants scanned yet") }
+            ForEach(hunt.variants) { v in Button(v.name) { role.resumeVariant = v.name } }
+        } label: {
+            Image(systemName: "chevron.down").font(.system(size: 12, weight: .semibold))
+                .frame(width: 40, height: PB.controlHeight(compact: false))
+                .foregroundStyle(PB.ink2)
+                .background(RoundedRectangle(cornerRadius: 12).fill(PB.surface))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(PB.line))
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+        .help("Pick a scanned résumé variant")
+    }
+    #endif
 
     private func tasksCard(_ tasks: [PrepTask]) -> some View {
         let byDay = Dictionary(grouping: tasks) { Calendar.current.startOfDay(for: $0.start) }

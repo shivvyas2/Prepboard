@@ -12,13 +12,14 @@ struct PrepboardApp: App {
     #if os(macOS)
     @State private var deviceBridge = DeviceBridge()
     @State private var jobSync = JobSync()
+    @State private var jobHunt = JobHunt()
     #endif
     @Environment(\.scenePhase) private var scenePhase
     let container: ModelContainer
 
     init() {
         do {
-            container = try ModelContainer(for: Role.self, Doc.self, PrepTask.self, QuizAttempt.self, Problem.self)
+            container = try ModelContainer(for: Role.self, Doc.self, PrepTask.self, QuizAttempt.self, Problem.self, Lead.self, HuntSettings.self)
         } catch {
             fatalError("Could not open the Prepboard store: \(error)")
         }
@@ -63,14 +64,15 @@ struct PrepboardApp: App {
                 #if os(macOS)
                 .environment(deviceBridge)
                 .environment(jobSync)
+                .environment(jobHunt)
                 .environment(WorkspaceManager.shared)
                 .task {
                     // Extra windows get the same models and store as the main one (their own AppState for sections).
-                    let (profile, cloud, browser, claude, github, deviceBridge, jobSync, container) = (profile, cloud, browser, claude, github, deviceBridge, jobSync, container)
+                    let (profile, cloud, browser, claude, github, deviceBridge, jobSync, jobHunt, container) = (profile, cloud, browser, claude, github, deviceBridge, jobSync, jobHunt, container)
                     WorkspaceManager.shared.configure(app: app, claudeAvailable: { claude.isReady }) { view, state in
                         AnyView(view
                             .environment(state).environment(profile).environment(cloud).environment(browser)
-                            .environment(claude).environment(github).environment(deviceBridge).environment(jobSync)
+                            .environment(claude).environment(github).environment(deviceBridge).environment(jobSync).environment(jobHunt)
                             .environment(WorkspaceManager.shared)
                             .modelContainer(container)
                             .preferredColorScheme(.light))
@@ -80,6 +82,7 @@ struct PrepboardApp: App {
                     await claude.checkConnection()   // picks up an installed, signed-in Claude Code on launch
                     deviceBridge.attach(claude)
                     jobSync.attach(container: container, claude: claude)
+                    jobHunt.attach(container: container, claude: claude, cloud: cloud, github: github)
                 }
                 .frame(minWidth: 1000, minHeight: 680)
                 #endif
@@ -116,7 +119,7 @@ struct PrepboardCommands: Commands {
                 .keyboardShortcut("e", modifiers: [.command, .shift])
         }
         CommandMenu("Go") {
-            ForEach(Array(Section.allCases.enumerated()), id: \.element) { idx, s in
+            ForEach(Array(Section.allCases.prefix(9).enumerated()), id: \.element) { idx, s in   // ⌘1–⌘9; Search has ⌘F
                 Button(s.rawValue) { app.section = s }
                     .keyboardShortcut(KeyEquivalent(Character("\(idx + 1)")), modifiers: .command)
             }

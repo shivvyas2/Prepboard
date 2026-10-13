@@ -149,7 +149,7 @@ final class JobSync {
     }
 
     func runIfDue() {
-        guard auto, !isRunning, claude?.isReady == true else { return }
+        guard auto, !isRunning, let claude, claude.isReady, !claude.busy else { return }
         if let lastRun, Date.now.timeIntervalSince(lastRun) < Self.interval { return }
         Task { await run() }
     }
@@ -159,7 +159,8 @@ final class JobSync {
         guard claude.isReady else { error = "Connect Claude Code in Profile to sync Gmail and LinkedIn."; return }
         isRunning = true
         error = nil
-        defer { isRunning = false }
+        claude.busy = true
+        defer { isRunning = false; claude.busy = false }
 
         let context = container.mainContext
         let roles = (try? context.fetch(FetchDescriptor<Role>())) ?? []

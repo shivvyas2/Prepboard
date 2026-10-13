@@ -307,6 +307,7 @@ struct SectionContent: View {
         case .timeline: PrepTimelineView()
         case .dashboard: DashboardView()
         case .roles: RolesView()
+        case .hunt: HuntView()
         case .documents: DocumentsView()
         case .practice: PracticeView()
         case .essentials: EssentialsView()

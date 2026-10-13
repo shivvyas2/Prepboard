@@ -31,6 +31,7 @@
 - **Claude Code terminal (Mac):** the full interactive Claude Code in a panel (⇧⌘J), in your prep folder.
 - **Quizzes and a Scores leaderboard:** "Quiz me" writes multiple-choice questions from a session's material, shows the correct answer and an explanation each time, and tracks mastery by topic, with a *Learn more* list for weak spots.
 - **YouTube videos:** "Find videos" pulls 3–4 strong explainers for a session and plays them in the app.
+- **Hunt (find roles, tailor the résumé, apply with one tap):** once a day the Mac reads LinkedIn's recommendations, searches LinkedIn for your target companies and regions, and checks those companies' careers sites. For each good match it writes a keyword-matched résumé variant from your own `.tex` variants (preferring the ones that led to interviews), builds the PDF, drafts the application answers, and puts the job in a review queue on every device. Submit needs your tap; the Mac then fills the form, uploads the PDF and presses Submit only when every required field has an approved answer. Work authorization, sponsorship, EEO and salary answers come only from your Answer Bank, and a second pass checks that every claim in the new résumé is backed by an existing variant or your GitHub work.
 - **Browse:** an in-app browser (native apps) with "Save to notes" for research.
 - **Accounts and sync:** sign in once and your roles, sessions, docs, PDFs, quiz history and profile sync across every device.
 - **Your choice of AI:** use your own Anthropic API key, or your Claude account through Claude Code.

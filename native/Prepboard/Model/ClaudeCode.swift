@@ -28,6 +28,8 @@ final class ClaudeCode {
     }
     var connection: Connection = .unknown
     var isReady: Bool { enabled && { if case .connected = connection { true } else { false } }() }
+    /// True while a headless run (JobSync or JobHunt) has the shared Chrome; the schedulers wait for it.
+    var busy = false
 
     /// Checks that the `claude` CLI is installed and signed in.
     func checkConnection() async {
@@ -78,8 +80,19 @@ final class ClaudeCode {
             p.environment = env
             let out = Pipe(), inp = Pipe()
             p.standardOutput = out; p.standardError = out; p.standardInput = inp
+            // Drain stdout as it arrives: a child that writes more than the 64 KB pipe buffer would otherwise block forever.
+            let lock = NSLock()
+            var buffer = Data()
+            out.fileHandleForReading.readabilityHandler = { h in
+                lock.lock(); buffer.append(h.availableData); lock.unlock()
+            }
             p.terminationHandler = { _ in
-                cont.resume(returning: String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self))
+                lock.lock()
+                out.fileHandleForReading.readabilityHandler = nil
+                buffer.append(out.fileHandleForReading.readDataToEndOfFile())
+                let text = String(decoding: buffer, as: UTF8.self)
+                lock.unlock()
+                cont.resume(returning: text)
             }
             do {
                 try p.run()
