@@ -1,0 +1,86 @@
+# Hunt: Chrome for heavy runs, last-minute résumé edits, stored LinkedIn sign-in
+
+Three additions to the Hunt (spec `2026-10-12-job-hunt-design.md`) and its built-in browser (`2026-10-13-built-in-browser-design.md`). All Mac-only except where noted; the web app is untouched.
+
+## A. Option: run the heavy runs in Chrome (Claude in Chrome extension)
+
+The heavy runs are **Discover** (about 150 listings) and **Submit**. The LinkedIn sync stays in the built-in browser (it is light and keeps the Gmail/Calendar connectors).
+
+- Setting, Mac only, not synced: `UserDefaults` key `hunt.browser`, values `"builtin"` (default) and `"chrome"`. Exposed as
+  ```swift
+  enum HuntBrowserChoice: String { case builtin, chrome
+      static var current: HuntBrowserChoice   // get/set UserDefaults "hunt.browser"
+  }
+  ```
+  In `HuntSettingsSheet` (macOS section "Browser for heavy runs", placed before "Résumé folder"): a segmented `Picker` "Built-in browser" / "Chrome with the Claude extension", bound through `@AppStorage("hunt.browser")`, and one muted line: "Discovery and submitting run there; the LinkedIn sync always uses the built-in browser. Chrome must be open with the Claude in Chrome extension connected."
+- `JobHunt`: `static func browserGuide(upload: Bool, chrome: Bool) -> String`. For Chrome: "Use my signed-in Chrome through the Claude in Chrome tools (mcp__claude-in-chrome__…): call tabs_context_mcp first, open your own tab with tabs_create_mcp and close it with tabs_close_mcp when done; navigate; get_page_text for the full text; read_page / find for elements; computer for clicks and scrolling" + (upload ? "; form_input for fields and file_upload for the résumé" : "") + ". If the Chrome tools are not available or Chrome is not connected, stop and begin `notes` with \"NO_CHROME:\"" (Submit: return status "needs_you" with reason starting "NO_CHROME:"). The built-in text is unchanged. `discoverPrompt(settings:variants:known:)` and `submitPrompt(lead:pdfPath:bank:)` take `chrome: Bool = false` and switch "PrepBoard's built-in browser" / "the Browser card" wording to "Chrome" when true.
+- Flags: `static let chromeDiscoverTools` = `mcp__claude-in-chrome__tabs_context_mcp tabs_create_mcp tabs_close_mcp navigate get_page_text read_page find computer` (full names) and `chromeSubmitTools` = that + `form_input file_upload`. For Chrome the run passes `browserFlags: "--chrome --allowedTools <list>"` and `tools: ""`; the built-in path is unchanged. `run()` and `submit()` read `HuntBrowserChoice.current` once at the start; `browser.isRunning` / `browser.reset()` guards apply only to the built-in path; the `claude.busy` gate applies to both.
+- Results: Discover `notes` starting `NO_CHROME` → `error = "Chrome with the Claude extension isn't connected. Open Chrome, or switch heavy runs to the built-in browser in Settings."`, `lastSummary = "Stopped: Chrome isn't connected"`, `lastRun = .now`, return. Submit `needs_you` with reason starting `NO_CHROME` → the lead goes back to `.ready` with `submitRequested = false`, `flagged` = that message, `reason` unchanged, `error` = that message. `SIGNED_OUT` from Chrome → "Sign in to LinkedIn in Chrome, then run the hunt again."
+- `HuntRunCard` status while discovering: "Looking for jobs in Chrome…" when chrome, else the current text. `HuntBrowserCard` subtitle when nothing has happened yet and chrome is chosen: "Heavy runs use Chrome; the LinkedIn sync still uses this browser."
+- Tests (`HuntTests`): `discoverPrompt(..., chrome: true)` and `submitPrompt(..., chrome: true)` mention `mcp__claude-in-chrome__` and `NO_CHROME` and not `mcp__prepboard__`; the default prompts are unchanged (existing tests); `chromeSubmitTools` contains `file_upload`; `chromeDiscoverTools` does not.
+
+## B. Last-minute résumé edits (Mac), PDF viewing stays on every device
+
+The tailored PDF is already a synced `Doc` (`lead.pdfDocId`), so the lead card's "Résumé" button shows it on iPhone and iPad. Editing needs the `.tex` and `tectonic`, so it is Mac only.
+
+- `JobHunt` gains two helpers extracted from `tailorLead` (behaviour unchanged there):
+  ```swift
+  /// Replaces the lead's PDF Doc with the file at pdfPath (deletes the old Doc and its file). Returns a note when the upload failed ("" on success).
+  func attachPDF(_ lead: Lead, pdfPath: String, context: ModelContext) async -> String
+  /// Runs the honesty pass on the lead's current .tex and sets status .ready / .needsYou (flagged = untraceable claims), like tailorLead does. Sets phase = .honesty while running; requires phase == .idle, claude.isReady and !claude.busy.
+  func recheck(_ lead: Lead) async
+  ```
+  and `func texPath(for lead: Lead) -> String?` (`settings.resumeFolder + "/" + variantName + ".tex"`, nil when `variantName` is empty).
+- `UI/ResumeEditorSheet.swift` (macOS): `ResumeEditorSheet(lead: Lead)`. Header "Edit résumé · <variantName>.tex" with Close. A monospaced `TextEditor` (min 420 pt high) loaded from the file on appear. Buttons: **Save & rebuild PDF** (writes the file, `LatexBuild.build`, then `hunt.attachPDF`; on `LatexBuild.Failure` shows the log in a red monospaced box and keeps the previous PDF; on success sets `lead.reason = "Edited by you; PDF rebuilt"` and `lead.updatedAt = .now`, shows "PDF rebuilt" in the footer), **Re-check claims** (saves, then `hunt.recheck(lead)`; disabled while `hunt.isRunning` or `!claude.isReady`), **Reveal in Finder** (`NSWorkspace.shared.activateFileViewerSelecting`), **Open in editor** (`NSWorkspace.shared.open` the .tex). A muted note under the editor: "Claims you add here are only re-checked when you press Re-check claims." Unsaved changes: Close asks nothing; the Save button is the explicit step (the sheet title shows "• edited" while dirty).
+- `LeadCard` (macOS): "Edit résumé" button (outline, compact) when `!lead.variantName.isEmpty` and status is `.ready`, `.needsYou` or `.failed`; disabled while `hunt.isRunning`. Opens the sheet. Submitting a lead whose PDF was rebuilt uses the new PDF because Submit reads the PDF path from the folder as before.
+- Tests: `HuntTests.testTexPathForLead` (nil without a variant; folder + name otherwise). `attachPDF`/`recheck` are exercised through the existing tailor path (no new Claude-dependent tests).
+
+## C. Stored LinkedIn sign-in for the built-in browser (Mac Keychain)
+
+The user may save their LinkedIn email and password on the Mac so the built-in browser can sign itself in when LinkedIn's session is gone. The values live only in this Mac's Keychain (`Keychain.save` accounts `linkedin.email` and `linkedin.password`, service unchanged). They are never synced, never written to disk elsewhere, never put in a prompt or in `actionLog`, and never given to Claude: PrepBoard fills the form itself through `BrowserScripts`.
+
+- `Model/LinkedInSignIn.swift` (macOS):
+  ```swift
+  @MainActor enum LinkedInSignIn {
+      enum Outcome: Equatable { case signedIn, needsYou(String), failed(String), noCredentials }
+      static var hasCredentials: Bool
+      static func save(email: String, password: String); static func remove()
+      /// Where a LinkedIn URL leaves the user: signed in, on the sign-in page, or on a checkpoint/challenge that needs a person.
+      nonisolated static func classify(_ url: URL?) -> Outcome   // pure, tested
+      /// Loads https://www.linkedin.com/feed/ and classifies where it lands.
+      static func isSignedIn(_ browser: HuntBrowser) async -> Bool
+      /// Opens the sign-in page, fills and submits it with the stored credentials, waits, and classifies the result.
+      static func signIn(_ browser: HuntBrowser) async -> Outcome
+      /// isSignedIn, else signIn when credentials exist; the one call the runs use.
+      static func ensure(_ browser: HuntBrowser) async -> Outcome
+  }
+  ```
+  `classify`: nil or non-linkedin host → `.failed("Not on LinkedIn")`; path containing `/login`, `/uas/`, `/authwall`, `/signup` → `.noCredentials` (meaning "needs a sign-in"); `/checkpoint`, `/challenge` → `.needsYou("LinkedIn is asking for a verification code or a check; finish it in the Browser card, then run again")`; otherwise `.signedIn`.
+  `signIn` after submitting: `.noCredentials` from classify becomes `.failed(<text of #error-for-password / #error-for-username if present, else "LinkedIn did not accept the saved email or password">)`. Logs through the browser only "Signing in to LinkedIn" / "Signed in to LinkedIn" / "LinkedIn needs you".
+- `BrowserScripts.fillLogin(email, password)`: finds `#username` or `input[name=session_key]`, and `#password` or `input[name=session_password]`; sets both with the native value setter and fires `input` + `change`; returns `true` when both were found. `BrowserScripts.submitLogin()`: clicks `button[type=submit]` inside the form that holds the password field, else `form.requestSubmit()`; returns `true` when a form was found. `BrowserScripts.loginError()`: the visible text of `#error-for-password` / `#error-for-username` or `""`. `HuntBrowser.signInToLinkedIn(email:password:) async throws -> URL?`: navigate to `https://www.linkedin.com/login`, `fillLogin` (throw `.message("LinkedIn's sign-in form was not found")` when false), `submitLogin`, `waitForLoad`, then up to 8 s more while `webView.url` still has `/login` and `isLoading`; returns the final URL. The credentials are passed as script arguments only; `type(ref:)` is not used, so nothing about them reaches `lastAction`.
+- Settings (macOS section "LinkedIn sign-in", after "Browser for heavy runs"): email `TextField`, password `SecureField`, **Save** (disabled when either is empty), **Remove** (shown when saved), **Sign in now** (runs `LinkedInSignIn.signIn`, shows the outcome text under the buttons, disabled while `hunt.isRunning`), status line "Saved in this Mac's Keychain" / "Not saved". Note: "PrepBoard types these into LinkedIn's sign-in page itself; Claude never sees them. If LinkedIn asks for a code or a check, finish it in the Browser card." The password field is cleared after Save; the email stays.
+- `HuntBrowserCard`'s "Sign in to LinkedIn" button: with saved credentials it runs `LinkedInSignIn.signIn` (card expands first) and shows the outcome in the subtitle via `lastAction`; without, it loads the sign-in page as today.
+- Runs: in `JobHunt.run()` (built-in path only) and `JobSync.run()`, after the busy/isRunning guards and `browser.reset()`, `switch await LinkedInSignIn.ensure(huntBrowser)`: `.signedIn` → continue; `.noCredentials` → `error = "Sign in to LinkedIn in the Browser card above, or save your LinkedIn sign-in in Settings, then run again"`, `lastSummary = "Stopped: LinkedIn needs you to sign in"`, return; `.needsYou(m)` / `.failed(m)` → `error = m`, same summary, return. `JobHunt.submit()` does the same only when the posting link's host contains `linkedin.com` (careers sites do not need it); on a stop the lead goes back to `.ready` with `submitRequested = false` and `flagged` = the message. `JobHunt` and `JobSync` need the `HuntBrowser` for this: `attach(...)` gains `huntBrowser: HuntBrowser` (PrepboardApp passes it). The `SIGNED_OUT` handling after a run stays (session lost mid-run).
+- Tests (`BrowserServerTests`): `classify` for feed, login, uas/login, checkpoint/challenge, authwall, non-LinkedIn; `fillLogin` + `submitLogin` + `loginError` against a local HTML sign-in form (values set, submit handler fires, error text read); `signInToLinkedIn` is not tested against LinkedIn. `HuntTests`: `discoverPrompt`/`submitPrompt`/`JobSync.prompt` never contain the strings "linkedin.password" or a sentinel password saved in a test Keychain entry is not needed; instead assert the prompts contain no "session_password" and that `LinkedInSignIn.hasCredentials` is false after `remove()`.
+
+## D. Applications on ATS pages (Ashby, Greenhouse, Lever, Workable), not only LinkedIn
+
+Leads from careers sites often land on a hosted applicant-tracking form such as `https://jobs.ashbyhq.com/mirage/98bb152b-4d0a-4ef3-8754-54060c179523/application?utm_source=…`. After tailoring, Submit must apply there exactly like on LinkedIn. Shared code (also compiles on iOS):
+
+- `Model/ATS.swift`:
+  ```swift
+  enum ATS: Equatable { case ashby, greenhouse, lever, workable, workday, linkedin, other
+      static func kind(_ link: String) -> ATS            // by host: jobs.ashbyhq.com; *.greenhouse.io; jobs.lever.co; apply.workable.com / *.workable.com; *.myworkdayjobs.com; *.linkedin.com
+      /// Where Submit should start: Ashby `/<org>/<id>` gains `/application` before the query string (unchanged when present); Lever `/<org>/<id>` gains `/apply`; everything else is returned as is.
+      static func applicationURL(_ link: String) -> String
+      /// Site-specific notes for the submit prompt ("" for .other).
+      static func formNotes(_ kind: ATS) -> String
+  }
+  ```
+  `formNotes`: **ashby**: one-page form; required fields carry an asterisk; the résumé field ("Resume" / "Resume/CV") has an "Upload File" button over a hidden file input, use upload_file on that ref; ignore the "Autofill application" / "autofill from résumé" option; dropdowns are custom comboboxes (click, then click the option); Yes/No questions are button groups; the button is "Submit Application"; success shows "Application submitted" or "Thank you". **greenhouse**: the form is on the job page under "Apply for this job" (or `#app`); résumé "Attach" opens a file input (use upload_file on "Attach"; never "Enter manually"); dropdowns are custom comboboxes; EEO questions sit at the bottom; the button is "Submit Application"; success shows "Thank you for applying". **lever**: the `/apply` page; résumé "ATTACH RESUME/CV" is a file input; plain fields; the button is "Submit application"; success shows "Application submitted". **workable**: an "Apply" button opens the form, which may have several steps ("Next"); résumé upload first; the button is "Submit application". **workday**: these require an account; return status "needs_you" with reason "Workday asks for an account" without creating one. **linkedin**: Easy Apply when offered; otherwise press Apply, and the company's own application page (one of the above or a company form) opens in this same browser: continue there with these same rules.
+- `JobHunt.submitPrompt`: "Start here: <ATS.applicationURL(lead.link)>" replaces the plain posting line (the posting URL is still listed), followed by "Form notes for this site: <formNotes>" when non-empty, and always the LinkedIn external-apply sentence above. The stop conditions, the Answer-Bank-only rule and the single Submit press are unchanged. Submit considers the application sent only on an explicit confirmation page or message; otherwise status "unknown" with what was last seen, as today.
+- `JobHunt.discoverPrompt`: for careers-site postings that live on Ashby, Greenhouse, Lever or Workable, `link` is the job page there (the page with the description), not the application form; the hunt adds `/application` or `/apply` itself.
+- Tests (`HuntTests`): `ATS.kind` and `applicationURL` for the Ashby example above (`…/98bb152b-4d0a-4ef3-8754-54060c179523/application?utm_source=LEbxa7kWm6`, and unchanged when already there), Lever `/apply`, Greenhouse unchanged, LinkedIn unchanged, a company careers URL unchanged; `submitPrompt` for an Ashby lead contains "Start here: https://jobs.ashbyhq.com/…/application" and "Upload File"; for a LinkedIn lead contains the external-apply sentence.
+
+## Order of work and verification
+A+D (prompts and flags, one agent), then C, then B (A and C both touch `run()`/`submit()`). After each: `xcodegen generate`, macOS build, iOS Simulator build, `xcodebuild … test` green. No emoji in code or UI. Version 1.7 (build 8) on commit.
