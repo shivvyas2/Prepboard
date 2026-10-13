@@ -1,0 +1,1 @@
+-- LifeOS migration 20260915090100 (shared Supabase project); placeholder so db push matches the remote history. Nothing to run.

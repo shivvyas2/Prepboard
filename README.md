@@ -102,6 +102,7 @@ supabase secrets set PB_KEY_SECRET=$(openssl rand -base64 48)   # encrypts users
 supabase secrets set ANTHROPIC_API_KEY=sk-ant-…   # optional fallback for users without their own key
 supabase functions deploy prep-chat
 ```
+The `*_lifeos_placeholder.sql` files are empty stand-ins for another app's migrations on the same Supabase project, so `db push` sees the remote history as up to date. Keep them; add one whenever a version shows up in `supabase migration list` without a local file.
 
 **Use your Claude account in the web app (optional, Mac)**
 ```bash
