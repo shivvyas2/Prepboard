@@ -377,6 +377,153 @@ final class HuntTests: XCTestCase {
         server.stop()
     }
 
+    // MARK: Chrome for heavy runs
+
+    func testChromePromptsUseTheChromeTools() {
+        let discover = JobHunt.discoverPrompt(settings: HuntSettings(), variants: [], known: [], chrome: true)
+        XCTAssertTrue(discover.contains("mcp__claude-in-chrome__") && discover.contains("NO_CHROME"), discover)
+        XCTAssertFalse(discover.contains("mcp__prepboard__") || discover.contains("built-in browser"), discover)
+        XCTAssertTrue(discover.contains("tabs_context_mcp") && discover.contains("SIGNED_OUT:") && discover.contains("Never press Apply or Easy Apply"))
+        XCTAssertFalse(discover.contains("file_upload") || discover.contains("form_input"))   // Discover is read-only
+        XCTAssertFalse(discover.contains("computer for clicks"), discover)   // no clicking in the user's Chrome while only reading
+        XCTAssertTrue(discover.contains("&start=25"), discover)
+
+        let lead = Lead(company: "Apple", title: "iOS Engineer", link: "https://jobs.apple.com/x")
+        let submit = JobHunt.submitPrompt(lead: lead, pdfPath: "/tmp/r.pdf", bank: AnswerBank(), chrome: true)
+        XCTAssertTrue(submit.contains("mcp__claude-in-chrome__") && submit.contains("NO_CHROME"), submit)
+        XCTAssertFalse(submit.contains("mcp__prepboard__") || submit.contains("built-in browser"), submit)
+        XCTAssertTrue(submit.contains("file_upload") && submit.contains("form_input") && submit.contains("/tmp/r.pdf"))
+        XCTAssertFalse(submit.contains("upload_file"))
+        XCTAssertTrue(submit.contains("STOP CONDITIONS") && submit.contains("needs_you"))
+        XCTAssertTrue(submit.contains("computer for clicks and scrolling"))
+        // Site notes name the Chrome upload tool when Chrome runs the submit.
+        let ashby = JobHunt.submitPrompt(lead: Lead(company: "Mirage", title: "x", link: "https://jobs.ashbyhq.com/mirage/1"), pdfPath: "/tmp/r.pdf", bank: AnswerBank(), chrome: true)
+        XCTAssertTrue(ashby.contains("use file_upload on that ref") && !ashby.contains("upload_file"), ashby)
+    }
+
+    func testChromeToolListsAndBrowserChoice() {
+        for t in ["tabs_context_mcp", "tabs_create_mcp", "tabs_close_mcp", "navigate", "get_page_text", "read_page", "find"] {
+            XCTAssertTrue(JobHunt.chromeDiscoverTools.contains("mcp__claude-in-chrome__\(t)"), t)
+        }
+        // Discover only reads: no clicking or typing (`computer`), no form or upload tools. Submit has all three.
+        XCTAssertFalse(JobHunt.chromeDiscoverTools.contains("computer") || JobHunt.chromeDiscoverTools.contains("javascript_tool"))
+        XCTAssertFalse(JobHunt.chromeDiscoverTools.contains("file_upload") || JobHunt.chromeDiscoverTools.contains("form_input"))
+        XCTAssertTrue(JobHunt.chromeSubmitTools.contains("mcp__claude-in-chrome__computer"))
+        XCTAssertTrue(JobHunt.chromeSubmitTools.contains("mcp__claude-in-chrome__file_upload") && JobHunt.chromeSubmitTools.contains("mcp__claude-in-chrome__form_input"))
+        // A Chrome run loads only the Chrome tools: strict MCP config, and the command line drops every built-in tool.
+        let flags = JobHunt.chromeFlags(tools: JobHunt.chromeDiscoverTools)
+        XCTAssertTrue(flags.hasPrefix("--chrome --strict-mcp-config --allowedTools mcp__claude-in-chrome__tabs_context_mcp"), flags)
+        XCTAssertTrue(JobHunt.chromeSubmitTools.hasPrefix(JobHunt.chromeDiscoverTools))
+        XCTAssertTrue(JobHunt.chromeSubmitTools.split(separator: " ").allSatisfy { $0.hasPrefix("mcp__claude-in-chrome__") })
+        XCTAssertFalse(JobHunt.chromeSubmitTools.contains("mcp__prepboard__"))
+
+        let saved = UserDefaults.standard.string(forKey: "hunt.browser")
+        defer { if let saved { UserDefaults.standard.set(saved, forKey: "hunt.browser") } else { UserDefaults.standard.removeObject(forKey: "hunt.browser") } }
+        UserDefaults.standard.removeObject(forKey: "hunt.browser")
+        XCTAssertEqual(HuntBrowserChoice.current, .builtin)
+        HuntBrowserChoice.current = .chrome
+        XCTAssertEqual(UserDefaults.standard.string(forKey: "hunt.browser"), "chrome")
+        XCTAssertEqual(HuntBrowserChoice.current, .chrome)
+        UserDefaults.standard.set("nonsense", forKey: "hunt.browser")
+        XCTAssertEqual(HuntBrowserChoice.current, .builtin)
+    }
+
+    // MARK: LinkedIn sign-in
+
+    /// The stored sign-in is filled in by PrepBoard itself: no prompt mentions the form fields or the Keychain entries.
+    func testPromptsNeverCarryTheLinkedInSignIn() {
+        let lead = Lead(company: "Apple", title: "iOS Engineer", link: "https://www.linkedin.com/jobs/view/4012345678/")
+        let prompts = [JobHunt.discoverPrompt(settings: HuntSettings(), variants: [], known: []),
+                       JobHunt.discoverPrompt(settings: HuntSettings(), variants: [], known: [], chrome: true),
+                       JobHunt.submitPrompt(lead: lead, pdfPath: "/tmp/r.pdf", bank: AnswerBank()),
+                       JobHunt.submitPrompt(lead: lead, pdfPath: "/tmp/r.pdf", bank: AnswerBank(), chrome: true),
+                       JobSync.prompt(since: .now, roles: [])]
+        for p in prompts {
+            XCTAssertFalse(p.contains("session_password") || p.contains("session_key"))
+            XCTAssertFalse(p.contains("linkedin.password") || p.contains("linkedin.email"))
+            XCTAssertTrue(p.contains("already signed in"))
+        }
+        XCTAssertTrue(JobHunt.isLinkedIn(lead.link) && JobHunt.isLinkedIn("https://linkedin.com/jobs/view/1"))
+        XCTAssertFalse(JobHunt.isLinkedIn("https://jobs.ashbyhq.com/mirage/1") || JobHunt.isLinkedIn("https://jobs.apple.com/x") || JobHunt.isLinkedIn(""))
+    }
+
+    /// Scratch Keychain entries, so the user's own saved sign-in is never read, replaced or removed by a test run.
+    func testLinkedInCredentialsSaveAndRemove() {
+        let real = LinkedInSignIn.accounts
+        LinkedInSignIn.accounts = (email: "test.linkedin.email", password: "test.linkedin.password")
+        defer { LinkedInSignIn.remove(); LinkedInSignIn.accounts = real }
+        LinkedInSignIn.remove()
+        XCTAssertFalse(LinkedInSignIn.hasCredentials)
+        LinkedInSignIn.save(email: "someone@example.com", password: "not-a-real-password")
+        XCTAssertTrue(LinkedInSignIn.hasCredentials)
+        XCTAssertEqual(Keychain.read("test.linkedin.email"), "someone@example.com")
+        LinkedInSignIn.remove()
+        XCTAssertFalse(LinkedInSignIn.hasCredentials)
+        XCTAssertNil(Keychain.read("test.linkedin.password"))
+    }
+
+    // MARK: ATS application pages
+
+    func testATSKindAndApplicationURL() {
+        let ashby = "https://jobs.ashbyhq.com/mirage/98bb152b-4d0a-4ef3-8754-54060c179523?utm_source=LEbxa7kWm6"
+        let ashbyForm = "https://jobs.ashbyhq.com/mirage/98bb152b-4d0a-4ef3-8754-54060c179523/application?utm_source=LEbxa7kWm6"
+        XCTAssertEqual(ATS.kind(ashby), .ashby)
+        XCTAssertEqual(ATS.applicationURL(ashby), ashbyForm)
+        XCTAssertEqual(ATS.applicationURL(ashbyForm), ashbyForm)
+        XCTAssertEqual(ATS.applicationURL(" " + ashby + "\n"), ashbyForm)   // a stray space from Claude's JSON must not skip the suffix
+        XCTAssertEqual(ATS.applicationURL("https://jobs.ashbyhq.com/mirage/98bb152b-4d0a-4ef3-8754-54060c179523/"),
+                       "https://jobs.ashbyhq.com/mirage/98bb152b-4d0a-4ef3-8754-54060c179523/application")
+        XCTAssertEqual(ATS.applicationURL("https://jobs.ashbyhq.com/mirage"), "https://jobs.ashbyhq.com/mirage")   // the org page, not a posting
+
+        XCTAssertEqual(ATS.kind("https://jobs.lever.co/acme/1234-abcd"), .lever)
+        XCTAssertEqual(ATS.applicationURL("https://jobs.lever.co/acme/1234-abcd"), "https://jobs.lever.co/acme/1234-abcd/apply")
+        XCTAssertEqual(ATS.applicationURL("https://jobs.lever.co/acme/1234-abcd/apply"), "https://jobs.lever.co/acme/1234-abcd/apply")
+        XCTAssertEqual(ATS.applicationURL("https://jobs.lever.co/acme/1234-abcd?lever-origin=applied"), "https://jobs.lever.co/acme/1234-abcd/apply?lever-origin=applied")
+
+        let greenhouse = "https://boards.greenhouse.io/acme/jobs/4012345"
+        XCTAssertEqual(ATS.kind(greenhouse), .greenhouse); XCTAssertEqual(ATS.applicationURL(greenhouse), greenhouse)
+        XCTAssertEqual(ATS.kind("https://job-boards.greenhouse.io/acme/jobs/1"), .greenhouse)
+        XCTAssertEqual(ATS.kind("https://apply.workable.com/acme/j/ABC123/"), .workable)
+        XCTAssertEqual(ATS.kind("https://acme.workable.com/jobs/1"), .workable)
+        XCTAssertEqual(ATS.kind("https://acme.myworkdayjobs.com/en-US/Careers/job/NYC/SWE_R123"), .workday)
+        let linkedin = "https://www.linkedin.com/jobs/view/4012345678/"
+        XCTAssertEqual(ATS.kind(linkedin), .linkedin); XCTAssertEqual(ATS.applicationURL(linkedin), linkedin)
+        let careers = "https://jobs.apple.com/en-us/details/200678056"
+        XCTAssertEqual(ATS.kind(careers), .other); XCTAssertEqual(ATS.applicationURL(careers), careers)
+        XCTAssertEqual(ATS.kind("https://app.ashbyhq.com/x"), .other)
+        XCTAssertEqual(ATS.kind(""), .other); XCTAssertEqual(ATS.applicationURL(""), "")
+
+        XCTAssertEqual(ATS.formNotes(.other), "")
+        XCTAssertTrue(ATS.formNotes(.ashby).contains("Upload File") && ATS.formNotes(.ashby).contains("Submit Application"))
+        XCTAssertTrue(ATS.formNotes(.greenhouse).contains("Enter manually"))
+        XCTAssertTrue(ATS.formNotes(.workday).contains("Workday asks for an account"))
+    }
+
+    func testSubmitPromptStartsAtTheApplicationPage() {
+        let ashby = Lead(company: "Mirage", title: "iOS Engineer", link: "https://jobs.ashbyhq.com/mirage/98bb152b-4d0a-4ef3-8754-54060c179523?utm_source=LEbxa7kWm6")
+        let prompt = JobHunt.submitPrompt(lead: ashby, pdfPath: "/tmp/r.pdf", bank: AnswerBank())
+        XCTAssertTrue(prompt.contains("Start here: https://jobs.ashbyhq.com/mirage/98bb152b-4d0a-4ef3-8754-54060c179523/application?utm_source=LEbxa7kWm6"), prompt)
+        XCTAssertTrue(prompt.contains("Posting: https://jobs.ashbyhq.com/mirage/98bb152b-4d0a-4ef3-8754-54060c179523?utm_source=LEbxa7kWm6"))
+        XCTAssertTrue(prompt.contains("Form notes for this site: Ashby") && prompt.contains("Upload File") && prompt.contains("use upload_file on that ref"))
+        XCTAssertFalse(prompt.contains("Chrome"))
+
+        let linkedin = JobHunt.submitPrompt(lead: Lead(company: "Apple", title: "iOS Engineer", link: "https://www.linkedin.com/jobs/view/4012345678/"), pdfPath: "/tmp/r.pdf", bank: AnswerBank())
+        XCTAssertTrue(linkedin.contains("Start here: https://www.linkedin.com/jobs/view/4012345678/"))
+        XCTAssertTrue(linkedin.contains("use Easy Apply when it is offered; otherwise press Apply"), linkedin)
+        XCTAssertTrue(linkedin.contains("Form notes for this site: LinkedIn"))
+
+        // A careers posting gets no site notes but keeps the LinkedIn sentence: its Apply button may still go through LinkedIn.
+        let careers = JobHunt.submitPrompt(lead: Lead(company: "Apple", title: "iOS Engineer", link: "https://jobs.apple.com/x"), pdfPath: "/tmp/r.pdf", bank: AnswerBank())
+        XCTAssertTrue(careers.contains("Start here: https://jobs.apple.com/x\nPosting: https://jobs.apple.com/x"))
+        XCTAssertFalse(careers.contains("Form notes for this site"))
+        XCTAssertTrue(careers.contains("use Easy Apply when it is offered; otherwise press Apply"))
+    }
+
+    func testDiscoverPromptAsksForTheJobPageOnATSHosts() {
+        let prompt = JobHunt.discoverPrompt(settings: HuntSettings(), variants: [], known: [])
+        XCTAssertTrue(prompt.contains("Ashby, Greenhouse, Lever or Workable") && prompt.contains("not its application form"), prompt)
+    }
+
     func testDecodeTailorSample() throws {
         let json = """
         {"tex":"%    APPLE VARIANT: SDE\\n\\\\documentclass{article}\\\\begin{document}Hi\\\\end{document}",
@@ -407,6 +554,43 @@ final class HuntTests: XCTestCase {
         for schema in [JobHunt.discoverSchema, JobHunt.tailorSchema, JobHunt.honestySchema, JobHunt.submitSchema] {
             XCTAssertNotNil(try JSONSerialization.jsonObject(with: Data(schema.utf8)) as? [String: Any], "schema is valid JSON")
         }
+    }
+
+    /// The .tex an edit opens: nil until a variant exists, else the résumé folder plus the variant name (the default folder
+    /// before a settings record is attached).
+    func testTexPathForLead() {
+        let hunt = JobHunt()
+        let lead = Lead(company: "Apple", title: "iOS Engineer")
+        XCTAssertNil(hunt.texPath(for: lead))
+        lead.variantName = "Shiv-Vyas-Apple-iOSEngineer"
+        XCTAssertEqual(hunt.texPath(for: lead), HuntSettings.defaultResumeFolder + "/Shiv-Vyas-Apple-iOSEngineer.tex")
+        XCTAssertTrue(hunt.texPath(for: lead)!.hasSuffix(".tex"))
+    }
+
+    /// `variantName` syncs from Supabase, so only a plain file name may become a path; anything else means "regenerate first".
+    func testTexPathRejectsNamesThatLeaveTheFolder() {
+        let hunt = JobHunt()
+        let lead = Lead(company: "Apple", title: "iOS Engineer")
+        for bad in ["../../.zshrc", "a/b", "/etc/passwd", ".hidden", "..", ".", "x\u{0}y"] {
+            lead.variantName = bad
+            XCTAssertNil(hunt.texPath(for: lead), bad)
+            XCTAssertNil(JobHunt.plainName(bad), bad)
+        }
+        XCTAssertEqual(JobHunt.plainName("Shiv-Vyas-Apple-iOSEngineer"), "Shiv-Vyas-Apple-iOSEngineer")
+        XCTAssertEqual(JobHunt.plainName("with space.v2"), "with space.v2")
+        XCTAssertNil(JobHunt.plainName(""))
+    }
+
+    /// Every headless run names its built-in tool set outright, so the user's global Bash and web allowlist never applies to it.
+    func testClaudeCommandPinsTheBuiltInTools() {
+        let browser = JobHunt.claudeCommand(browserFlags: "--chrome --strict-mcp-config --allowedTools mcp__claude-in-chrome__navigate", tools: "", schemaPath: "/tmp/s.json", cwd: "/tmp")
+        XCTAssertTrue(browser.contains("claude -p --chrome --strict-mcp-config --allowedTools mcp__claude-in-chrome__navigate --output-format json"), browser)
+        XCTAssertTrue(browser.contains("--tools \"\" 2>/dev/null"), browser)
+        XCTAssertEqual(browser.components(separatedBy: "--allowedTools").count, 2, browser)   // only the browser's list
+        let files = JobHunt.claudeCommand(browserFlags: nil, tools: JobHunt.fileTools, schemaPath: "/tmp/s.json", cwd: "/Users/x/Resumes")
+        XCTAssertTrue(files.hasPrefix("cd '/Users/x/Resumes' && claude -p --output-format json"), files)
+        XCTAssertTrue(files.hasSuffix("--tools \"Read,Grep,Glob\" --allowedTools Read Grep Glob 2>/dev/null"), files)
+        XCTAssertFalse(files.contains("Bash") || files.contains("WebSearch") || files.contains("Write"))
     }
 
     func testDailyCounterKeysAreDateScoped() {

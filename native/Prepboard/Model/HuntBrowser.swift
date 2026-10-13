@@ -249,6 +249,35 @@ final class HuntBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
         lastAction = ""
     }
 
+    // MARK: LinkedIn sign-in
+
+    /// Opens LinkedIn's sign-in page, fills and submits it, waits for the result and returns where the page landed.
+    /// The credentials go to the page as script arguments only; nothing about them reaches `lastAction` or the log.
+    func signInToLinkedIn(email: String, password: String) async throws -> URL? {
+        let login = URL(string: "https://www.linkedin.com/login")!
+        try await navigate(login)
+        guard try await bool(BrowserScripts.fillLogin, email, password) else {
+            // LinkedIn sends a signed-in session straight on to the feed; only a page that is still /login is a real miss.
+            if Self.isLoginPath(webView.url) || webView.url == nil { throw BrowserError.message("LinkedIn's sign-in form was not found") }
+            return webView.url
+        }
+        guard try await bool(BrowserScripts.submitLogin) else { throw BrowserError.message("LinkedIn's sign-in form was not found") }
+        try await waitForLoad()
+        let deadline = Date.now.addingTimeInterval(8)
+        while Date.now < deadline, Self.isLoginPath(webView.url) || webView.isLoading {
+            try await Task.sleep(for: .milliseconds(250))
+        }
+        return webView.url
+    }
+
+    /// The visible sign-in error on LinkedIn's login page, or "".
+    func loginError() async throws -> String {
+        try requirePage()
+        return try await string(BrowserScripts.loginError)
+    }
+
+    private static func isLoginPath(_ url: URL?) -> Bool { url?.path.lowercased().contains("/login") ?? false }
+
     // MARK: JavaScript
 
     /// Calls a `BrowserScripts` function expression with JSON-encoded arguments and decodes the JSON it returns.
@@ -317,7 +346,8 @@ final class HuntBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
         }
     }
 
-    private func log(_ line: String) {
+    /// One line for the live card and the action log. Never pass anything secret.
+    func log(_ line: String) {
         lastAction = line
         actionLog.append(line)
         if actionLog.count > 50 { actionLog.removeFirst(actionLog.count - 50) }

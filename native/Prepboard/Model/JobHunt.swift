@@ -38,12 +38,23 @@ struct SubmitResult: Codable {
 #if os(macOS)
 import Observation
 
+/// Which browser the heavy runs (Discover, Submit) use. Mac only, not synced; the LinkedIn sync always uses the built-in browser.
+enum HuntBrowserChoice: String {
+    case builtin, chrome
+
+    /// UserDefaults "hunt.browser"; anything unknown reads as `.builtin`.
+    static var current: HuntBrowserChoice {
+        get { UserDefaults.standard.string(forKey: "hunt.browser").flatMap(HuntBrowserChoice.init) ?? .builtin }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "hunt.browser") }
+    }
+}
+
 /// Finds jobs, tailors a résumé variant for each good match and submits the ones the user queued, all through
 /// the user's local Claude Code. Discovery only reads; `submit` is the only step that acts on a site.
 @MainActor
 @Observable
 final class JobHunt {
-    enum Phase: Equatable { case idle, discovering, tailoring(done: Int, total: Int), submitting(String), honesty(String) }
+    enum Phase: Equatable { case idle, discovering, tailoring(done: Int, total: Int), submitting(String), honesty(String), editing(String) }
 
     static let submitSpacing: TimeInterval = 120
     static let cooldown: TimeInterval = 7 * 86400
@@ -57,6 +68,8 @@ final class JobHunt {
     }
     var error: String?
     private(set) var variants: [ResumeVariant] = []
+    /// The browser the current (or last) heavy run chose; `HuntRunCard` words its status with it.
+    private(set) var usingChrome = false
     var isRunning: Bool { phase != .idle }
     var tailoredToday: Int { Self.dailyCount("tailored") }
     var submittedToday: Int { Self.dailyCount("submitted") }
@@ -66,15 +79,18 @@ final class JobHunt {
     private weak var cloud: Cloud?
     private weak var github: GitHub?
     private weak var browser: BrowserServer?
+    private weak var huntBrowser: HuntBrowser?
     private var scheduleTimer: Timer?
     private var queueTimer: Timer?
     private var lastSubmit: Date? = UserDefaults.standard.object(forKey: "hunt.lastSubmit") as? Date {
         didSet { UserDefaults.standard.set(lastSubmit, forKey: "hunt.lastSubmit") }
     }
 
-    /// Starts the schedule: a daily run checked every 5 minutes, the submit queue every minute. `browser` is the built-in browser's MCP server.
-    func attach(container: ModelContainer, claude: ClaudeCode, cloud: Cloud, github: GitHub, browser: BrowserServer) {
+    /// Starts the schedule: a daily run checked every 5 minutes, the submit queue every minute. `browser` is the built-in
+    /// browser's MCP server; `huntBrowser` the web view itself, which the LinkedIn sign-in check drives directly.
+    func attach(container: ModelContainer, claude: ClaudeCode, cloud: Cloud, github: GitHub, browser: BrowserServer, huntBrowser: HuntBrowser) {
         self.container = container; self.claude = claude; self.cloud = cloud; self.github = github; self.browser = browser
+        self.huntBrowser = huntBrowser
         scheduleTimer?.invalidate(); queueTimer?.invalidate()
         scheduleTimer = Timer.scheduledTimer(withTimeInterval: 5 * 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.runIfDue() }
@@ -145,6 +161,11 @@ final class JobHunt {
         return ("", "needs_you", legal)
     }
 
+    /// True when the posting lives on LinkedIn (its host contains linkedin.com), so Submit needs the LinkedIn session first.
+    static func isLinkedIn(_ link: String) -> Bool {
+        URL(string: link.trimmingCharacters(in: .whitespacesAndNewlines))?.host?.lowercased().contains("linkedin.com") ?? false
+    }
+
     /// Adds a needs_you answer for each question the form asked that is not in the list yet, so `canSubmit` gates on it.
     static func addingUnknown(_ questions: [String], to answers: [FormAnswer]) -> [FormAnswer] {
         func norm(_ s: String) -> String { s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
@@ -186,10 +207,36 @@ final class JobHunt {
         Task { await submit(lead) }
     }
 
+    /// The résumé folder from settings, or the default before a settings record exists.
+    private var resumeFolder: String {
+        container.flatMap { settings(in: $0.mainContext)?.resumeFolder } ?? HuntSettings.defaultResumeFolder
+    }
+
+    /// The lead's tailored .tex in the résumé folder; nil until a variant has been generated (or when the synced name is not a plain file name).
+    func texPath(for lead: Lead) -> String? {
+        Self.plainName(lead.variantName).map { resumeFolder + "/" + $0 + ".tex" }
+    }
+
+    /// `name` when it is one plain, visible path component; nil otherwise. `variantName` syncs from Supabase, so a tampered or
+    /// buggy row must never turn into a path outside the résumé folder.
+    static func plainName(_ name: String) -> String? {
+        guard !name.isEmpty, !name.hasPrefix("."), name != "..", (name as NSString).lastPathComponent == name, !name.contains("\0") else { return nil }
+        return name
+    }
+
+    /// Runs `work` with the hunt held in `.editing`, so the timers start no run or submit while a hand-edited PDF is rebuilt.
+    /// Nil, with `error` set, when a run is already going.
+    func whileEditing<T>(_ lead: Lead, _ work: () async throws -> T) async rethrows -> T? {
+        guard phase == .idle else { error = "The hunt is busy; try again when it finishes"; return nil }
+        phase = .editing(lead.company)
+        defer { phase = .idle }
+        return try await work()
+    }
+
     /// Refreshes `variants` from the résumé folder.
     func rescan() {
-        guard let container else { return }
-        let folder = settings(in: container.mainContext)?.resumeFolder ?? HuntSettings.defaultResumeFolder
+        guard container != nil else { return }
+        let folder = resumeFolder
         do { variants = try ResumeLibrary.scan(folder: folder) } catch { variants = []; self.error = "Couldn't read \(folder): \(error.localizedDescription)" }
     }
 
@@ -205,14 +252,22 @@ final class JobHunt {
         guard phase == .idle, let container, let claude else { return }
         guard claude.isReady else { error = "Connect Claude Code in Profile to run the hunt."; return }
         guard !claude.busy else { error = "Another Claude run is using the browser; wait for it to finish."; return }
-        guard let browser, browser.isRunning else { error = "The built-in browser couldn't start"; return }
+        let chrome = HuntBrowserChoice.current == .chrome   // read once; the built-in server guards apply only to that path
+        guard chrome || browser?.isRunning == true else { error = "The built-in browser couldn't start"; return }
         let context = container.mainContext
         let settings = HuntSettings.current(context)
         phase = .discovering
+        usingChrome = chrome
         error = nil
         claude.busy = true
         defer { phase = .idle; claude.busy = false }
-        browser.reset()
+        if !chrome { browser?.reset() }
+        // The built-in browser signs itself in from the Keychain when LinkedIn's session is gone; Chrome has its own.
+        if !chrome, let huntBrowser, let stop = LinkedInSignIn.stopMessage(await LinkedInSignIn.ensure(huntBrowser)) {
+            error = stop
+            lastRun = .now; lastSummary = LinkedInSignIn.stoppedSummary
+            return
+        }
         rescan()
         if let github, github.repos.isEmpty, !github.username.isEmpty { await github.load() }
         let roles = (try? context.fetch(FetchDescriptor<Role>())) ?? []
@@ -224,9 +279,10 @@ final class JobHunt {
         var fresh: [Lead] = []
         var found = 0, skipped = 0
         do {
-            let prompt = Self.discoverPrompt(settings: settings, variants: variants, known: knownLines)
-            let result = try await Self.check(DiscoverResult.self, prompt: prompt, schema: Self.discoverSchema,
-                                              browserFlags: browser.claudeFlags(extraTools: "", readOnly: true), tools: "", cwd: nil)   // Discover never fills a form
+            let prompt = Self.discoverPrompt(settings: settings, variants: variants, known: knownLines, chrome: chrome)
+            // Discover never fills a form: read-only tools on both paths.
+            let flags = chrome ? Self.chromeFlags(tools: Self.chromeDiscoverTools) : browser?.claudeFlags(extraTools: "", readOnly: true)
+            let result = try await Self.check(DiscoverResult.self, prompt: prompt, schema: Self.discoverSchema, browserFlags: flags, tools: "", cwd: nil)
             for f in result.leads where !f.company.trimmingCharacters(in: .whitespaces).isEmpty {
                 let key = ResumeLibrary.dedupeKey(company: f.company, title: f.title, roleNumber: f.role_number)
                 guard !known.contains(key) else { continue }
@@ -242,8 +298,14 @@ final class JobHunt {
                 found += 1
             }
             try context.save()
+            if result.notes.uppercased().hasPrefix("NO_CHROME") {
+                error = Self.noChromeMessage
+                lastRun = .now; lastSummary = "Stopped: Chrome isn't connected"
+                return
+            }
             if result.notes.uppercased().hasPrefix("SIGNED_OUT") {
-                error = "Sign in to LinkedIn in the Browser card above, then run the hunt again. " + result.notes.dropFirst("SIGNED_OUT".count).trimmingCharacters(in: CharacterSet(charactersIn: ": "))
+                error = (chrome ? "Sign in to LinkedIn in Chrome, then run the hunt again. " : "Sign in to LinkedIn in the Browser card above, then run the hunt again. ")
+                    + result.notes.dropFirst("SIGNED_OUT".count).trimmingCharacters(in: CharacterSet(charactersIn: ": "))
                 lastRun = .now; lastSummary = "Stopped: LinkedIn needs you to sign in"
                 return
             }
@@ -308,10 +370,8 @@ final class JobHunt {
         lead.status = .tailoring; lead.submitRequested = false; lead.reason = ""; lead.flagged = ""; lead.updatedAt = .now
         try? context.save()
         func fail(_ reason: String) { lead.status = .failed; lead.reason = reason; lead.updatedAt = .now; try? context.save() }
-        // Variants other leads generated but nobody has reviewed are neither evidence nor a base; only submitted ones count.
         let leads = (try? context.fetch(FetchDescriptor<Lead>())) ?? []
-        let generated = Set(leads.filter { $0.id != lead.id && $0.status != .submitted && !$0.variantName.isEmpty }.map(\.variantName))
-        let evidence = variants.filter { !generated.contains($0.name) && $0.name != lead.variantName }
+        let evidence = evidenceVariants(for: lead, leads: leads)
         guard let (base, why) = ResumeLibrary.pickBase(for: lead, variants: evidence, winners: ResumeLibrary.winners(roles: roles)) else {
             return fail("No résumé variants found in \(folder)")
         }
@@ -319,7 +379,7 @@ final class JobHunt {
         lead.baseVariant = base.name; lead.baseReason = why
         let bank = settings.answerBank
         let userName = bank.fullName.isEmpty ? "Shiv Vyas" : bank.fullName
-        if lead.variantName.isEmpty {
+        if Self.plainName(lead.variantName) == nil {
             let existing = Set(variants.map(\.name) + leads.filter { $0.id != lead.id && !$0.variantName.isEmpty }.map(\.variantName))
             lead.variantName = ResumeLibrary.variantName(userName: userName, company: lead.company, title: lead.title, existing: existing)
         }
@@ -340,42 +400,13 @@ final class JobHunt {
                 pdfPath = try await LatexBuild.build(texPath: texPath)
             }
             lead.coverage = result.coverage
-            var uploadNote = ""   // a failed upload never fails a built variant; the PDF is still on disk
-            if let cloud {
-                if !lead.pdfDocId.isEmpty, let old = try? context.fetch(FetchDescriptor<Doc>()).first(where: { $0.id == lead.pdfDocId }) {
-                    await cloud.deleteFile(for: old); context.delete(old)
-                }
-                do {
-                    let data = try Data(contentsOf: URL(fileURLWithPath: pdfPath))
-                    let doc = try await cloud.importPDF(data, fileName: name + ".pdf", roleId: "", context: context)
-                    doc.tags = ["pdf", "resume", "hunt"]
-                    lead.pdfDocId = doc.id
-                } catch {
-                    lead.pdfDocId = ""
-                    uploadNote = "PDF not uploaded (\(error.localizedDescription)); it is at \(pdfPath)"
-                }
-            }
-            func reason(_ text: String) -> String { [text, uploadNote].filter { !$0.isEmpty }.joined(separator: " ") }
+            let uploadNote = await attachPDF(lead, pdfPath: pdfPath, context: context)   // a failed upload never fails a built variant
             Self.bump("tailored")
             rescan()
             phase = .honesty(lead.company)
-            let answers = Self.mergeAnswers(result.answers, bank: bank)
-            do {
-                let sources = evidence.map(\.name).filter { $0 != name }
-                let honesty = try await Self.check(HonestyResult.self, prompt: Self.honestyPrompt(tex: result.tex, sources: sources, github: githubContext, folder: folder),
-                                                   schema: Self.honestySchema, browserFlags: nil, tools: Self.fileTools, cwd: folder)
-                lead.answers = answers
-                if honesty.ok && honesty.untraceable.isEmpty {
-                    lead.status = .ready; lead.reason = reason(result.notes)
-                } else {
-                    lead.status = .needsYou
-                    lead.flagged = honesty.untraceable.isEmpty ? "Honesty check reported a problem without details; review the résumé" : honesty.untraceable.joined(separator: "\n")
-                    lead.reason = reason("Check these claims")
-                }
-            } catch {
-                lead.answers = answers
-                lead.status = .needsYou; lead.flagged = "Honesty check could not run: \(error.localizedDescription)"; lead.reason = reason("Check the résumé yourself")
-            }
+            lead.answers = Self.mergeAnswers(result.answers, bank: bank)
+            await checkHonesty(lead, tex: result.tex, sources: evidence.map(\.name).filter { $0 != name }, github: githubContext, folder: folder,
+                               okReason: result.notes, note: uploadNote)
             lead.updatedAt = .now
             try context.save()
         } catch let build as LatexBuild.Failure {
@@ -387,6 +418,77 @@ final class JobHunt {
         }
     }
 
+    /// Variants that may serve as evidence or a base for a lead. Variants other leads generated but nobody has reviewed
+    /// are neither; only submitted ones count. The lead's own variant is never its own evidence.
+    private func evidenceVariants(for lead: Lead, leads: [Lead]) -> [ResumeVariant] {
+        let generated = Set(leads.filter { $0.id != lead.id && $0.status != .submitted && !$0.variantName.isEmpty }.map(\.variantName))
+        return variants.filter { !generated.contains($0.name) && $0.name != lead.variantName }
+    }
+
+    /// Replaces the lead's PDF Doc with the file at `pdfPath` (the old Doc and its file are deleted). Returns a note when the
+    /// upload failed, "" on success or when no account is attached; the PDF stays on disk either way.
+    func attachPDF(_ lead: Lead, pdfPath: String, context: ModelContext) async -> String {
+        guard let cloud else { return "" }
+        if !lead.pdfDocId.isEmpty, let old = try? context.fetch(FetchDescriptor<Doc>()).first(where: { $0.id == lead.pdfDocId }) {
+            await cloud.deleteFile(for: old); context.delete(old)
+        }
+        do {
+            let data = try Data(contentsOf: URL(fileURLWithPath: pdfPath))
+            let doc = try await cloud.importPDF(data, fileName: (pdfPath as NSString).lastPathComponent, roleId: "", context: context)
+            doc.tags = ["pdf", "resume", "hunt"]
+            lead.pdfDocId = doc.id
+            return ""
+        } catch {
+            lead.pdfDocId = ""
+            return "PDF not uploaded (\(error.localizedDescription)); it is at \(pdfPath)"
+        }
+    }
+
+    /// The honesty pass over `tex`: `.ready` with `okReason` when every claim traces, else `.needsYou` with the untraceable
+    /// claims in `flagged`. `note` (an upload warning) is appended to the reason either way. Does not save.
+    private func checkHonesty(_ lead: Lead, tex: String, sources: [String], github: String, folder: String, okReason: String, note: String) async {
+        func reason(_ text: String) -> String { [text, note].filter { !$0.isEmpty }.joined(separator: " ") }
+        do {
+            let honesty = try await Self.check(HonestyResult.self, prompt: Self.honestyPrompt(tex: tex, sources: sources, github: github, folder: folder),
+                                               schema: Self.honestySchema, browserFlags: nil, tools: Self.fileTools, cwd: folder)
+            if honesty.ok && honesty.untraceable.isEmpty {
+                lead.status = .ready; lead.flagged = ""; lead.reason = reason(okReason)
+            } else {
+                lead.status = .needsYou
+                lead.flagged = honesty.untraceable.isEmpty ? "Honesty check reported a problem without details; review the résumé" : honesty.untraceable.joined(separator: "\n")
+                lead.reason = reason("Check these claims")
+            }
+        } catch {
+            lead.status = .needsYou; lead.flagged = "Honesty check could not run: \(error.localizedDescription)"; lead.reason = reason("Check the résumé yourself")
+        }
+    }
+
+    /// Re-runs the honesty pass on the lead's current .tex after a hand edit and sets `.ready` / `.needsYou` like `tailorLead`.
+    /// False, with `error` set, when the pass could not run at all (the lead is then untouched).
+    @discardableResult
+    func recheck(_ lead: Lead) async -> Bool {
+        guard let container, let claude else { error = "The hunt is not attached yet."; return false }
+        guard phase == .idle else { error = "The hunt is busy; try again when it finishes."; return false }
+        guard claude.isReady else { error = "Connect Claude Code in Profile to check the résumé."; return false }
+        guard !claude.busy else { error = "Another Claude run is in progress; wait for it to finish."; return false }
+        guard let texPath = texPath(for: lead), let tex = try? String(contentsOfFile: texPath, encoding: .utf8) else {
+            error = "Couldn't read \(lead.variantName).tex"; return false
+        }
+        let context = container.mainContext
+        phase = .honesty(lead.company)
+        error = nil
+        claude.busy = true
+        defer { phase = .idle; claude.busy = false }
+        rescan()
+        if let github, github.repos.isEmpty, !github.username.isEmpty { await github.load() }
+        let leads = (try? context.fetch(FetchDescriptor<Lead>())) ?? []
+        await checkHonesty(lead, tex: tex, sources: evidenceVariants(for: lead, leads: leads).map(\.name), github: github?.context ?? "",
+                           folder: (texPath as NSString).deletingLastPathComponent, okReason: "Edited by you; claims re-checked", note: "")
+        lead.updatedAt = .now
+        try? context.save()
+        return true
+    }
+
     // MARK: submit
 
     /// The only place that presses Submit. Creates the Role on success; clears `submitRequested` either way.
@@ -394,7 +496,8 @@ final class JobHunt {
         guard phase == .idle, let container, let claude else { return }
         guard claude.isReady else { error = "Connect Claude Code in Profile to submit applications."; return }
         guard !claude.busy else { error = "Another Claude run is using the browser; wait for it to finish."; return }
-        guard let browser, browser.isRunning else { error = "The built-in browser couldn't start"; return }
+        let chrome = HuntBrowserChoice.current == .chrome
+        guard chrome || browser?.isRunning == true else { error = "The built-in browser couldn't start"; return }
         let context = container.mainContext
         let settings = HuntSettings.current(context)
         guard Self.dailyCount("submitted") < settings.dailySubmitLimit else { error = "Daily submit limit reached (\(settings.dailySubmitLimit)). The queue continues tomorrow."; return }
@@ -417,20 +520,27 @@ final class JobHunt {
         // Keep the 2-minute spacing even when called directly; the lead stays queued and the timer picks it up.
         if let lastSubmit, Date.now.timeIntervalSince(lastSubmit) < Self.submitSpacing { return }
         phase = .submitting(lead.company)
+        usingChrome = chrome
         error = nil
         claude.busy = true
         defer { phase = .idle; claude.busy = false }
-        lead.status = .submitting; lead.updatedAt = .now
+        // A stop text left in `flagged` by an earlier attempt (Chrome or LinkedIn not ready) must not outlive this one.
+        lead.status = .submitting; lead.flagged = ""; lead.updatedAt = .now
         try? context.save()
-        let pdfPath = settings.resumeFolder + "/" + lead.variantName + ".pdf"
-        if lead.variantName.isEmpty || !FileManager.default.fileExists(atPath: pdfPath) {
+        let pdfPath = Self.plainName(lead.variantName).map { settings.resumeFolder + "/" + $0 + ".pdf" } ?? ""
+        if !chrome { browser?.reset() }
+        if pdfPath.isEmpty || !FileManager.default.fileExists(atPath: pdfPath) {
             lead.status = .failed; lead.reason = "The PDF is missing; regenerate the résumé first"
+        } else if !chrome, let huntBrowser, Self.isLinkedIn(lead.link),
+                  let stop = LinkedInSignIn.stopMessage(await LinkedInSignIn.ensure(huntBrowser)) {
+            // A LinkedIn posting needs the session first (careers sites do not). Nothing was touched: the lead stays ready.
+            lead.status = .ready; lead.flagged = stop; error = stop
         } else {
             lastSubmit = .now   // every real attempt counts toward the spacing, even one that throws
-            browser.reset()
             do {
-                let result = try await Self.check(SubmitResult.self, prompt: Self.submitPrompt(lead: lead, pdfPath: pdfPath, bank: settings.answerBank),
-                                                  schema: Self.submitSchema, browserFlags: browser.claudeFlags(extraTools: ""), tools: "", cwd: nil)
+                let flags = chrome ? Self.chromeFlags(tools: Self.chromeSubmitTools) : browser?.claudeFlags(extraTools: "")
+                let result = try await Self.check(SubmitResult.self, prompt: Self.submitPrompt(lead: lead, pdfPath: pdfPath, bank: settings.answerBank, chrome: chrome),
+                                                  schema: Self.submitSchema, browserFlags: flags, tools: "", cwd: nil)
                 switch result.status {
                 case "submitted":
                     let role = Role(company: lead.company, title: lead.title.isEmpty ? "Role" : lead.title, location: lead.location,
@@ -440,6 +550,9 @@ final class JobHunt {
                     context.insert(role)
                     lead.roleId = role.id; lead.status = .submitted; lead.reason = result.confirmation
                     Self.bump("submitted")
+                case "needs_you" where result.reason.uppercased().hasPrefix("NO_CHROME"):
+                    // Nothing was touched: the lead stays ready to queue again once Chrome is connected.
+                    lead.status = .ready; lead.flagged = Self.noChromeMessage; error = Self.noChromeMessage
                 case "needs_you":
                     lead.status = .needsYou; lead.flagged = result.unknown_questions.joined(separator: "\n")
                     lead.reason = result.reason.isEmpty ? "The form needs you" : result.reason
@@ -448,7 +561,8 @@ final class JobHunt {
                     lead.status = .failed; lead.reason = result.reason.isEmpty ? "Submit failed" : result.reason
                 }
             } catch {
-                lead.status = .needsYou; lead.flagged = "Submit ended without a result; check the Browser card before trying again"
+                lead.status = .needsYou
+                lead.flagged = "Submit ended without a result; check \(chrome ? "the open Chrome tab" : "the Browser card") before trying again"
                 lead.reason = error.localizedDescription
             }
         }
@@ -460,9 +574,31 @@ final class JobHunt {
 
     static let fileTools = "Read Grep Glob"
 
-    /// How to drive PrepBoard's built-in browser; `upload` adds the résumé tool (Submit only).
-    static func browserGuide(upload: Bool) -> String {
-        "Use the PrepBoard browser tools (mcp__prepboard__…): navigate to a URL; read_page (interactive_only true for forms, false to read a "
+    /// The Claude in Chrome tools a read-only run (Discover) may use, full names, space-separated for --allowedTools. No `computer`:
+    /// it clicks and types in the user's signed-in Chrome, so Discover reads pages and pages through lists by URL instead.
+    static let chromeDiscoverTools = ["tabs_context_mcp", "tabs_create_mcp", "tabs_close_mcp", "navigate", "get_page_text", "read_page", "find"]
+        .map { "mcp__claude-in-chrome__" + $0 }.joined(separator: " ")
+    /// Submit adds clicking, the form and upload tools.
+    static let chromeSubmitTools = chromeDiscoverTools + " mcp__claude-in-chrome__computer mcp__claude-in-chrome__form_input mcp__claude-in-chrome__file_upload"
+    static let noChromeMessage = "Chrome with the Claude extension isn't connected. Open Chrome, or switch heavy runs to the built-in browser in Settings."
+
+    /// The `claude -p` flags for a Chrome run: strict, so the Chrome tools are the only MCP tools loaded (the built-in tools go with `--tools ""`).
+    static func chromeFlags(tools: String) -> String { "--chrome --strict-mcp-config --allowedTools \(tools)" }
+
+    /// How to drive the browser: PrepBoard's built-in one, or the user's Chrome through the Claude in Chrome extension.
+    /// `upload` adds the résumé tool and the Submit-style NO_CHROME report (Submit only).
+    static func browserGuide(upload: Bool, chrome: Bool) -> String {
+        if chrome {
+            return "Use my signed-in Chrome through the Claude in Chrome tools (mcp__claude-in-chrome__…): call tabs_context_mcp first, open "
+            + "your own tab with tabs_create_mcp and close it with tabs_close_mcp when done; navigate; get_page_text for the full text; "
+            + "read_page / find for elements"
+            + (upload ? "; computer for clicks and scrolling; form_input for fields and file_upload for the résumé"
+                      : "; there is no clicking or scrolling: open each posting by its URL and page through result lists by URL "
+                      + "(LinkedIn search and collections take &start=25, &start=50, …)")
+            + ". If the Chrome tools are not available or Chrome is not connected, stop and "
+            + (upload ? "return status \"needs_you\" with `reason` starting \"NO_CHROME:\"." : "begin `notes` with \"NO_CHROME:\".")
+        }
+        return "Use the PrepBoard browser tools (mcp__prepboard__…): navigate to a URL; read_page (interactive_only true for forms, false to read a "
         + "posting) returns elements with refs like r12; click(ref) / type(ref, text) act on them; after a click that changes the page call "
         + "wait then read_page again; page_text for the full posting text; screenshot when a page is unclear"
         + (upload ? "; upload_file(ref, path) attaches the résumé PDF" : "")
@@ -506,7 +642,7 @@ final class JobHunt {
         items.isEmpty ? empty : items.map { "- " + $0 }.joined(separator: "\n")
     }
 
-    static func discoverPrompt(settings: HuntSettings, variants: [ResumeVariant], known: [String]) -> String {
+    static func discoverPrompt(settings: HuntSettings, variants: [ResumeVariant], known: [String], chrome: Bool = false) -> String {
         let companies = settings.companies.map { line -> String in
             let parts = line.components(separatedBy: " | ")
             return parts.count > 1 ? "\(parts[0].trimmingCharacters(in: .whitespaces)) (careers: \(parts[1].trimmingCharacters(in: .whitespaces)))" : line
@@ -517,10 +653,10 @@ final class JobHunt {
                 + (map.isEmpty ? "" : "\n  JD MAP: \(map)")
         }
         return """
-        You are my job scout. Using PrepBoard's built-in browser, find job postings for me and return them as structured data. \
-        Now: \(DateCoding.string(.now)), my time zone: \(TimeZone.current.identifier).
+        You are my job scout. Using \(chrome ? "Chrome" : "PrepBoard's built-in browser"), find job postings for me and return them as \
+        structured data. Now: \(DateCoding.string(.now)), my time zone: \(TimeZone.current.identifier).
 
-        THE BROWSER: \(browserGuide(upload: false)) I am already signed in to LinkedIn there.
+        THE BROWSER: \(browserGuide(upload: false, chrome: chrome)) I am already signed in to LinkedIn there.
 
         READ ONLY, HUMAN PACE: only navigate, scroll and read. Never press Apply or Easy Apply, never save, follow, connect, \
         message, like, dismiss or change anything, never fill a form. Move like a person reading: a few seconds between pages, \
@@ -553,8 +689,10 @@ final class JobHunt {
         the requirements that decided the score.
 
         FIELDS: company (the hiring company, not the job board), title, location (as posted), link (the posting URL; for LinkedIn \
-        https://www.linkedin.com/jobs/view/<id>/), role_number (the posting, requisition or job id if shown, else ""), source, jd, score, \
-        score_reason. `notes`: two or three sentences on what you covered and anything that blocked you.
+        https://www.linkedin.com/jobs/view/<id>/; for a careers-site posting hosted on Ashby, Greenhouse, Lever or Workable, the job page \
+        there with the description, not its application form: I add /application or /apply myself), role_number (the posting, requisition \
+        or job id if shown, else ""), source, jd, score, score_reason. `notes`: two or three sentences on what you covered and anything \
+        that blocked you.
 
         MY TARGETS
         Regions:
@@ -666,7 +804,16 @@ final class JobHunt {
         """
     }
 
-    static func submitPrompt(lead: Lead, pdfPath: String, bank: AnswerBank) -> String {
+    static func submitPrompt(lead: Lead, pdfPath: String, bank: AnswerBank, chrome: Bool = false) -> String {
+        var notes = ATS.formNotes(ATS.kind(lead.link))
+        if chrome { notes = notes.replacingOccurrences(of: "upload_file", with: "file_upload") }   // the Chrome tool's name
+        let target = [
+            "Start here: \(ATS.applicationURL(lead.link))",
+            "Posting: \(lead.link)",
+            "Company: \(lead.company); Title: \(lead.title)\(lead.roleNumber.isEmpty ? "" : "; Posting id: \(lead.roleNumber)")",
+            "Résumé PDF to upload wherever the form asks for a résumé or CV: \(pdfPath)",
+            notes.isEmpty ? nil : "Form notes for this site: \(notes)",
+        ].compactMap { $0 }.joined(separator: "\n")
         let answers = lead.answers.map { "- Q: \($0.question)\($0.required ? " (required)" : "")\n  A: \($0.answer)" }
         let facts = [("Full name", bank.fullName), ("Email", bank.email), ("Phone", bank.phone), ("City / location", bank.city),
                      ("LinkedIn", bank.linkedin), ("GitHub", bank.github), ("Portfolio / website", bank.portfolio),
@@ -680,19 +827,18 @@ final class JobHunt {
             .map { "- \($0.0): \($0.1.isEmpty ? "(unknown; if the form requires it, stop and report it)" : $0.1)" }
         let saved = bank.saved.sorted { $0.key < $1.key }.map { "- Q: \($0.key)\n  A: \($0.value)" }
         return """
-        You submit one job application for me in PrepBoard's built-in browser, using only the answers below. Fill the form, upload my \
-        résumé PDF, press Submit exactly once when everything required is answered from this list, and report what happened. \
-        Now: \(DateCoding.string(.now)).
+        You submit one job application for me in \(chrome ? "Chrome" : "PrepBoard's built-in browser"), using only the answers below. Fill \
+        the form, upload my résumé PDF, press Submit exactly once when everything required is answered from this list, and report what \
+        happened. Now: \(DateCoding.string(.now)).
 
-        THE BROWSER: \(browserGuide(upload: true)) I am already signed in to LinkedIn there.
+        THE BROWSER: \(browserGuide(upload: true, chrome: chrome)) I am already signed in to LinkedIn there.
 
-        Posting: \(lead.link)
-        Company: \(lead.company); Title: \(lead.title)\(lead.roleNumber.isEmpty ? "" : "; Posting id: \(lead.roleNumber)")
-        Résumé PDF to upload wherever the form asks for a résumé or CV: \(pdfPath)
+        \(target)
 
         RULES:
-        - Open the posting and go to its own application form through its Apply button. Prefer the company's application page; use \
-        LinkedIn Easy Apply only when it is the posting's only way to apply.
+        - Start at the "Start here" URL and reach the application form from there. On LinkedIn, use Easy Apply when it is offered; \
+        otherwise press Apply, and the company's own application page (Ashby, Greenhouse, Lever, Workable or a company form) opens in \
+        \(chrome ? "Chrome, sometimes in a new tab" : "this same browser"): continue there with these same rules.
         - Fill every field from the APPROVED ANSWERS and STANDARD FACTS below. Never make up an answer, never guess, never reuse text from \
         elsewhere. Optional fields with no answer here: leave blank. EEO questions: use the given answers, otherwise "Decline to self-identify" \
         or the closest "I don't wish to answer" option.
@@ -720,16 +866,24 @@ final class JobHunt {
         """
     }
 
-    /// One headless `claude -p` call with a JSON schema; `browserFlags` (from `BrowserServer.claudeFlags`, which already carries
-    /// `--allowedTools`) attaches the built-in browser, nil runs without one; `tools` adds an --allowedTools list; `cwd` is where Claude may read files.
+    /// The shell line for one headless run. `tools` is the whole built-in set the run gets (`--tools`, so the user's global Bash and
+    /// web allowlist never applies) and is also allowed outright; "" leaves only the MCP tools in `browserFlags`.
+    nonisolated static func claudeCommand(browserFlags: String?, tools: String, schemaPath: String, cwd: String) -> String {
+        let names = tools.split(separator: " ")
+        return "cd '\(LatexBuild.quoted(cwd))' && claude -p \(browserFlags.map { $0 + " " } ?? "")--output-format json "
+            + "--json-schema \"$(cat '\(LatexBuild.quoted(schemaPath))')\" --tools \"\(names.joined(separator: ","))\""
+            + (names.isEmpty ? "" : " --allowedTools " + names.joined(separator: " ")) + " 2>/dev/null"
+    }
+
+    /// One headless `claude -p` call with a JSON schema; `browserFlags` (from `BrowserServer.claudeFlags` or `chromeFlags`, which already
+    /// carry `--allowedTools`) attaches a browser, nil runs without one; `tools` is the built-in tool set; `cwd` is where Claude may read files.
     nonisolated static func check<T: Decodable>(_ type: T.Type, prompt: String, schema: String, browserFlags: String?, tools: String, cwd: String?) async throws -> T {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("prepboard-hunt", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let schemaFile = dir.appendingPathComponent("schema-\(UUID().uuidString.prefix(8)).json")
         try schema.write(to: schemaFile, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: schemaFile) }
-        let cmd = "cd '\(LatexBuild.quoted(cwd ?? dir.path))' && claude -p \(browserFlags.map { $0 + " " } ?? "")--output-format json "
-            + "--json-schema \"$(cat '\(LatexBuild.quoted(schemaFile.path))')\"\(tools.isEmpty ? "" : " --allowedTools " + tools) 2>/dev/null"
+        let cmd = claudeCommand(browserFlags: browserFlags, tools: tools, schemaPath: schemaFile.path, cwd: cwd ?? dir.path)
         let out = await ClaudeCode.shell(cmd, stdin: prompt)
         guard let start = out.firstIndex(of: "{"),
               let obj = try? JSONSerialization.jsonObject(with: Data(out[start...].utf8)) as? [String: Any] else {

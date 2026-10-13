@@ -76,6 +76,7 @@ struct LeadCard: View {
     @Environment(ClaudeCode.self) private var claude
     #endif
     @State private var showPDF = false
+    @State private var showEditor = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: PB.s3) {
@@ -125,6 +126,9 @@ struct LeadCard: View {
         .background(RoundedRectangle(cornerRadius: PB.rLG, style: .continuous).fill(PB.surface))
         .overlay(RoundedRectangle(cornerRadius: PB.rLG, style: .continuous).strokeBorder(PB.line))
         .sheet(isPresented: $showPDF) { if let pdfDoc { ResumeSheet(doc: pdfDoc) } }
+        #if os(macOS)
+        .sheet(isPresented: $showEditor) { ResumeEditorSheet(lead: lead) }
+        #endif
     }
 
     @ViewBuilder
@@ -174,6 +178,16 @@ struct LeadCard: View {
                 }
                     .buttonStyle(PillButtonStyle(filled: false, compact: true))
                     .disabled(!claude.isReady || hunt.isRunning)
+            }
+            // Last-minute edits to the .tex; the rebuilt PDF is what Submit uploads. Opening the editor takes the lead out of the
+            // queue (like Regenerate), so nothing goes out until the user presses Submit on what they edited.
+            if !lead.variantName.isEmpty, [.ready, .needsYou, .failed].contains(lead.status) {
+                Button("Edit résumé") {
+                    if lead.submitRequested { lead.submitRequested = false; lead.updatedAt = .now }
+                    showEditor = true
+                }
+                    .buttonStyle(PillButtonStyle(filled: false, compact: true))
+                    .disabled(hunt.isRunning)
             }
             #endif
             if ![.submitted, .submitting, .skipped].contains(lead.status) {
@@ -271,7 +285,15 @@ struct HuntSettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
     #if os(macOS)
     @Environment(JobHunt.self) private var hunt
+    @Environment(HuntBrowser.self) private var huntBrowser
+    @Environment(ClaudeCode.self) private var claude
     @Query(sort: \Role.createdAt) private var roles: [Role]
+    @AppStorage("hunt.browser") private var browserChoice: HuntBrowserChoice = .builtin
+    @State private var linkedInEmail = ""
+    @State private var linkedInPassword = ""
+    @State private var linkedInSaved = LinkedInSignIn.hasCredentials
+    @State private var linkedInOutcome = ""
+    @State private var signingIn = false
     #endif
     @State private var regions: String
     @State private var companies: String
@@ -319,6 +341,16 @@ struct HuntSettingsSheet: View {
                     }
                 }
                 #if os(macOS)
+                section("Browser for heavy runs") {
+                    Picker("Browser", selection: $browserChoice) {
+                        Text("Built-in browser").tag(HuntBrowserChoice.builtin)
+                        Text("Chrome with the Claude extension").tag(HuntBrowserChoice.chrome)
+                    }
+                    .pickerStyle(.segmented).labelsHidden()
+                    Text("Discovery and submitting run there; the LinkedIn sync always uses the built-in browser. Chrome must be open with the Claude in Chrome extension connected.")
+                        .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
+                }
+                linkedInSection
                 section("Résumé folder") {
                     HStack(spacing: PB.s2) {
                         Text(settings.resumeFolder).font(.system(size: 12, design: .monospaced)).foregroundStyle(PB.ink2)
@@ -400,6 +432,66 @@ struct HuntSettingsSheet: View {
     }
 
     #if os(macOS)
+    /// The stored LinkedIn sign-in: Keychain only, typed into LinkedIn's page by PrepBoard itself, never shown to Claude.
+    private var linkedInSection: some View {
+        section("LinkedIn sign-in") {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: PB.s3)], alignment: .leading, spacing: PB.s3) {
+                PBTextField(label: "Email", text: $linkedInEmail)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Password").pbLabelStyle()
+                    SecureField("Password", text: $linkedInPassword)
+                        .textFieldStyle(.plain)
+                        .padding(.horizontal, 12).padding(.vertical, 12)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(PB.surface))
+                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(PB.line))
+                }
+            }
+            HStack(spacing: PB.s2) {
+                Button("Save") {
+                    LinkedInSignIn.save(email: linkedInEmail.trimmingCharacters(in: .whitespacesAndNewlines), password: linkedInPassword)
+                    linkedInPassword = ""
+                    linkedInSaved = LinkedInSignIn.hasCredentials
+                    linkedInOutcome = ""
+                }
+                .buttonStyle(PillButtonStyle(compact: true))
+                .disabled(linkedInEmail.trimmingCharacters(in: .whitespaces).isEmpty || linkedInPassword.isEmpty)
+                if linkedInSaved {
+                    Button("Remove") {
+                        LinkedInSignIn.remove()
+                        linkedInSaved = LinkedInSignIn.hasCredentials
+                        linkedInOutcome = ""
+                    }
+                    .buttonStyle(PillButtonStyle(filled: false, compact: true))
+                    // Never while a Claude run drives the browser: the sign-in would take its page and leave the email in the form.
+                    Button("Sign in now") {
+                        guard !claude.busy else { return }
+                        signingIn = true
+                        Task {
+                            let outcome = await LinkedInSignIn.signIn(huntBrowser)
+                            linkedInOutcome = switch outcome {
+                            case .signedIn: "Signed in to LinkedIn"
+                            case .noCredentials: "Save your email and password first"
+                            case .needsYou(let m), .failed(let m): m
+                            }
+                            signingIn = false
+                        }
+                    }
+                    .buttonStyle(PillButtonStyle(filled: false, compact: true))
+                    .disabled(hunt.isRunning || claude.busy || signingIn)
+                }
+                if signingIn { ProgressView().controlSize(.small) }
+                Spacer(minLength: 0)
+                Text(linkedInSaved ? "Saved in this Mac's Keychain" : "Not saved").font(.system(size: 12)).foregroundStyle(PB.muted)
+            }
+            if !linkedInOutcome.isEmpty {
+                Text(linkedInOutcome).font(.system(size: 12)).foregroundStyle(linkedInOutcome == "Signed in to LinkedIn" ? PB.muted : PB.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text("PrepBoard types these into LinkedIn's sign-in page itself; Claude never sees them. If LinkedIn asks for a code or a check, finish it in the Browser card.")
+                .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     private var variantsSection: some View {
         section("Résumé variants", trailing: {
             Button("Rescan") { hunt.rescan() }.buttonStyle(PillButtonStyle(filled: false, compact: true))
@@ -450,6 +542,8 @@ import WebKit
 struct HuntBrowserCard: View {
     @Environment(HuntBrowser.self) private var browser
     @Environment(JobHunt.self) private var hunt
+    @Environment(ClaudeCode.self) private var claude
+    @AppStorage("hunt.browser") private var browserChoice: HuntBrowserChoice = .builtin
     @State private var address = ""
     @State private var expanded = false
     @State private var chosen = false   // the user toggled it by hand; their choice holds for the session
@@ -474,7 +568,8 @@ struct HuntBrowserCard: View {
                         .onSubmit(go)
                     Button("Go", action: go).buttonStyle(PillButtonStyle(compact: true))
                     Button("Back") { Task { try? await browser.back() } }.buttonStyle(PillButtonStyle(filled: false, compact: true))
-                    Button("Sign in to LinkedIn") { load("https://www.linkedin.com/login") }.buttonStyle(PillButtonStyle(filled: false, compact: true))
+                    Button("Sign in to LinkedIn", action: signIn).buttonStyle(PillButtonStyle(filled: false, compact: true))
+                        .disabled(claude.busy)   // a run (hunt or sync) owns the page meanwhile
                 }
                 .padding(.bottom, PB.s3)
                 HuntWebViewHost(webView: browser.webView)
@@ -484,8 +579,9 @@ struct HuntBrowserCard: View {
             }
         }
         .pbCard(padding: PB.s4)
-        .onAppear { if !chosen { expanded = hunt.isRunning }; address = browser.url?.absoluteString ?? "" }
-        .onChange(of: hunt.isRunning) { if hunt.isRunning { expanded = true } else if !chosen { expanded = false } }
+        .onAppear { if !chosen { expanded = hunt.isRunning && !hunt.usingChrome }; address = browser.url?.absoluteString ?? "" }
+        // A run in Chrome has nothing to show here, so it does not pull the card open.
+        .onChange(of: hunt.isRunning) { if hunt.isRunning { if !hunt.usingChrome { expanded = true } } else if !chosen { expanded = false } }
         .onChange(of: browser.url) { address = browser.url?.absoluteString ?? "" }
     }
 
@@ -493,7 +589,9 @@ struct HuntBrowserCard: View {
     private var subtitle: String {
         let page = [browser.title, browser.url?.absoluteString ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
         let line = [page, browser.lastAction].filter { !$0.isEmpty }.joined(separator: " — ")
-        return line.isEmpty ? "Sign in to LinkedIn here once; the hunt and the LinkedIn sync use this browser." : line
+        if !line.isEmpty { return line }
+        return browserChoice == .chrome ? "Heavy runs use Chrome; the LinkedIn sync still uses this browser."
+            : "Sign in to LinkedIn here once; the hunt and the LinkedIn sync use this browser."
     }
 
     private func go() {
@@ -505,6 +603,15 @@ struct HuntBrowserCard: View {
     private func load(_ string: String) {
         guard let url = URL(string: string) else { return }
         Task { try? await browser.navigate(url) }
+    }
+
+    /// With a saved sign-in PrepBoard fills the form itself (the outcome shows in the subtitle through `lastAction`);
+    /// without one the sign-in page opens for the user.
+    private func signIn() {
+        guard !claude.busy else { return }
+        guard LinkedInSignIn.hasCredentials else { return load("https://www.linkedin.com/login") }
+        chosen = true; expanded = true
+        Task { _ = await LinkedInSignIn.signIn(browser) }
     }
 }
 
@@ -593,10 +700,11 @@ struct HuntRunCard: View {
 
     private var status: String {
         switch hunt.phase {
-        case .discovering: return "Looking for jobs in the browser above… this can take a while."
+        case .discovering: return hunt.usingChrome ? "Looking for jobs in Chrome… this can take a while." : "Looking for jobs in the browser above… this can take a while."
         case .tailoring(let done, let total): return "Tailoring résumés… \(done) of \(total) done."
         case .submitting(let name): return "Submitting to \(name)…"
         case .honesty(let name): return "Checking the claims in \(name)…"
+        case .editing(let name): return "Rebuilding the résumé for \(name)…"
         case .idle: break
         }
         if let e = hunt.error { return e }

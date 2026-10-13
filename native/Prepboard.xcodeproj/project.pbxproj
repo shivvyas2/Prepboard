@@ -36,6 +36,7 @@
 		3845ED09936D299162D5D713 /* NewPrepView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1011E204D4362832B715B72 /* NewPrepView.swift */; };
 		3B15D50EE4334F7A4107A02D /* Avatars.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C674D8FFA5AF52B25B4BEC7 /* Avatars.swift */; };
 		3B86AF6CACAAF8144625707F /* LearnViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB8E4C959CF417900DFFC346 /* LearnViews.swift */; };
+		3C5B9054EDAA0792B3B4504A /* ResumeEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5655B19D65046930196F5019 /* ResumeEditorSheet.swift */; };
 		3F545C9EF30B20F10DE87FBD /* BrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD39A0E9AB7F074D92994A4A /* BrowserView.swift */; };
 		4198975AD42D832B998694DF /* PracticeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C570E7B529A79775F8DB3F03 /* PracticeView.swift */; };
 		4513445ECEA3A2A37875B3E4 /* ClaudeMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 022B1F5544DC07FF847C9C04 /* ClaudeMark.swift */; };
@@ -71,6 +72,7 @@
 		98A27C8C015DFFF7FC1D5352 /* Cloud.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A4A493B86B1E3BAC90CEF43 /* Cloud.swift */; };
 		990871AC9A74B8E0E59CBFCE /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 51968B09A01A4FBC0822B597 /* Supabase */; };
 		99897600166A5DAA3A32BFF2 /* HuntView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8146AC168C5D875562B9617 /* HuntView.swift */; };
+		9CB00DDA218E7BF538B0B428 /* LinkedInSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 479416F1BCB7896BA0448919 /* LinkedInSignIn.swift */; };
 		9D0D0B8BCDBB61C33B1C4406 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EC03837C9B766275F4AE786 /* AppState.swift */; };
 		9D951AA1B79B29622606A6BE /* JobHunt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20BA65949AA0507C7D123CFA /* JobHunt.swift */; };
 		9DD8191493171741914B3B5C /* ClaudeTerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E1CC0FAAB100F95D87884E0 /* ClaudeTerminalView.swift */; };
@@ -78,9 +80,11 @@
 		A4D59312DF82A1E45270AD98 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4E1D6952B06D2384BCBEBBD /* Theme.swift */; };
 		A68254699A41AD80B40C3B02 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC754F719792244FD3C57AC4 /* AuthView.swift */; };
 		A9E40F7AD888D8D86D8283E9 /* TextClean.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F3F85AEB7443FD9579A22E0 /* TextClean.swift */; };
+		A9EEF322FBB1621C8C4D8678 /* ATS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06163BFD206746C41E205251 /* ATS.swift */; };
 		AB96521CB18B51F737A936C5 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = B73BFD19624466AB957B8B72 /* Models.swift */; };
 		AC53B5797598656B1BB7FEE3 /* Practice.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B209C3AE9C59D4538BB7F70 /* Practice.swift */; };
 		AD8B54C443C730AE581AB722 /* HuntView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8146AC168C5D875562B9617 /* HuntView.swift */; };
+		AFB4041601AE27F54CAA4084 /* LinkedInSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 479416F1BCB7896BA0448919 /* LinkedInSignIn.swift */; };
 		B0279D36E8946EBF4972206F /* HuntBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9C29A8F26EEC6B3841F6EEB /* HuntBrowser.swift */; };
 		B04F4A74080410999B6320DB /* SyntaxHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C91DB912635B8A6592F9B8FA /* SyntaxHighlighter.swift */; };
 		B32BE904B3B91DA420C56A27 /* ClaudeCode.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA84D9C3ECFFFF00DCDB21C1 /* ClaudeCode.swift */; };
@@ -89,6 +93,7 @@
 		B9E0A3BA1365E39A7831F8C7 /* MarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 854854AA1F340A335592DD89 /* MarkdownView.swift */; };
 		C5CA66263117E05B4D77AF14 /* WorkspaceViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA38C9ECC0EA87B9053226FD /* WorkspaceViews.swift */; };
 		C65E7E59B27C42246189F8D6 /* TextClean.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F3F85AEB7443FD9579A22E0 /* TextClean.swift */; };
+		C7F0A698388558D6E049C3BF /* ResumeEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5655B19D65046930196F5019 /* ResumeEditorSheet.swift */; };
 		C84C8B64F4FA4AF1320FBE02 /* ResumeLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC113D5260E8E466AEA9A6A6 /* ResumeLibrary.swift */; };
 		C98654A8D565DC7AF0ED768D /* RunResultTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17B3B3595BEDAAFB0AE256F /* RunResultTests.swift */; };
 		CA8659DC0A096365222A099D /* Learning.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB9073FEB4AD369E9018B0DD /* Learning.swift */; };
@@ -109,6 +114,7 @@
 		E8C0F0C55171374A3A028D60 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B116C2CC40AD6A20444100E /* DashboardView.swift */; };
 		ECC11F2A5615B638B3D8078A /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BC5297DFE0F267A5635C878 /* Components.swift */; };
 		ED37902032EF29A9F25604AD /* WorkspaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 004EB371DE9FEE99A8D3D69A /* WorkspaceTests.swift */; };
+		F819F2072F742EBD2FA8FC4C /* ATS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06163BFD206746C41E205251 /* ATS.swift */; };
 		F87CA30ED64246DF8B4946C3 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7680513B119FE9D73EC93F5B /* Keychain.swift */; };
 		FD84D652173075FCCB5F790C /* CodeRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22401A38A881162C1A4CBA48 /* CodeRunnerTests.swift */; };
 /* End PBXBuildFile section */
@@ -126,6 +132,7 @@
 /* Begin PBXFileReference section */
 		004EB371DE9FEE99A8D3D69A /* WorkspaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceTests.swift; sourceTree = "<group>"; };
 		022B1F5544DC07FF847C9C04 /* ClaudeMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudeMark.swift; sourceTree = "<group>"; };
+		06163BFD206746C41E205251 /* ATS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ATS.swift; sourceTree = "<group>"; };
 		086CF94B83674AF95AC590A7 /* Brand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Brand.swift; sourceTree = "<group>"; };
 		0EC03837C9B766275F4AE786 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		1B209C3AE9C59D4538BB7F70 /* Practice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Practice.swift; sourceTree = "<group>"; };
@@ -140,7 +147,9 @@
 		3C674D8FFA5AF52B25B4BEC7 /* Avatars.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Avatars.swift; sourceTree = "<group>"; };
 		3C949862B5ADEDCAECFA782B /* BrowserScripts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserScripts.swift; sourceTree = "<group>"; };
 		4582BCDD2818F3F4AE01FEBF /* Prepboard-iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "Prepboard-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		479416F1BCB7896BA0448919 /* LinkedInSignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkedInSignIn.swift; sourceTree = "<group>"; };
 		4D19EF654466009659F7DE8F /* Prepboard-macOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Prepboard-macOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		5655B19D65046930196F5019 /* ResumeEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResumeEditorSheet.swift; sourceTree = "<group>"; };
 		6835F58BDD8C6B80BFB23B64 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		6A4A493B86B1E3BAC90CEF43 /* Cloud.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Cloud.swift; sourceTree = "<group>"; };
 		6C2237C2FE9593FEE15E0D76 /* MediaViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaViews.swift; sourceTree = "<group>"; };
@@ -180,7 +189,7 @@
 		F1011E204D4362832B715B72 /* NewPrepView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewPrepView.swift; sourceTree = "<group>"; };
 		FA38C9ECC0EA87B9053226FD /* WorkspaceViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceViews.swift; sourceTree = "<group>"; };
 		FAC34C8528365ECCD58D9852 /* MacBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacBridge.swift; sourceTree = "<group>"; };
-		"TEMP_E7A9EB03-8688-4720-B450-8B57D83E8D6F" /* Prepboard.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Prepboard.xcconfig; sourceTree = "<group>"; };
+		"TEMP_00CA63E9-7B20-4C91-9F2C-6816D21FCE93" /* Prepboard.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Prepboard.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -233,6 +242,7 @@
 				6C2237C2FE9593FEE15E0D76 /* MediaViews.swift */,
 				F1011E204D4362832B715B72 /* NewPrepView.swift */,
 				C570E7B529A79775F8DB3F03 /* PracticeView.swift */,
+				5655B19D65046930196F5019 /* ResumeEditorSheet.swift */,
 				6E02443C80B213288CCA76C4 /* RolesView.swift */,
 				6835F58BDD8C6B80BFB23B64 /* RootView.swift */,
 				91267B629C53613C5DDDC396 /* RunConsole.swift */,
@@ -283,6 +293,7 @@
 			isa = PBXGroup;
 			children = (
 				0EC03837C9B766275F4AE786 /* AppState.swift */,
+				06163BFD206746C41E205251 /* ATS.swift */,
 				3C949862B5ADEDCAECFA782B /* BrowserScripts.swift */,
 				34D43DFEE11026FB4FA3DB52 /* BrowserServer.swift */,
 				CA84D9C3ECFFFF00DCDB21C1 /* ClaudeCode.swift */,
@@ -295,6 +306,7 @@
 				7680513B119FE9D73EC93F5B /* Keychain.swift */,
 				CA5601107F594DF6460E1ADC /* LatexBuild.swift */,
 				CB9073FEB4AD369E9018B0DD /* Learning.swift */,
+				479416F1BCB7896BA0448919 /* LinkedInSignIn.swift */,
 				FAC34C8528365ECCD58D9852 /* MacBridge.swift */,
 				B73BFD19624466AB957B8B72 /* Models.swift */,
 				1B209C3AE9C59D4538BB7F70 /* Practice.swift */,
@@ -306,10 +318,10 @@
 			path = Model;
 			sourceTree = "<group>";
 		};
-		"TEMP_B0DC5D4C-CF9D-4260-AC51-B25BBB0728CA" /* native */ = {
+		"TEMP_CD94CA78-1F1E-4F39-A895-14C6063E5E3C" /* native */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_E7A9EB03-8688-4720-B450-8B57D83E8D6F" /* Prepboard.xcconfig */,
+				"TEMP_00CA63E9-7B20-4C91-9F2C-6816D21FCE93" /* Prepboard.xcconfig */,
 			);
 			path = native;
 			sourceTree = "<group>";
@@ -448,6 +460,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A9EEF322FBB1621C8C4D8678 /* ATS.swift in Sources */,
 				A02E31B78B594D2B8BEAFD6E /* AppState.swift in Sources */,
 				36C6796C4A48B076D6908AE0 /* AuthView.swift in Sources */,
 				3B15D50EE4334F7A4107A02D /* Avatars.swift in Sources */,
@@ -474,6 +487,7 @@
 				7D87B988C57AE2F5F4B419EB /* LatexBuild.swift in Sources */,
 				3B86AF6CACAAF8144625707F /* LearnViews.swift in Sources */,
 				CA8659DC0A096365222A099D /* Learning.swift in Sources */,
+				AFB4041601AE27F54CAA4084 /* LinkedInSignIn.swift in Sources */,
 				75F989CCCE7C56055041DF0B /* MacBridge.swift in Sources */,
 				B9E0A3BA1365E39A7831F8C7 /* MarkdownView.swift in Sources */,
 				0D5C26B865FFF8841BAAFA07 /* MediaViews.swift in Sources */,
@@ -482,6 +496,7 @@
 				AC53B5797598656B1BB7FEE3 /* Practice.swift in Sources */,
 				4198975AD42D832B998694DF /* PracticeView.swift in Sources */,
 				D9208C24612868E1BC17D711 /* PrepboardApp.swift in Sources */,
+				C7F0A698388558D6E049C3BF /* ResumeEditorSheet.swift in Sources */,
 				C84C8B64F4FA4AF1320FBE02 /* ResumeLibrary.swift in Sources */,
 				DCDA9A4BB6FAAA8D4DC26E03 /* RolesView.swift in Sources */,
 				CBAF4E46FA6085154FF96B96 /* RootView.swift in Sources */,
@@ -502,6 +517,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F819F2072F742EBD2FA8FC4C /* ATS.swift in Sources */,
 				9D0D0B8BCDBB61C33B1C4406 /* AppState.swift in Sources */,
 				A68254699A41AD80B40C3B02 /* AuthView.swift in Sources */,
 				23F4D9C73501199D741B0945 /* Avatars.swift in Sources */,
@@ -528,6 +544,7 @@
 				0E3D16CB0C39C296F09CEB09 /* LatexBuild.swift in Sources */,
 				9258A319E668D1008D056D2F /* LearnViews.swift in Sources */,
 				B84175618128F07C8E1EAB21 /* Learning.swift in Sources */,
+				9CB00DDA218E7BF538B0B428 /* LinkedInSignIn.swift in Sources */,
 				D1D13F5B11A8D252E719D4B5 /* MacBridge.swift in Sources */,
 				4D283A845401B746B8700E39 /* MarkdownView.swift in Sources */,
 				28BF1BC3998A822335E85FF4 /* MediaViews.swift in Sources */,
@@ -536,6 +553,7 @@
 				7377543A6CF61603C147AB4B /* Practice.swift in Sources */,
 				D2530C4765BECF97608E75D9 /* PracticeView.swift in Sources */,
 				6E71916771134F0651F48F90 /* PrepboardApp.swift in Sources */,
+				3C5B9054EDAA0792B3B4504A /* ResumeEditorSheet.swift in Sources */,
 				21124C2AA59DFDEC1FCD3060 /* ResumeLibrary.swift in Sources */,
 				D603F61B60BDA4622982A67E /* RolesView.swift in Sources */,
 				15EF66572198B463544C9213 /* RootView.swift in Sources */,
@@ -577,7 +595,7 @@
 /* Begin XCBuildConfiguration section */
 		10744D7376C93E547E6FC5D0 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_E7A9EB03-8688-4720-B450-8B57D83E8D6F" /* Prepboard.xcconfig */;
+			baseConfigurationReference = "TEMP_00CA63E9-7B20-4C91-9F2C-6816D21FCE93" /* Prepboard.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -612,7 +630,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -629,7 +647,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = PrepBoard;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.6;
+				MARKETING_VERSION = 1.7;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -759,7 +777,7 @@
 		};
 		DFD456A3EE378308373DEC56 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_E7A9EB03-8688-4720-B450-8B57D83E8D6F" /* Prepboard.xcconfig */;
+			baseConfigurationReference = "TEMP_00CA63E9-7B20-4C91-9F2C-6816D21FCE93" /* Prepboard.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -794,7 +812,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 8;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -817,7 +835,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = PrepBoard;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.6;
+				MARKETING_VERSION = 1.7;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

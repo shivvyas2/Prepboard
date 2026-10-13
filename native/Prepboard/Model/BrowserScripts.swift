@@ -332,5 +332,55 @@ enum BrowserScripts {
         return JSON.stringify(el.files ? el.files.length : -1);
     })
     """
+
+    // MARK: LinkedIn sign-in (the values arrive as script arguments and stay inside the page)
+
+    /// fillLogin(email, password) → true when LinkedIn's email and password fields were both found and set.
+    static let fillLogin = """
+    (function (email, password) {
+        \(prelude)
+        const user = document.querySelector('#username') || document.querySelector('input[name=session_key]');
+        const pass = document.querySelector('#password') || document.querySelector('input[name=session_password]');
+        if (!user || !pass) return JSON.stringify(false);
+        const d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+        for (const [el, text] of [[user, email], [pass, password]]) {
+            if (typeof el.focus === 'function') el.focus();
+            if (d && d.set) d.set.call(el, text); else el.value = text;
+            fire(el, 'input', {inputType: 'insertText'});
+            fire(el, 'change');
+        }
+        return JSON.stringify(true);
+    })
+    """
+
+    /// submitLogin() → true when the form holding the password field was found; clicks its submit button, else requestSubmit().
+    static let submitLogin = """
+    (function () {
+        const pass = document.querySelector('#password') || document.querySelector('input[name=session_password]');
+        const form = pass ? (pass.form || pass.closest('form')) : null;
+        if (!form) return JSON.stringify(false);
+        const button = form.querySelector('button[type=submit], input[type=submit]');
+        if (button) button.click();
+        else if (form.requestSubmit) form.requestSubmit();
+        else form.submit();
+        return JSON.stringify(true);
+    })
+    """
+
+    /// loginError() → the visible text of #error-for-password / #error-for-username, or "".
+    static let loginError = """
+    (function () {
+        \(prelude)
+        for (const id of ['error-for-password', 'error-for-username']) {
+            const el = document.getElementById(id);
+            if (!el) continue;
+            const cs = getComputedStyle(el);
+            if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+            const t = textOf(el);
+            if (t) return JSON.stringify(t);
+        }
+        return JSON.stringify('');
+    })
+    """
 }
 #endif

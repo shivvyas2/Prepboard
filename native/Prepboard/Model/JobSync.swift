@@ -131,17 +131,22 @@ final class JobSync {
     }
     private(set) var isRunning = false
     var error: String?
+    /// When `run()` last started, successful or not; the throttle uses it so a stop never moves `lastRun` (the Gmail window's anchor).
+    private var lastAttempt: Date?
 
     private var container: ModelContainer?
     private weak var claude: ClaudeCode?
     private weak var browser: BrowserServer?
+    private weak var huntBrowser: HuntBrowser?
     private var timer: Timer?
 
-    /// Starts the schedule: a sync whenever one is due, checked every 15 minutes while the app is open. `browser` is the built-in browser's MCP server.
-    func attach(container: ModelContainer, claude: ClaudeCode, browser: BrowserServer) {
+    /// Starts the schedule: a sync whenever one is due, checked every 15 minutes while the app is open. `browser` is the built-in
+    /// browser's MCP server; `huntBrowser` the web view itself, which the LinkedIn sign-in check drives directly.
+    func attach(container: ModelContainer, claude: ClaudeCode, browser: BrowserServer, huntBrowser: HuntBrowser) {
         self.container = container
         self.claude = claude
         self.browser = browser
+        self.huntBrowser = huntBrowser
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 15 * 60, repeats: true) { [weak self] _ in
@@ -152,7 +157,7 @@ final class JobSync {
 
     func runIfDue() {
         guard auto, !isRunning, let claude, claude.isReady, !claude.busy else { return }
-        if let lastRun, Date.now.timeIntervalSince(lastRun) < Self.interval { return }
+        if let last = lastAttempt ?? lastRun, Date.now.timeIntervalSince(last) < Self.interval { return }
         Task { await run() }
     }
 
@@ -162,10 +167,18 @@ final class JobSync {
         guard !claude.busy else { error = "Another Claude run is using the browser; wait for it to finish."; return }
         guard let browser, browser.isRunning else { error = "The built-in browser couldn't start"; return }
         isRunning = true
+        lastAttempt = .now
         error = nil
         claude.busy = true
         defer { isRunning = false; claude.busy = false }
         browser.reset()
+        // The browser signs itself in from the Keychain when LinkedIn's session is gone; a stop here waits for the next due time
+        // and leaves `lastRun` alone, so the next sync still reads Gmail back to the last one that finished.
+        if let huntBrowser, let stop = LinkedInSignIn.stopMessage(await LinkedInSignIn.ensure(huntBrowser)) {
+            error = stop
+            lastSummary = LinkedInSignIn.stoppedSummary
+            return
+        }
 
         let context = container.mainContext
         let roles = (try? context.fetch(FetchDescriptor<Role>())) ?? []
@@ -247,11 +260,12 @@ final class JobSync {
     }
 
     /// One headless `claude -p` call; `browserFlags` come from `BrowserServer.claudeFlags` and carry the --allowedTools list.
+    /// `--tools ""` drops every built-in tool, so the user's global Bash and web allowlist never reaches this run.
     nonisolated static func check(prompt: String, browserFlags: String) async throws -> FoundJobs {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("prepboard-jobsync", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try schema.write(to: dir.appendingPathComponent("schema.json"), atomically: true, encoding: .utf8)
-        let cmd = "cd '\(dir.path)' && claude -p \(browserFlags) --output-format json --json-schema \"$(cat schema.json)\" 2>/dev/null"
+        let cmd = "cd '\(dir.path)' && claude -p \(browserFlags) --output-format json --json-schema \"$(cat schema.json)\" --tools \"\" 2>/dev/null"
         let out = await ClaudeCode.shell(cmd, stdin: prompt)
         guard let start = out.firstIndex(of: "{"),
               let obj = try? JSONSerialization.jsonObject(with: Data(out[start...].utf8)) as? [String: Any] else {

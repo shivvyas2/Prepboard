@@ -89,8 +89,8 @@ struct PrepboardApp: App {
                     try? browserServer.start(browser: huntBrowser)   // the hunt and the LinkedIn sync refuse to run until this is up
                     _ = await browserServer.ready()   // the port arrives asynchronously; attach() below may run a sync or hunt at once
                     deviceBridge.attach(claude)
-                    jobSync.attach(container: container, claude: claude, browser: browserServer)
-                    jobHunt.attach(container: container, claude: claude, cloud: cloud, github: github, browser: browserServer)
+                    jobSync.attach(container: container, claude: claude, browser: browserServer, huntBrowser: huntBrowser)
+                    jobHunt.attach(container: container, claude: claude, cloud: cloud, github: github, browser: browserServer, huntBrowser: huntBrowser)
                 }
                 #if DEBUG
                 // `-PrepboardBrowserSmoke 1`: once the browser server is up, drive it through `claude -p` and log the reply (local testing only).

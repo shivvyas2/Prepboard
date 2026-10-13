@@ -513,6 +513,88 @@ final class BrowserServerTests: XCTestCase {
         XCTAssertEqual(trusted, true, "the real NSEvent click should reach the element; a JS fallback click is untrusted")
     }
 
+    // MARK: LinkedIn sign-in
+
+    func testLinkedInClassify() {
+        let u = { URL(string: $0)! }
+        XCTAssertEqual(LinkedInSignIn.classify(u("https://www.linkedin.com/feed/")), .signedIn)
+        XCTAssertEqual(LinkedInSignIn.classify(u("https://linkedin.com/feed/?trk=x")), .signedIn)
+        XCTAssertEqual(LinkedInSignIn.classify(u("https://www.linkedin.com/jobs/collections/recommended/")), .signedIn)
+        XCTAssertEqual(LinkedInSignIn.classify(u("https://www.linkedin.com/login")), .noCredentials)
+        XCTAssertEqual(LinkedInSignIn.classify(u("https://www.linkedin.com/uas/login?session_redirect=%2Ffeed%2F")), .noCredentials)
+        XCTAssertEqual(LinkedInSignIn.classify(u("https://www.linkedin.com/authwall?trk=qf")), .noCredentials)
+        XCTAssertEqual(LinkedInSignIn.classify(u("https://www.linkedin.com/signup/cold-join")), .noCredentials)
+        XCTAssertEqual(LinkedInSignIn.classify(u("https://www.linkedin.com/")), .noCredentials)   // the public home page
+        // A refused password re-renders the form at login-submit: that is "needs a sign-in", not a checkpoint.
+        XCTAssertEqual(LinkedInSignIn.classify(u("https://www.linkedin.com/checkpoint/lg/login-submit")), .noCredentials)
+        XCTAssertEqual(LinkedInSignIn.classify(u("https://www.linkedin.com/checkpoint/challenge/AgF1")), .needsYou(LinkedInSignIn.needsYouMessage))
+        XCTAssertEqual(LinkedInSignIn.classify(u("https://www.linkedin.com/checkpoint/rm/sign-in-another-account")), .needsYou(LinkedInSignIn.needsYouMessage))
+        if case .needsYou(let m) = LinkedInSignIn.classify(u("https://www.linkedin.com/challenge/verify")) {
+            XCTAssertTrue(m.contains("verification code") && m.contains("Browser card"), m)
+        } else { XCTFail("challenge should need the user") }
+        XCTAssertEqual(LinkedInSignIn.classify(u("https://example.com/feed/")), .failed("Not on LinkedIn"))
+        XCTAssertEqual(LinkedInSignIn.classify(u("https://notlinkedin.com/feed/")), .failed("Not on LinkedIn"))
+        XCTAssertEqual(LinkedInSignIn.classify(nil), .failed("Not on LinkedIn"))
+        XCTAssertNil(LinkedInSignIn.stopMessage(.signedIn))
+        XCTAssertEqual(LinkedInSignIn.stopMessage(.noCredentials), LinkedInSignIn.signInMessage)
+        XCTAssertEqual(LinkedInSignIn.stopMessage(.failed("x")), "x")
+    }
+
+    static let loginPage = """
+    <!doctype html><html><head><title>Sign in</title><style>.hidden{display:none}</style></head><body>
+    <form class="login__form" action="/checkpoint/lg/login-submit" method="post"
+          onsubmit="event.preventDefault(); window.__submitted = true; document.getElementById('error-for-password').classList.remove('hidden')">
+      <label for="username">Email or phone</label><input id="username" name="session_key" type="text">
+      <label for="password">Password</label><input id="password" name="session_password" type="password">
+      <div id="error-for-username" class="hidden"></div>
+      <div id="error-for-password" class="hidden">That's not the right password. Try again or create an account.</div>
+      <button type="submit" aria-label="Sign in">Sign in</button>
+    </form>
+    </body></html>
+    """
+
+    func testFillLoginSubmitLoginAndLoginError() async throws {
+        let b = HuntBrowser()
+        try await b.loadHTML(Self.loginPage)
+        _ = try await eval(b, "window.__events = []; for (const id of ['username', 'password']) for (const t of ['input', 'change']) document.getElementById(id).addEventListener(t, () => window.__events.push(id + ':' + t)); 0")
+        try await expectEqual(try await b.loginError(), "")   // hidden until the form answers
+        try await expectEqual(try await b.run(BrowserScripts.fillLogin, "someone@example.com", "not-a-real-password") as? Bool, true)
+        try await expectEqual(try await eval(b, "document.getElementById('username').value") as? String, "someone@example.com")
+        try await expectEqual(try await eval(b, "document.getElementById('password').value === 'not-a-real-password'") as? Bool, true)
+        try await expectEqual(try await eval(b, "window.__events.join(',')") as? String, "username:input,username:change,password:input,password:change")
+        try await expectEqual(try await b.run(BrowserScripts.submitLogin) as? Bool, true)
+        try await expectEqual(try await eval(b, "window.__submitted") as? Bool, true)
+        try await expectEqual(try await b.loginError(), "That's not the right password. Try again or create an account.")
+        // The password never shows up in what the hunt sees of the page, or in the action log.
+        let lines = try await b.readPage(interactiveOnly: true)
+        XCTAssertTrue(lines.contains("textbox \"Password\" = \"••••\""), lines)
+        XCTAssertFalse(lines.contains("not-a-real") || b.actionLog.joined().contains("not-a-real"))
+
+        // No form on the page: nothing is filled or submitted.
+        try await b.loadHTML("<html><body><h1>Feed</h1></body></html>")
+        try await expectEqual(try await b.run(BrowserScripts.fillLogin, "x@example.com", "y") as? Bool, false)
+        try await expectEqual(try await b.run(BrowserScripts.submitLogin) as? Bool, false)
+        try await expectEqual(try await b.loginError(), "")
+    }
+
+    /// A LinkedIn page that will not load is a load failure, not a missing sign-in: `ensure` must not tell the user to sign in
+    /// (and must not try the stored credentials) when the Mac is offline or LinkedIn times out.
+    func testLinkedInProbeReportsALoadFailure() async throws {
+        let real = LinkedInSignIn.feedURL
+        LinkedInSignIn.feedURL = URL(string: "http://127.0.0.1:1/feed/")!
+        defer { LinkedInSignIn.feedURL = real }
+        let b = try await loaded()
+        let probe = await LinkedInSignIn.probe(b)
+        guard case .failed(let m) = probe else { return XCTFail("\(probe)") }
+        XCTAssertTrue(m.hasPrefix("Could not load LinkedIn: "), m)
+        let isSignedIn = await LinkedInSignIn.isSignedIn(b)
+        XCTAssertFalse(isSignedIn)
+        let ensured = await LinkedInSignIn.ensure(b)
+        XCTAssertEqual(ensured, probe)
+        XCTAssertEqual(LinkedInSignIn.stopMessage(ensured), m)
+        XCTAssertNotEqual(ensured, .noCredentials)
+    }
+
     func testNavigationTimeoutLeavesPage() async throws {
         let b = try await loaded()
         // A real navigation to a non-routable address fails fast with a load error, not a hang.
