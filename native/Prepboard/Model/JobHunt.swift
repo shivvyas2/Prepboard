@@ -65,15 +65,16 @@ final class JobHunt {
     private weak var claude: ClaudeCode?
     private weak var cloud: Cloud?
     private weak var github: GitHub?
+    private weak var browser: BrowserServer?
     private var scheduleTimer: Timer?
     private var queueTimer: Timer?
     private var lastSubmit: Date? = UserDefaults.standard.object(forKey: "hunt.lastSubmit") as? Date {
         didSet { UserDefaults.standard.set(lastSubmit, forKey: "hunt.lastSubmit") }
     }
 
-    /// Starts the schedule: a daily run checked every 5 minutes, the submit queue every minute.
-    func attach(container: ModelContainer, claude: ClaudeCode, cloud: Cloud, github: GitHub) {
-        self.container = container; self.claude = claude; self.cloud = cloud; self.github = github
+    /// Starts the schedule: a daily run checked every 5 minutes, the submit queue every minute. `browser` is the built-in browser's MCP server.
+    func attach(container: ModelContainer, claude: ClaudeCode, cloud: Cloud, github: GitHub, browser: BrowserServer) {
+        self.container = container; self.claude = claude; self.cloud = cloud; self.github = github; self.browser = browser
         scheduleTimer?.invalidate(); queueTimer?.invalidate()
         scheduleTimer = Timer.scheduledTimer(withTimeInterval: 5 * 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.runIfDue() }
@@ -203,12 +204,15 @@ final class JobHunt {
     func run() async {
         guard phase == .idle, let container, let claude else { return }
         guard claude.isReady else { error = "Connect Claude Code in Profile to run the hunt."; return }
+        guard !claude.busy else { error = "Another Claude run is using the browser; wait for it to finish."; return }
+        guard let browser, browser.isRunning else { error = "The built-in browser couldn't start"; return }
         let context = container.mainContext
         let settings = HuntSettings.current(context)
         phase = .discovering
         error = nil
         claude.busy = true
         defer { phase = .idle; claude.busy = false }
+        browser.reset()
         rescan()
         if let github, github.repos.isEmpty, !github.username.isEmpty { await github.load() }
         let roles = (try? context.fetch(FetchDescriptor<Role>())) ?? []
@@ -221,7 +225,8 @@ final class JobHunt {
         var found = 0, skipped = 0
         do {
             let prompt = Self.discoverPrompt(settings: settings, variants: variants, known: knownLines)
-            let result = try await Self.check(DiscoverResult.self, prompt: prompt, schema: Self.discoverSchema, chrome: true, tools: Self.discoverTools, cwd: nil)
+            let result = try await Self.check(DiscoverResult.self, prompt: prompt, schema: Self.discoverSchema,
+                                              browserFlags: browser.claudeFlags(extraTools: "", readOnly: true), tools: "", cwd: nil)   // Discover never fills a form
             for f in result.leads where !f.company.trimmingCharacters(in: .whitespaces).isEmpty {
                 let key = ResumeLibrary.dedupeKey(company: f.company, title: f.title, roleNumber: f.role_number)
                 guard !known.contains(key) else { continue }
@@ -238,7 +243,7 @@ final class JobHunt {
             }
             try context.save()
             if result.notes.uppercased().hasPrefix("SIGNED_OUT") {
-                error = "Sign in to LinkedIn in Chrome, then run the hunt again. " + result.notes.dropFirst("SIGNED_OUT".count).trimmingCharacters(in: CharacterSet(charactersIn: ": "))
+                error = "Sign in to LinkedIn in the Browser card above, then run the hunt again. " + result.notes.dropFirst("SIGNED_OUT".count).trimmingCharacters(in: CharacterSet(charactersIn: ": "))
                 lastRun = .now; lastSummary = "Stopped: LinkedIn needs you to sign in"
                 return
             }
@@ -323,14 +328,14 @@ final class JobHunt {
         let githubContext = github?.context ?? ""
         do {
             let prompt = Self.tailorPrompt(lead: lead, base: base, baseTex: baseTex, variants: evidence, github: githubContext, bank: bank, name: name, folder: folder)
-            var result = try await Self.check(TailorResult.self, prompt: prompt, schema: Self.tailorSchema, chrome: false, tools: Self.fileTools, cwd: folder)
+            var result = try await Self.check(TailorResult.self, prompt: prompt, schema: Self.tailorSchema, browserFlags: nil, tools: Self.fileTools, cwd: folder)
             try result.tex.write(toFile: texPath, atomically: true, encoding: .utf8)
             var pdfPath: String
             do {
                 pdfPath = try await LatexBuild.build(texPath: texPath)
             } catch let first as LatexBuild.Failure {
                 let retry = prompt + "\n\nYOUR PREVIOUS ATTEMPT DID NOT COMPILE. Fix the LaTeX (keep the same content rules) and return the whole file again.\n<compile_log>\n\(first.log)\n</compile_log>\n<previous_tex>\n\(result.tex)\n</previous_tex>"
-                result = try await Self.check(TailorResult.self, prompt: retry, schema: Self.tailorSchema, chrome: false, tools: Self.fileTools, cwd: folder)
+                result = try await Self.check(TailorResult.self, prompt: retry, schema: Self.tailorSchema, browserFlags: nil, tools: Self.fileTools, cwd: folder)
                 try result.tex.write(toFile: texPath, atomically: true, encoding: .utf8)
                 pdfPath = try await LatexBuild.build(texPath: texPath)
             }
@@ -358,7 +363,7 @@ final class JobHunt {
             do {
                 let sources = evidence.map(\.name).filter { $0 != name }
                 let honesty = try await Self.check(HonestyResult.self, prompt: Self.honestyPrompt(tex: result.tex, sources: sources, github: githubContext, folder: folder),
-                                                   schema: Self.honestySchema, chrome: false, tools: Self.fileTools, cwd: folder)
+                                                   schema: Self.honestySchema, browserFlags: nil, tools: Self.fileTools, cwd: folder)
                 lead.answers = answers
                 if honesty.ok && honesty.untraceable.isEmpty {
                     lead.status = .ready; lead.reason = reason(result.notes)
@@ -388,6 +393,8 @@ final class JobHunt {
     func submit(_ lead: Lead) async {
         guard phase == .idle, let container, let claude else { return }
         guard claude.isReady else { error = "Connect Claude Code in Profile to submit applications."; return }
+        guard !claude.busy else { error = "Another Claude run is using the browser; wait for it to finish."; return }
+        guard let browser, browser.isRunning else { error = "The built-in browser couldn't start"; return }
         let context = container.mainContext
         let settings = HuntSettings.current(context)
         guard Self.dailyCount("submitted") < settings.dailySubmitLimit else { error = "Daily submit limit reached (\(settings.dailySubmitLimit)). The queue continues tomorrow."; return }
@@ -420,9 +427,10 @@ final class JobHunt {
             lead.status = .failed; lead.reason = "The PDF is missing; regenerate the résumé first"
         } else {
             lastSubmit = .now   // every real attempt counts toward the spacing, even one that throws
+            browser.reset()
             do {
                 let result = try await Self.check(SubmitResult.self, prompt: Self.submitPrompt(lead: lead, pdfPath: pdfPath, bank: settings.answerBank),
-                                                  schema: Self.submitSchema, chrome: true, tools: Self.submitTools, cwd: nil)
+                                                  schema: Self.submitSchema, browserFlags: browser.claudeFlags(extraTools: ""), tools: "", cwd: nil)
                 switch result.status {
                 case "submitted":
                     let role = Role(company: lead.company, title: lead.title.isEmpty ? "Role" : lead.title, location: lead.location,
@@ -440,7 +448,7 @@ final class JobHunt {
                     lead.status = .failed; lead.reason = result.reason.isEmpty ? "Submit failed" : result.reason
                 }
             } catch {
-                lead.status = .needsYou; lead.flagged = "Submit ended without a result; check the open Chrome tab before trying again"
+                lead.status = .needsYou; lead.flagged = "Submit ended without a result; check the Browser card before trying again"
                 lead.reason = error.localizedDescription
             }
         }
@@ -450,10 +458,16 @@ final class JobHunt {
 
     // MARK: Claude
 
-    /// Chrome reading tools only (JobSync's list without Gmail and Calendar).
-    static let discoverTools = JobSync.tools.split(separator: " ").filter { $0.hasPrefix("mcp__claude-in-chrome") }.joined(separator: " ")
-    static let submitTools = discoverTools + " mcp__claude-in-chrome__form_input mcp__claude-in-chrome__file_upload mcp__claude-in-chrome__read_page"
     static let fileTools = "Read Grep Glob"
+
+    /// How to drive PrepBoard's built-in browser; `upload` adds the résumé tool (Submit only).
+    static func browserGuide(upload: Bool) -> String {
+        "Use the PrepBoard browser tools (mcp__prepboard__…): navigate to a URL; read_page (interactive_only true for forms, false to read a "
+        + "posting) returns elements with refs like r12; click(ref) / type(ref, text) act on them; after a click that changes the page call "
+        + "wait then read_page again; page_text for the full posting text; screenshot when a page is unclear"
+        + (upload ? "; upload_file(ref, path) attaches the résumé PDF" : "")
+        + ". There are no tabs: one page at a time, use back() to return to a list."
+    }
 
     static let discoverSchema = #"""
     {"type":"object","required":["leads","notes"],"properties":{
@@ -503,12 +517,14 @@ final class JobHunt {
                 + (map.isEmpty ? "" : "\n  JD MAP: \(map)")
         }
         return """
-        You are my job scout. Using my signed-in Chrome, find job postings for me and return them as structured data. \
+        You are my job scout. Using PrepBoard's built-in browser, find job postings for me and return them as structured data. \
         Now: \(DateCoding.string(.now)), my time zone: \(TimeZone.current.identifier).
+
+        THE BROWSER: \(browserGuide(upload: false)) I am already signed in to LinkedIn there.
 
         READ ONLY, HUMAN PACE: only navigate, scroll and read. Never press Apply or Easy Apply, never save, follow, connect, \
         message, like, dismiss or change anything, never fill a form. Move like a person reading: a few seconds between pages, \
-        no rapid-fire tab opening. Look at about 150 listings at most across all sources, then stop. If LinkedIn shows a sign-in \
+        no rapid-fire page opening. Look at about 150 listings at most across all sources, then stop. If LinkedIn shows a sign-in \
         page, a security checkpoint, a CAPTCHA or "unusual activity", do not try to get past it: stop everything and begin `notes` \
         with "SIGNED_OUT:" followed by what you saw. If a careers site does not load or blocks you, say so in `notes` and continue \
         with the other sources.
@@ -664,9 +680,11 @@ final class JobHunt {
             .map { "- \($0.0): \($0.1.isEmpty ? "(unknown; if the form requires it, stop and report it)" : $0.1)" }
         let saved = bank.saved.sorted { $0.key < $1.key }.map { "- Q: \($0.key)\n  A: \($0.value)" }
         return """
-        You submit one job application for me in my signed-in Chrome, using only the answers below. Fill the form, upload my résumé PDF, \
-        press Submit exactly once when everything required is answered from this list, and report what happened. \
+        You submit one job application for me in PrepBoard's built-in browser, using only the answers below. Fill the form, upload my \
+        résumé PDF, press Submit exactly once when everything required is answered from this list, and report what happened. \
         Now: \(DateCoding.string(.now)).
+
+        THE BROWSER: \(browserGuide(upload: true)) I am already signed in to LinkedIn there.
 
         Posting: \(lead.link)
         Company: \(lead.company); Title: \(lead.title)\(lead.roleNumber.isEmpty ? "" : "; Posting id: \(lead.roleNumber)")
@@ -679,7 +697,7 @@ final class JobHunt {
         elsewhere. Optional fields with no answer here: leave blank. EEO questions: use the given answers, otherwise "Decline to self-identify" \
         or the closest "I don't wish to answer" option.
         - Upload the PDF given above; do not use a profile résumé or paste text instead.
-        - STOP CONDITIONS. Do not submit, leave the tab open exactly where you stopped, and return status "needs_you" with the reason and every \
+        - STOP CONDITIONS. Do not submit, leave the page exactly where you stopped, and return status "needs_you" with the reason and every \
         question you could not answer in `unknown_questions` (the question text as shown), when any of these happens: a required question is \
         not covered by the answers below; the site asks you to create an account, sign in, or complete two-factor authentication; a CAPTCHA; \
         an assessment, test, video or coding exercise; a cover letter or other document you do not have; a request to pay; the posting is \
@@ -702,15 +720,16 @@ final class JobHunt {
         """
     }
 
-    /// One headless `claude -p` call with a JSON schema; `cwd` is where Claude may read files.
-    nonisolated static func check<T: Decodable>(_ type: T.Type, prompt: String, schema: String, chrome: Bool, tools: String, cwd: String?) async throws -> T {
+    /// One headless `claude -p` call with a JSON schema; `browserFlags` (from `BrowserServer.claudeFlags`, which already carries
+    /// `--allowedTools`) attaches the built-in browser, nil runs without one; `tools` adds an --allowedTools list; `cwd` is where Claude may read files.
+    nonisolated static func check<T: Decodable>(_ type: T.Type, prompt: String, schema: String, browserFlags: String?, tools: String, cwd: String?) async throws -> T {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("prepboard-hunt", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let schemaFile = dir.appendingPathComponent("schema-\(UUID().uuidString.prefix(8)).json")
         try schema.write(to: schemaFile, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: schemaFile) }
-        let cmd = "cd '\(LatexBuild.quoted(cwd ?? dir.path))' && claude -p \(chrome ? "--chrome " : "")--output-format json "
-            + "--json-schema \"$(cat '\(LatexBuild.quoted(schemaFile.path))')\" --allowedTools \(tools) 2>/dev/null"
+        let cmd = "cd '\(LatexBuild.quoted(cwd ?? dir.path))' && claude -p \(browserFlags.map { $0 + " " } ?? "")--output-format json "
+            + "--json-schema \"$(cat '\(LatexBuild.quoted(schemaFile.path))')\"\(tools.isEmpty ? "" : " --allowedTools " + tools) 2>/dev/null"
         let out = await ClaudeCode.shell(cmd, stdin: prompt)
         guard let start = out.firstIndex(of: "{"),
               let obj = try? JSONSerialization.jsonObject(with: Data(out[start...].utf8)) as? [String: Any] else {

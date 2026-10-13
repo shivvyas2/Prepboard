@@ -31,7 +31,7 @@
 - **Claude Code terminal (Mac):** the full interactive Claude Code in a panel (⇧⌘J), in your prep folder.
 - **Quizzes and a Scores leaderboard:** "Quiz me" writes multiple-choice questions from a session's material, shows the correct answer and an explanation each time, and tracks mastery by topic, with a *Learn more* list for weak spots.
 - **YouTube videos:** "Find videos" pulls 3–4 strong explainers for a session and plays them in the app.
-- **Hunt (find roles, tailor the résumé, apply with one tap):** once a day the Mac reads LinkedIn's recommendations, searches LinkedIn for your target companies and regions, and checks those companies' careers sites. For each good match it writes a keyword-matched résumé variant from your own `.tex` variants (preferring the ones that led to interviews), builds the PDF, drafts the application answers, and puts the job in a review queue on every device. Submit needs your tap; the Mac then fills the form, uploads the PDF and presses Submit only when every required field has an approved answer. Work authorization, sponsorship, EEO and salary answers come only from your Answer Bank, and a second pass checks that every claim in the new résumé is backed by an existing variant or your GitHub work.
+- **Hunt (find roles, tailor the résumé, apply with one tap):** once a day the Mac, in PrepBoard's built-in browser (sign in to LinkedIn once in the app), reads LinkedIn's recommendations, searches LinkedIn for your target companies and regions, and checks those companies' careers sites. For each good match it writes a keyword-matched résumé variant from your own `.tex` variants (preferring the ones that led to interviews), builds the PDF, drafts the application answers, and puts the job in a review queue on every device. Submit needs your tap; the Mac then fills the form in the same built-in browser, uploads the PDF and presses Submit only when every required field has an approved answer. The LinkedIn half of the Gmail & LinkedIn sync uses that browser too. Work authorization, sponsorship, EEO and salary answers come only from your Answer Bank, and a second pass checks that every claim in the new résumé is backed by an existing variant or your GitHub work.
 - **Browse:** an in-app browser (native apps) with "Save to notes" for research.
 - **Accounts and sync:** sign in once and your roles, sessions, docs, PDFs, quiz history and profile sync across every device.
 - **Your choice of AI:** use your own Anthropic API key, or your Claude account through Claude Code.
@@ -77,7 +77,7 @@ brand/      App icon sources
 - **Data:** Supabase Postgres. Every table is owner-only through Row Level Security. PDFs live in a private storage bucket, with one folder per user.
 - **AI:** the `prep-chat` Edge Function (planner, study guides, quizzes, YouTube search) uses the Claude API with tool use and structured outputs. It requires a signed-in user.
 - **Your API key:** keys are validated, encrypted with AES-GCM on the server and stored in a table that clients can't read. The app only ever shows the last four characters.
-- **Claude Code:** the Mac app runs `claude -p` with read-only and web tools. Sharing it with your iPhone/iPad is off by default; when on, the Mac app listens on port 8788 and requires a 16-character pairing code (kept in the Keychain on both devices), refuses browser requests, and locks out an address after 10 wrong codes. *New code* unpairs every device. The web app can use the same thing through `bridge/claude-bridge.mjs`, which listens on 127.0.0.1 only and accepts requests only from the Prepboard web origins.
+- **Claude Code:** the Mac app runs `claude -p` with read-only and web tools; the hunt and the LinkedIn sync give it PrepBoard's built-in browser through a local MCP server on 127.0.0.1 (random port, per-launch bearer token). Sharing it with your iPhone/iPad is off by default; when on, the Mac app listens on port 8788 and requires a 16-character pairing code (kept in the Keychain on both devices), refuses browser requests, and locks out an address after 10 wrong codes. *New code* unpairs every device. The web app can use the same thing through `bridge/claude-bridge.mjs`, which listens on 127.0.0.1 only and accepts requests only from the Prepboard web origins.
 
 ## Run it yourself
 
@@ -110,7 +110,7 @@ node bridge/claude-bridge.mjs
 ```
 
 ### Developer launch flags (native)
-`-PrepboardLocalOnly YES` (no accounts) · `-PrepboardSection timeline|documents|scores|browse` · `-PrepboardOpenURL https://…` · `-PrepboardImport /path/export.json`
+`-PrepboardLocalOnly YES` (no accounts) · `-PrepboardSection timeline|documents|scores|browse` · `-PrepboardOpenURL https://…` · `-PrepboardImport /path/export.json` · `-PrepboardBrowserSmoke 1` (debug builds: drives the built-in browser through `claude -p` and prints the reply)
 
 ## Privacy & security
 

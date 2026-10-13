@@ -13,6 +13,8 @@ struct PrepboardApp: App {
     @State private var deviceBridge = DeviceBridge()
     @State private var jobSync = JobSync()
     @State private var jobHunt = JobHunt()
+    @State private var huntBrowser = HuntBrowser()
+    @State private var browserServer = BrowserServer()
     #endif
     @Environment(\.scenePhase) private var scenePhase
     let container: ModelContainer
@@ -65,14 +67,18 @@ struct PrepboardApp: App {
                 .environment(deviceBridge)
                 .environment(jobSync)
                 .environment(jobHunt)
+                .environment(huntBrowser)
+                .environment(browserServer)
                 .environment(WorkspaceManager.shared)
                 .task {
                     // Extra windows get the same models and store as the main one (their own AppState for sections).
-                    let (profile, cloud, browser, claude, github, deviceBridge, jobSync, jobHunt, container) = (profile, cloud, browser, claude, github, deviceBridge, jobSync, jobHunt, container)
+                    let (profile, cloud, browser, claude, github, deviceBridge, jobSync, jobHunt, huntBrowser, browserServer, container) =
+                        (profile, cloud, browser, claude, github, deviceBridge, jobSync, jobHunt, huntBrowser, browserServer, container)
                     WorkspaceManager.shared.configure(app: app, claudeAvailable: { claude.isReady }) { view, state in
                         AnyView(view
                             .environment(state).environment(profile).environment(cloud).environment(browser)
                             .environment(claude).environment(github).environment(deviceBridge).environment(jobSync).environment(jobHunt)
+                            .environment(huntBrowser).environment(browserServer)
                             .environment(WorkspaceManager.shared)
                             .modelContainer(container)
                             .preferredColorScheme(.light))
@@ -80,10 +86,26 @@ struct PrepboardApp: App {
                 }
                 .task {
                     await claude.checkConnection()   // picks up an installed, signed-in Claude Code on launch
+                    try? browserServer.start(browser: huntBrowser)   // the hunt and the LinkedIn sync refuse to run until this is up
+                    _ = await browserServer.ready()   // the port arrives asynchronously; attach() below may run a sync or hunt at once
                     deviceBridge.attach(claude)
-                    jobSync.attach(container: container, claude: claude)
-                    jobHunt.attach(container: container, claude: claude, cloud: cloud, github: github)
+                    jobSync.attach(container: container, claude: claude, browser: browserServer)
+                    jobHunt.attach(container: container, claude: claude, cloud: cloud, github: github, browser: browserServer)
                 }
+                #if DEBUG
+                // `-PrepboardBrowserSmoke 1`: once the browser server is up, drive it through `claude -p` and log the reply (local testing only).
+                .task {
+                    guard UserDefaults.standard.bool(forKey: "PrepboardBrowserSmoke") else { return }
+                    var waited = 0
+                    while !browserServer.isRunning, waited < 100 { waited += 1; try? await Task.sleep(for: .milliseconds(100)) }
+                    guard browserServer.isRunning else { print("PrepboardBrowserSmoke: the browser server did not start"); return }
+                    let out = await ClaudeCode.shell("claude -p --output-format json \(browserServer.claudeFlags(extraTools: "")) 2>/dev/null",
+                                                     stdin: "Use the prepboard browser tools: navigate to https://example.com, then read_page, and reply with exactly the page's h1 text (or its title if the page has no h1).")
+                    let reply = out.firstIndex(of: "{").flatMap { try? JSONSerialization.jsonObject(with: Data(out[$0...].utf8)) as? [String: Any] }?["result"] as? String
+                    print("PrepboardBrowserSmoke:", reply ?? String(out.suffix(400)))
+                    fflush(stdout)   // stdout is block-buffered when piped; the launcher reads this line before quitting the app
+                }
+                #endif
                 .frame(minWidth: 1000, minHeight: 680)
                 #endif
         }

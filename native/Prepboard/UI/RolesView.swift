@@ -296,7 +296,7 @@ struct JobSyncCard: View {
             } else {
                 Button("Sync now") { Task { await sync.run() } }
                     .buttonStyle(PillButtonStyle(filled: false, compact: true))
-                    .disabled(!claude.isReady)
+                    .disabled(!claude.isReady || claude.busy)
             }
         }
         .pbCard(padding: 16)

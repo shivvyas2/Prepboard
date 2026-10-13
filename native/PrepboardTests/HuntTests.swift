@@ -340,8 +340,41 @@ final class HuntTests: XCTestCase {
         XCTAssertEqual(r.leads[0].role_number, "200678056"); XCTAssertEqual(r.leads[0].score, 84); XCTAssertEqual(r.leads[1].score, 55)
         XCTAssertEqual(r.leads[1].source, "linkedin-rec")
         XCTAssertTrue(r.notes.hasPrefix("Read 62"))
-        XCTAssertFalse(JobHunt.discoverTools.contains("Gmail"))
-        XCTAssertTrue(JobHunt.submitTools.contains("mcp__claude-in-chrome__file_upload") && JobHunt.submitTools.contains("mcp__claude-in-chrome__form_input"))
+    }
+
+    // MARK: built-in browser
+
+    func testDiscoverPromptUsesBuiltInBrowser() {
+        let prompt = JobHunt.discoverPrompt(settings: HuntSettings(), variants: [], known: [])
+        XCTAssertTrue(prompt.contains("mcp__prepboard__"))
+        XCTAssertTrue(prompt.contains("read_page") && prompt.contains("back()"))
+        XCTAssertFalse(prompt.contains("claude-in-chrome") || prompt.contains("Chrome"))
+        XCTAssertTrue(prompt.contains("SIGNED_OUT:") && prompt.contains("Never press Apply or Easy Apply"))
+        XCTAssertFalse(prompt.contains("upload_file"))   // Discover is read-only
+    }
+
+    func testSubmitPromptUsesBuiltInBrowser() {
+        let prompt = JobHunt.submitPrompt(lead: Lead(company: "Apple", title: "iOS Engineer", link: "https://jobs.apple.com/x"), pdfPath: "/tmp/r.pdf", bank: AnswerBank())
+        XCTAssertTrue(prompt.contains("mcp__prepboard__"))
+        XCTAssertTrue(prompt.contains("upload_file(ref, path)") && prompt.contains("/tmp/r.pdf"))
+        XCTAssertFalse(prompt.contains("claude-in-chrome") || prompt.contains("Chrome"))
+        XCTAssertTrue(prompt.contains("STOP CONDITIONS") && prompt.contains("CAPTCHA") && prompt.contains("needs_you"))
+    }
+
+    func testSyncPromptUsesBuiltInBrowser() {
+        let prompt = JobSync.prompt(since: .now, roles: [])
+        XCTAssertTrue(prompt.contains("mcp__prepboard__"))
+        XCTAssertTrue(prompt.contains("use the Gmail tools if available, otherwise skip Gmail"))
+        XCTAssertFalse(prompt.contains("claude-in-chrome") || prompt.contains("Chrome"))
+        XCTAssertTrue(JobSync.connectorTools.contains("mcp__claude_ai_Gmail") && !JobSync.connectorTools.contains("chrome"))
+        // The sync's flags must not be strict (strict mode drops the connectors) and must not grant form or upload tools.
+        let server = BrowserServer()
+        let flags = server.claudeFlags(extraTools: JobSync.connectorTools, readOnly: true, strict: false)
+        XCTAssertFalse(flags.contains("--strict-mcp-config"), flags)
+        XCTAssertTrue(flags.contains("mcp__claude_ai_Gmail mcp__claude_ai_Google_Calendar"), flags)
+        XCTAssertFalse(flags.contains("upload_file"), flags)
+        XCTAssertTrue(server.claudeFlags(extraTools: "").contains("--strict-mcp-config"))
+        server.stop()
     }
 
     func testDecodeTailorSample() throws {

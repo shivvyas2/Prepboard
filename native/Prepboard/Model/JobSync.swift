@@ -112,9 +112,9 @@ enum JobMerge {
 import Observation
 import UserNotifications
 
-/// Checks Gmail and LinkedIn with the user's local Claude Code (Gmail tools when connected, otherwise their
-/// signed-in Chrome) and keeps Roles up to date: new applications, recruiters, stage changes and scheduled
-/// interviews. Read-only: it never sends, replies, applies or changes anything on those sites.
+/// Checks Gmail (the Gmail connector) and LinkedIn (PrepBoard's built-in browser) with the user's local Claude Code
+/// and keeps Roles up to date: new applications, recruiters, stage changes and scheduled interviews.
+/// Read-only: it never sends, replies, applies or changes anything on those sites.
 @MainActor
 @Observable
 final class JobSync {
@@ -134,12 +134,14 @@ final class JobSync {
 
     private var container: ModelContainer?
     private weak var claude: ClaudeCode?
+    private weak var browser: BrowserServer?
     private var timer: Timer?
 
-    /// Starts the schedule: a sync whenever one is due, checked every 15 minutes while the app is open.
-    func attach(container: ModelContainer, claude: ClaudeCode) {
+    /// Starts the schedule: a sync whenever one is due, checked every 15 minutes while the app is open. `browser` is the built-in browser's MCP server.
+    func attach(container: ModelContainer, claude: ClaudeCode, browser: BrowserServer) {
         self.container = container
         self.claude = claude
+        self.browser = browser
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 15 * 60, repeats: true) { [weak self] _ in
@@ -157,16 +159,21 @@ final class JobSync {
     func run() async {
         guard !isRunning, let container, let claude else { return }
         guard claude.isReady else { error = "Connect Claude Code in Profile to sync Gmail and LinkedIn."; return }
+        guard !claude.busy else { error = "Another Claude run is using the browser; wait for it to finish."; return }
+        guard let browser, browser.isRunning else { error = "The built-in browser couldn't start"; return }
         isRunning = true
         error = nil
         claude.busy = true
         defer { isRunning = false; claude.busy = false }
+        browser.reset()
 
         let context = container.mainContext
         let roles = (try? context.fetch(FetchDescriptor<Role>())) ?? []
         let since = lastRun.map { $0.addingTimeInterval(-2 * 86400) } ?? Calendar.current.date(byAdding: .day, value: -60, to: .now)!
         do {
-            let found = try await Self.check(prompt: Self.prompt(since: since, roles: roles))
+            // Read-only browser tools, and not strict: strict mode would drop the Gmail and Calendar connectors.
+            let found = try await Self.check(prompt: Self.prompt(since: since, roles: roles),
+                                             browserFlags: browser.claudeFlags(extraTools: Self.connectorTools, readOnly: true, strict: false))
             let result = try JobMerge.apply(found, to: context)
             lastRun = .now
             lastSummary = result.summary
@@ -184,14 +191,8 @@ final class JobSync {
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "interview-\(role.id)", content: content, trigger: nil))
     }
 
-    /// Tools Claude may use: the Gmail/Calendar connectors, and Chrome for reading and navigating only
-    /// (no form filling, uploads or page scripts).
-    static let tools = [
-        "mcp__claude_ai_Gmail", "mcp__claude_ai_Google_Calendar",
-        "mcp__claude-in-chrome__tabs_context_mcp", "mcp__claude-in-chrome__tabs_create_mcp", "mcp__claude-in-chrome__tabs_close_mcp",
-        "mcp__claude-in-chrome__navigate", "mcp__claude-in-chrome__get_page_text", "mcp__claude-in-chrome__read_page",
-        "mcp__claude-in-chrome__find", "mcp__claude-in-chrome__computer",
-    ].joined(separator: " ")
+    /// The Gmail and Calendar connectors; the built-in browser's tools come from `BrowserServer.allowedTools`.
+    static let connectorTools = "mcp__claude_ai_Gmail mcp__claude_ai_Google_Calendar"
 
     static let schema = #"""
     {"type":"object","required":["jobs","notes"],"properties":{
@@ -216,13 +217,17 @@ final class JobSync {
         \(DateCoding.string(since)) (now: \(DateCoding.string(.now)), my time zone: \(TimeZone.current.identifier)).
 
         READ ONLY: never send, reply, apply, archive, label, delete, accept invites or change anything.
-        - Gmail: use the Gmail tools if available, otherwise my signed-in Chrome at https://mail.google.com. Search e.g. \
+        - Gmail: use the Gmail tools if available, otherwise skip Gmail and say so in `notes`. Search e.g. \
         `after:\(day.replacingOccurrences(of: "-", with: "/")) (application OR applied OR interview OR recruiter OR "thank you for applying" OR offer OR "next steps" OR unfortunately)` \
         and read the relevant emails. This includes LinkedIn's emails ("Your application was sent to…", InMail and message notifications).
-        - LinkedIn in Chrome: read https://www.linkedin.com/my-items/saved-jobs/?cardType=APPLIED (applied jobs) and \
-        https://www.linkedin.com/messaging/ (recruiter messages). Only read and scroll; don't press buttons that act.
+        - LinkedIn in PrepBoard's built-in browser, where I am already signed in. Use the PrepBoard browser tools (mcp__prepboard__…): \
+        navigate to a URL; read_page (interactive_only false to read a page) returns elements with refs like r12; click(ref) acts on \
+        them; after a click that changes the page call wait then read_page again; page_text for the full page text; screenshot when a \
+        page is unclear. There are no tabs: one page at a time, use back() to return to a list. Read \
+        https://www.linkedin.com/my-items/saved-jobs/?cardType=APPLIED (applied jobs) and \
+        https://www.linkedin.com/messaging/ (recruiter messages). Only read and scroll; never type, and don't press buttons that act.
         - Google Calendar tools, if available, for exact interview times.
-        If a source isn't signed in or Chrome isn't connected, skip it and say so in `notes`.
+        If a source isn't signed in or its tools aren't available, skip it and say so in `notes`.
 
         Return one entry per job (merge everything about the same job). Ignore newsletters, job alerts/recommendations \
         and jobs I neither applied to nor heard from a recruiter about.
@@ -241,11 +246,12 @@ final class JobSync {
         """
     }
 
-    nonisolated static func check(prompt: String) async throws -> FoundJobs {
+    /// One headless `claude -p` call; `browserFlags` come from `BrowserServer.claudeFlags` and carry the --allowedTools list.
+    nonisolated static func check(prompt: String, browserFlags: String) async throws -> FoundJobs {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("prepboard-jobsync", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try schema.write(to: dir.appendingPathComponent("schema.json"), atomically: true, encoding: .utf8)
-        let cmd = "cd '\(dir.path)' && claude -p --chrome --output-format json --json-schema \"$(cat schema.json)\" --allowedTools \(tools) 2>/dev/null"
+        let cmd = "cd '\(dir.path)' && claude -p \(browserFlags) --output-format json --json-schema \"$(cat schema.json)\" 2>/dev/null"
         let out = await ClaudeCode.shell(cmd, stdin: prompt)
         guard let start = out.firstIndex(of: "{"),
               let obj = try? JSONSerialization.jsonObject(with: Data(out[start...].utf8)) as? [String: Any] else {

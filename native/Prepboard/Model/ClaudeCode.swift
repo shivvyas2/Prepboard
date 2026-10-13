@@ -28,7 +28,7 @@ final class ClaudeCode {
     }
     var connection: Connection = .unknown
     var isReady: Bool { enabled && { if case .connected = connection { true } else { false } }() }
-    /// True while a headless run (JobSync or JobHunt) has the shared Chrome; the schedulers wait for it.
+    /// True while a headless run (JobSync or JobHunt) has the built-in browser; the schedulers wait for it.
     var busy = false
 
     /// Checks that the `claude` CLI is installed and signed in.

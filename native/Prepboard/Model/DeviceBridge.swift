@@ -145,7 +145,10 @@ final class DeviceBridge {
             guard let c = line.firstIndex(of: ":") else { continue }
             headers[line[..<c].lowercased()] = line[line.index(after: c)...].trimmingCharacters(in: .whitespaces)
         }
-        let length = Int(headers["content-length"] ?? "0") ?? 0
+        // A negative length would trap in prefix(_:); an absurd one would never arrive. Both become an empty request the checks refuse.
+        guard let length = Int(headers["content-length"] ?? "0"), length >= 0, length <= maxBody else {
+            return Request(method: "", path: "", headers: headers, body: Data())
+        }
         let body = buf[end.upperBound...]
         guard body.count >= length else { return nil }
         return Request(method: String(parts[0]), path: String(parts[1]), headers: headers, body: Data(body.prefix(length)))

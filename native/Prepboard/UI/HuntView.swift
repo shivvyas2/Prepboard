@@ -22,6 +22,7 @@ struct HuntView: View {
                     Button("Settings") { showSettings = true }.buttonStyle(PillButtonStyle(filled: false))
                 }
                 #if os(macOS)
+                HuntBrowserCard()
                 if let settings { HuntRunCard(settings: settings) }
                 #endif
                 if leads.isEmpty {
@@ -191,7 +192,8 @@ struct LeadCard: View {
         lead.submitRequested = true
         lead.updatedAt = .now
         #if os(macOS)
-        if claude.isReady, !hunt.isRunning { Task { await hunt.submit(lead) } }
+        if claude.isReady, !hunt.isRunning, !claude.busy { Task { await hunt.submit(lead) } }   // else the queue timer picks it up
+
         #endif
     }
 
@@ -442,6 +444,122 @@ struct HuntSettingsSheet: View {
 }
 
 #if os(macOS)
+import WebKit
+
+/// The built-in browser the hunt drives: watch a run here, step in when a page needs you, or sign in to LinkedIn once.
+struct HuntBrowserCard: View {
+    @Environment(HuntBrowser.self) private var browser
+    @Environment(JobHunt.self) private var hunt
+    @State private var address = ""
+    @State private var expanded = false
+    @State private var chosen = false   // the user toggled it by hand; their choice holds for the session
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            CardHeader(title: "Browser") {
+                if browser.isLoading { ProgressView().controlSize(.small) }
+                Button(expanded ? "Hide" : "Show") { chosen = true; expanded.toggle() }
+                    .buttonStyle(PillButtonStyle(filled: false, compact: true))
+            }
+            Text(subtitle).font(.system(size: 12)).foregroundStyle(PB.muted).lineLimit(1).truncationMode(.middle)
+                .padding(.bottom, expanded ? PB.s3 : 0)
+            if expanded {
+                HStack(spacing: PB.s2) {
+                    TextField("https://", text: $address)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 13))
+                        .padding(.horizontal, PB.s3).frame(height: PB.controlHeight(compact: true))
+                        .background(RoundedRectangle(cornerRadius: 12).fill(PB.surface))
+                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(PB.line))
+                        .onSubmit(go)
+                    Button("Go", action: go).buttonStyle(PillButtonStyle(compact: true))
+                    Button("Back") { Task { try? await browser.back() } }.buttonStyle(PillButtonStyle(filled: false, compact: true))
+                    Button("Sign in to LinkedIn") { load("https://www.linkedin.com/login") }.buttonStyle(PillButtonStyle(filled: false, compact: true))
+                }
+                .padding(.bottom, PB.s3)
+                HuntWebViewHost(webView: browser.webView)
+                    .frame(height: 520)
+                    .clipShape(RoundedRectangle(cornerRadius: PB.rMD, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: PB.rMD, style: .continuous).strokeBorder(PB.line))
+            }
+        }
+        .pbCard(padding: PB.s4)
+        .onAppear { if !chosen { expanded = hunt.isRunning }; address = browser.url?.absoluteString ?? "" }
+        .onChange(of: hunt.isRunning) { if hunt.isRunning { expanded = true } else if !chosen { expanded = false } }
+        .onChange(of: browser.url) { address = browser.url?.absoluteString ?? "" }
+    }
+
+    /// Title and URL of the current page, then what the hunt last did on it.
+    private var subtitle: String {
+        let page = [browser.title, browser.url?.absoluteString ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
+        let line = [page, browser.lastAction].filter { !$0.isEmpty }.joined(separator: " — ")
+        return line.isEmpty ? "Sign in to LinkedIn here once; the hunt and the LinkedIn sync use this browser." : line
+    }
+
+    private func go() {
+        let text = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        load(text.contains("://") ? text : "https://" + text)
+    }
+
+    private func load(_ string: String) {
+        guard let url = URL(string: string) else { return }
+        Task { try? await browser.navigate(url) }
+    }
+}
+
+private struct HuntWebViewHost: NSViewRepresentable {
+    let webView: WKWebView
+    func makeNSView(context: Context) -> HuntWebViewContainer { HuntWebViewContainer(webView: webView) }
+    func updateNSView(_ v: HuntWebViewContainer, context: Context) { v.adoptIfFree() }
+}
+
+/// Hosts the one shared web view. When Hunt is open in two windows the view follows the window that showed it last,
+/// and comes back to the surviving card when that window closes, instead of leaving a blank card behind.
+final class HuntWebViewContainer: NSView {
+    let webView: WKWebView
+    private var observer: NSObjectProtocol?
+
+    init(webView: WKWebView) {
+        self.webView = webView
+        super.init(frame: .zero)
+        observer = NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: nil, queue: .main) { [weak self] n in
+            MainActor.assumeIsolated {
+                guard let self, let closing = n.object as? NSWindow, closing !== self.window, self.webView.window === closing else { return }
+                self.adopt()
+            }
+        }
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    deinit { if let observer { NotificationCenter.default.removeObserver(observer) } }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window != nil { adopt() }
+    }
+
+    override func layout() {
+        super.layout()
+        if webView.superview === self { webView.frame = bounds }
+    }
+
+    /// Takes the web view when nobody on screen is showing it.
+    func adoptIfFree() {
+        guard window != nil, webView.superview !== self, webView.window?.isVisible != true else { return }
+        adopt()
+    }
+
+    private func adopt() {
+        guard window != nil, webView.superview !== self else { return }
+        webView.removeFromSuperview()
+        webView.frame = bounds
+        webView.autoresizingMask = [.width, .height]
+        addSubview(webView)
+    }
+}
+
 /// Hunt status, the daily schedule and the manual controls (like JobSyncCard).
 struct HuntRunCard: View {
     @Bindable var settings: HuntSettings
@@ -467,7 +585,7 @@ struct HuntRunCard: View {
             } else {
                 Button("Run now") { Task { await hunt.run() } }
                     .buttonStyle(PillButtonStyle(compact: true))
-                    .disabled(!claude.isReady || hunt.isRunning)
+                    .disabled(!claude.isReady || hunt.isRunning || claude.busy)
             }
         }
         .pbCard(padding: PB.s4)
@@ -475,7 +593,7 @@ struct HuntRunCard: View {
 
     private var status: String {
         switch hunt.phase {
-        case .discovering: return "Looking for jobs in Chrome… this can take a while."
+        case .discovering: return "Looking for jobs in the browser above… this can take a while."
         case .tailoring(let done, let total): return "Tailoring résumés… \(done) of \(total) done."
         case .submitting(let name): return "Submitting to \(name)…"
         case .honesty(let name): return "Checking the claims in \(name)…"
