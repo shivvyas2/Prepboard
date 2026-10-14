@@ -39,6 +39,21 @@ struct SubmitResult: Codable {
     var reason: String
     var unknown_questions: [String]
     var confirmation: String
+    var questions_only: Bool?   // true when unanswered questions were the only thing that stopped it
+}
+
+/// Answers Claude drafted for open-ended form questions (matches `JobHunt.draftSchema`).
+struct DraftResult: Codable {
+    var answers: [FormAnswer]
+    var notes: String
+}
+
+/// Education and work facts read from the résumé (and LinkedIn) for the Answer Bank (matches `JobHunt.profileSchema`).
+struct ProfileFacts: Codable {
+    var school, degree, major, graduation, gpa: String
+    var current_employer, current_title, years_experience: String
+    var education, employment: String
+    var notes: String
 }
 
 #if os(macOS)
@@ -79,7 +94,7 @@ enum HuntPrefs {
 @MainActor
 @Observable
 final class JobHunt {
-    enum Phase: Equatable { case idle, discovering, tailoring(done: Int, total: Int), submitting(String), honesty(String), editing(String) }
+    enum Phase: Equatable { case idle, discovering, tailoring(done: Int, total: Int), submitting(String), honesty(String), editing(String), readingProfile, drafting(String) }
 
     static let submitSpacing: TimeInterval = 120
     static let cooldown: TimeInterval = 7 * 86400
@@ -242,38 +257,9 @@ final class JobHunt {
         }
     }
 
-    /// The Answer Bank value for a form question, if the question is one the bank covers.
-    /// `legal` answers (plus relocation and start date) always come from the bank; the others keep a drafted answer when the bank is empty.
-    /// Citizenship, immigration status and nationality have no bank field and are always left to the user.
+    /// The Answer Bank value for a form question, if the question is one the bank covers (see `AnswerBank.rule(for:)`).
     static func bankAnswer(for question: String, bank: AnswerBank) -> (answer: String, kind: String, legal: Bool)? {
-        let q = question.lowercased()
-        func has(_ words: String...) -> Bool {
-            words.contains { q.range(of: "\\b" + NSRegularExpression.escapedPattern(for: $0), options: .regularExpression) != nil }
-        }
-        var value: String, legal = true, decline = false, blank = false
-        if has("citizen", "immigration", "nationality") { return ("", "needs_you", true) }
-        if has("sponsor", "visa") { value = bank.needsSponsorship }
-        else if has("authoriz", "authoris", "legally", "eligible to work", "right to work", "work permit") { value = bank.workAuthorization }
-        else if has("salary", "compensation", "pay expectation") { value = bank.salary; blank = true }
-        else if has("gender", "sex") { value = bank.gender; decline = true }
-        else if has("race", "ethnic") { value = bank.race; decline = true }
-        else if has("veteran", "military") { value = bank.veteran; decline = true }
-        else if has("disabilit") { value = bank.disability; decline = true }
-        else if has("relocat") { value = bank.relocation }
-        else if has("start date", "available to start", "availability", "earliest", "notice period") { value = bank.startDate }
-        else if has("linkedin") { value = bank.linkedin; legal = false }
-        else if has("github") { value = bank.github; legal = false }
-        else if has("portfolio", "website", "personal site") { value = bank.portfolio; legal = false }
-        else if has("email") { value = bank.email; legal = false }
-        else if has("phone", "telephone", "mobile number") { value = bank.phone; legal = false }
-        else if has("full name", "your name", "first name", "last name", "legal name") { value = bank.fullName; legal = false }
-        else if has("city", "where are you located", "current location", "where do you live") { value = bank.city; legal = false }
-        else if let saved = bank.saved.first(where: { $0.key.lowercased() == q })?.value { value = saved; legal = false }
-        else { return nil }
-        if !value.isEmpty { return (value, "bank", legal) }
-        if decline { return ("Decline to self-identify", "bank", legal) }
-        if blank { return ("", "bank", legal) }
-        return ("", "needs_you", legal)
+        bank.answer(for: question)
     }
 
     /// True when the posting lives on LinkedIn, so Submit needs the LinkedIn session first.
@@ -293,12 +279,7 @@ final class JobHunt {
 
     /// Fills Tailor's answers from the Answer Bank: legal questions always, the rest when the bank has a value.
     static func mergeAnswers(_ answers: [FormAnswer], bank: AnswerBank) -> [FormAnswer] {
-        answers.map { a in
-            guard let b = bankAnswer(for: a.question, bank: bank) else { return a }
-            if !b.legal, b.answer.isEmpty, a.kind == "drafted", !a.answer.isEmpty { return a }
-            var m = a; m.answer = b.answer; m.kind = b.kind
-            return m
-        }
+        bank.merge(answers)
     }
 
     // MARK: schedule
@@ -396,6 +377,86 @@ final class JobHunt {
         return result
     }
 
+    /// Reads education and work history from `tex` (and the LinkedIn profile, when the bank has its link and the built-in browser is
+    /// signed in) and fills the Answer Bank fields that are still empty. Never overwrites what the user typed. Returns the labels filled.
+    func fillHistory(tex: String, settings: HuntSettings) async throws -> [String] {
+        guard let claude, claude.isReady else { throw BrowserError.message("Connect Claude Code in Profile to read your résumé.") }
+        guard !claude.busy, phase == .idle else { throw BrowserError.message("Another Claude run is going; wait for it to finish.") }
+        phase = .readingProfile
+        claude.busy = true
+        defer { phase = .idle; claude.busy = false }
+        var bank = settings.answerBank
+        var flags: String?
+        if let huntBrowser, browser?.isRunning == true, Self.webURL(bank.linkedin) != nil,
+           LinkedInSignIn.stopMessage(await LinkedInSignIn.ensure(huntBrowser)) == nil {
+            browser?.reset()
+            flags = browser?.claudeFlags(extraTools: "", readOnly: true)
+        }
+        let facts = try await Self.check(ProfileFacts.self, prompt: Self.profilePrompt(tex: tex, linkedin: flags == nil ? "" : bank.linkedin),
+                                         schema: Self.profileSchema, browserFlags: flags, tools: "", cwd: nil)
+        let pairs: [(String, WritableKeyPath<AnswerBank, String>, String)] = [
+            ("school", \.school, facts.school), ("degree", \.degree, facts.degree), ("major", \.major, facts.major),
+            ("graduation", \.graduation, facts.graduation), ("GPA", \.gpa, facts.gpa), ("current employer", \.currentEmployer, facts.current_employer),
+            ("current title", \.currentTitle, facts.current_title), ("years of experience", \.yearsExperience, facts.years_experience),
+            ("education history", \.education, facts.education), ("employment history", \.employment, facts.employment)]
+        var filled: [String] = []
+        for (label, field, value) in pairs {
+            let v = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !v.isEmpty, bank[keyPath: field].trimmingCharacters(in: .whitespaces).isEmpty { bank[keyPath: field] = v; filled.append(label) }
+        }
+        settings.answerBank = bank
+        settings.updatedAt = .now
+        if let container {
+            Lead.applyBank(bank, to: (try? container.mainContext.fetch(FetchDescriptor<Lead>())) ?? [])
+            try? container.mainContext.save()
+        }
+        return filled
+    }
+
+    /// The Draft button on a lead: drafts every open-ended question still waiting on the user. Returns how many it answered.
+    func draftAnswers(_ lead: Lead) async -> Int {
+        guard phase == .idle, let container, let claude, claude.isReady, !claude.busy else {
+            error = "Claude is busy or not connected; try again in a moment."; return 0
+        }
+        phase = .drafting(lead.company)
+        claude.busy = true
+        defer { phase = .idle; claude.busy = false }
+        let context = container.mainContext
+        let n = await draftOpenQuestions(lead, settings: HuntSettings.current(context))
+        if n > 0, lead.status == .needsYou, lead.canSubmit, lead.onlyQuestionsFlagged {
+            lead.status = .ready; lead.flagged = ""; lead.reason = "Claude drafted \(n) answer\(n == 1 ? "" : "s"); review them, then submit."
+        }
+        try? context.save()
+        return n
+    }
+
+    /// Drafts the lead's needs_you questions that the Answer Bank does not cover (never legal ones), from my résumés, GitHub,
+    /// education and work history, and what Claude can read about the company on the web. Call with `claude.busy` already held.
+    private func draftOpenQuestions(_ lead: Lead, settings: HuntSettings) async -> Int {
+        let bank = lead.bank(settings.answerBank)
+        let open = lead.answers.filter { $0.kind == "needs_you" && AnswerBank.rule(for: $0.question) == nil }.map(\.question)
+        guard !open.isEmpty else { return 0 }
+        let folder = settings.resumeFolder
+        let tex = texPath(for: lead).flatMap { try? String(contentsOfFile: $0, encoding: .utf8) } ?? ""
+        do {
+            let result = try await Self.check(DraftResult.self, prompt: Self.draftPrompt(lead: lead, questions: open, tex: tex, github: github?.context ?? "",
+                                                                                        bank: bank, folder: folder),
+                                              schema: Self.draftSchema, browserFlags: nil, tools: Self.draftTools, cwd: folder)
+            var all = lead.answers, n = 0
+            for d in result.answers where d.kind == "drafted" {
+                let text = d.answer.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty, let i = all.firstIndex(where: { $0.kind == "needs_you" && AnswerBank.normalized($0.question) == AnswerBank.normalized(d.question) })
+                else { continue }
+                all[i].answer = text; all[i].kind = "drafted"; n += 1
+            }
+            lead.answers = all; lead.updatedAt = .now
+            return n
+        } catch {
+            lead.reason = [lead.reason, "Couldn't draft answers: \(error.localizedDescription)"].filter { !$0.isEmpty }.joined(separator: " ")
+            return 0
+        }
+    }
+
     /// Runs `work` with the hunt held in `.editing`, so the timers start no run or submit while a hand-edited PDF is rebuilt.
     /// Nil, with `error` set, when a run is already going.
     func whileEditing<T>(_ lead: Lead, _ work: () async throws -> T) async rethrows -> T? {
@@ -443,6 +504,9 @@ final class JobHunt {
             return
         }
         rescan()
+        let all = (try? context.fetch(FetchDescriptor<Lead>())) ?? []
+        Lead.applyBank(settings.answerBank, to: all)   // answers saved since the last run
+        if settings.answerBank.needsSponsorship == "Yes" { Lead.applySponsorship(true, to: all) }
         if let github, github.repos.isEmpty, !github.username.isEmpty { await github.load() }
         let roles = (try? context.fetch(FetchDescriptor<Role>())) ?? []
         let leads = (try? context.fetch(FetchDescriptor<Lead>())) ?? []
@@ -467,6 +531,9 @@ final class JobHunt {
                                 score: Int(max(0, min(100, f.score.rounded()))), scoreReason: clean(f.score_reason))
                 if lead.score < settings.minScore { lead.status = .skipped; lead.reason = "Below match threshold"; skipped += 1 }
                 else if Self.cooldownBlocks(lead: lead, roles: roles, now: .now) { lead.status = .skipped; lead.reason = "Applied to \(lead.company) in the last 7 days"; skipped += 1 }
+                else if settings.answerBank.needsSponsorship == "Yes", let phrase = Lead.sponsorshipBlock(jd: lead.jd) {
+                    lead.status = .skipped; lead.reason = "\(Lead.sponsorshipSkipPrefix): \u{201C}\(phrase)\u{201D}"; skipped += 1
+                }
                 else { fresh.append(lead) }
                 context.insert(lead)
                 found += 1
@@ -593,7 +660,8 @@ final class JobHunt {
             Self.bump("tailored")
             rescan()
             phase = .honesty(lead.company)
-            lead.answers = Self.mergeAnswers(result.answers, bank: bank)
+            let choices = lead.answers.filter { $0.kind == "choice" }
+            lead.answers = lead.bank(bank).merge(result.answers) + choices
             await checkHonesty(lead, tex: result.tex, sources: evidence.map(\.name).filter { $0 != name }, github: githubContext, folder: folder,
                                okReason: result.notes, note: uploadNote)
             lead.updatedAt = .now
@@ -693,7 +761,7 @@ final class JobHunt {
         let settings = HuntSettings.current(context)
         guard Self.dailyCount("submitted") < settings.dailySubmitLimit else { error = "Daily submit limit reached (\(settings.dailySubmitLimit)). The queue continues tomorrow."; return }
         guard lead.canSubmit else {
-            lead.submitRequested = false; lead.status = .needsYou; lead.reason = "Fill in the remaining answers first"; lead.updatedAt = .now
+            lead.submitRequested = false; lead.status = .needsYou; lead.reason = Lead.fillAnswersReason; lead.updatedAt = .now
             try? context.save()
             return
         }
@@ -763,7 +831,20 @@ final class JobHunt {
                 case "needs_you":
                     lead.status = .needsYou; lead.flagged = result.unknown_questions.joined(separator: "\n")
                     lead.reason = result.reason.isEmpty ? "The form needs you" : result.reason
-                    lead.answers = Self.addingUnknown(result.unknown_questions, to: lead.answers)
+                    // Questions the lead already had an answer for stopped the form anyway: never loop on those.
+                    let known = Set(lead.answers.filter { $0.kind != "needs_you" }.map { AnswerBank.normalized($0.question) })
+                    let repeated = result.unknown_questions.contains { known.contains(AnswerBank.normalized($0)) }
+                    lead.answers = lead.bank(settings.answerBank).merge(Self.addingUnknown(result.unknown_questions, to: lead.answers))
+                    // Open-ended questions ("What are you proud of?") get drafted for this role; legal ones stay with the user.
+                    let drafted = await draftOpenQuestions(lead, settings: settings)
+                    if result.questions_only == true, !repeated, drafted > 0, lead.canSubmit {
+                        lead.status = .ready; lead.flagged = ""
+                        lead.reason = "Claude drafted \(drafted) answer\(drafted == 1 ? "" : "s") for this role; review them before it goes out."
+                        if HuntPrefs.keepApplying { lead.submitRequested = true; lead.reason = "Claude drafted \(drafted) answer\(drafted == 1 ? "" : "s") for this role and queued it again." }
+                        lead.updatedAt = .now; try? context.save()
+                        return
+                    }
+                    Self.notifyNeedsYou(lead)
                 default:
                     lead.status = .failed; lead.reason = result.reason.isEmpty ? "Submit failed" : result.reason
                 }
@@ -775,6 +856,14 @@ final class JobHunt {
         }
         lead.submitRequested = false; lead.updatedAt = .now
         try? context.save()
+    }
+
+    /// A stopped application also shows on Home under "Needs you"; the notification gets the user there when PrepBoard is in the background.
+    private static func notifyNeedsYou(_ lead: Lead) {
+        let content = UNMutableNotificationContent()
+        content.title = "\(lead.company) needs you"
+        content.body = lead.reason.isEmpty ? "An application stopped for your input." : lead.reason
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "needs-you-\(lead.id)", content: content, trigger: nil))
     }
 
     private static func notifySubmitted(_ lead: Lead) {
@@ -896,9 +985,9 @@ final class JobHunt {
     """#
 
     static let submitSchema = #"""
-    {"type":"object","required":["status","reason","unknown_questions","confirmation"],"properties":{
+    {"type":"object","required":["status","reason","unknown_questions","confirmation","questions_only"],"properties":{
       "status":{"type":"string","enum":["submitted","needs_you","failed"]},"reason":{"type":"string"},
-      "unknown_questions":{"type":"array","items":{"type":"string"}},"confirmation":{"type":"string"}}}
+      "unknown_questions":{"type":"array","items":{"type":"string"}},"confirmation":{"type":"string"},"questions_only":{"type":"boolean"}}}
     """#
 
     private static func bullets(_ items: [String], empty: String = "(none)") -> String {
@@ -942,7 +1031,9 @@ final class JobHunt {
         into `jd`: responsibilities, minimum and preferred qualifications, and any application questions that are visible without \
         pressing Apply or Easy Apply; never open the apply flow to read them. Plain text, no markup, keep it complete. Skip postings \
         older than 30 days, staffing-agency and recruiter reposts, roles that need a security clearance, and roles clearly above or \
-        below my level (Director, VP, Principal, intern) unless a keyword asks for them. Skip \
+        below my level (Director, VP, Principal, intern) unless a keyword asks for them. \(settings.answerBank.needsSponsorship == "Yes"
+            ? "I need visa sponsorship: skip postings that say they do not sponsor, require US citizenship or permanent residency, or need a clearance. "
+            : "")Skip \
         anything already in KNOWN below (same company and posting id, or same company and title). One entry per posting, no duplicates \
         across sources: if the same job appears on LinkedIn and the careers site, keep the careers-site link and the posting id.
 
@@ -1013,7 +1104,7 @@ final class JobHunt {
         - coverage: 8 to 15 of the JD's important requirements as {term, covered}; covered means the page now shows real evidence for it.
         - answers: only for application questions visible in the JD text below (e.g. "Why do you want to work here?", "Describe a project \
         you are proud of"). Each is {question, answer, kind, required}: kind "drafted" with an answer in first person, under 120 words, \
-        built only from my material; or kind "needs_you" with "" for legal questions. required is true when the listing says so. An empty \
+        built only from my material and specific to this company and role (name the product or team from the JD my work connects to); or kind "needs_you" with "" for legal questions. required is true when the listing says so. An empty \
         array when the listing shows no questions.
         - ledger: the HONESTY LEDGER bullets as plain strings.
         - notes: one or two sentences: which variants you took from and anything I should double-check.
@@ -1043,6 +1134,88 @@ final class JobHunt {
         """
     }
 
+    /// Files to read my variants, plus the web to learn what the company makes. No browser, no writes.
+    static let draftTools = "Read Grep Glob WebSearch WebFetch"
+
+    static func draftPrompt(lead: Lead, questions: [String], tex: String, github: String, bank: AnswerBank, folder: String) -> String {
+        let history = [("Education", bank.education), ("Employment", bank.employment), ("LinkedIn", bank.linkedin), ("GitHub", bank.github),
+                       ("Portfolio", bank.portfolio)]
+            .filter { !$0.1.isEmpty }.map { "\($0.0):\n\($0.1)" }
+        return """
+        You answer open-ended job application questions for me, written for this one role at this one company. Now: \(DateCoding.string(.now)).
+
+        HOW:
+        - First learn the company: use WebSearch and WebFetch for its products, recent launches and engineering work (its own site, \
+        engineering blog, product pages). Use what you find to make each answer specific to this company and role, e.g. connect my \
+        work to a product they ship. Facts about the company must come from what you read.
+        - Facts about me come only from my material: the résumé variants in \(folder) (Read, Grep and Glob them), the tailored résumé \
+        below, my GitHub material and my history below. Never invent a project, number, title, tool or outcome; never round up; \
+        "contributed to" never becomes "led". Pick the strongest real example for each question (for "what are you proud of", a \
+        concrete project with what I built and why it mattered).
+        - First person, plain and specific, no buzzwords, no emoji, under 150 words unless the question asks for more.
+        - Return kind "needs_you" with an empty answer for anything legal (work authorization, sponsorship, citizenship, EEO, salary), \
+        anything that asks for a file or link I have not given, and anything my material cannot honestly answer.
+        - Return one entry per question below, with the question text exactly as given. `notes`: one line on the sources you used.
+
+        THE ROLE
+        Company: \(lead.company)
+        Title: \(lead.title)
+        Location: \(lead.location)
+        Link: \(lead.link)
+        <job_description>
+        \(lead.jd)
+        </job_description>
+
+        QUESTIONS:
+        \(bullets(questions))
+
+        <tailored_resume_tex>
+        \(tex.isEmpty ? "(none yet: use the variants in the folder)" : tex)
+        </tailored_resume_tex>
+
+        \(history.joined(separator: "\n\n"))
+
+        \(github.isEmpty ? "(No GitHub material loaded.)" : github)
+        """
+    }
+
+    static let draftSchema = #"""
+    {"type":"object","required":["answers","notes"],"properties":{
+      "answers":{"type":"array","items":{"type":"object","required":["question","answer","kind","required"],
+        "properties":{"question":{"type":"string"},"answer":{"type":"string"},"kind":{"type":"string","enum":["drafted","needs_you"]},"required":{"type":"boolean"}}}},
+      "notes":{"type":"string"}}}
+    """#
+
+    static func profilePrompt(tex: String, linkedin: String) -> String {
+        let sources = linkedin.isEmpty ? "my résumé below"
+            : "my résumé below and my LinkedIn profile at \(linkedin) (open it in the browser and read the Experience and Education sections; change nothing there)"
+        return """
+        Read my education and work history for job application forms. Use only what \(sources) \
+        says. Never guess, never round up, never fill a field the sources do not state: leave it "". When the résumé and LinkedIn \
+        disagree, use the résumé. Now: \(DateCoding.string(.now)).
+
+        Fields:
+        - school, degree (e.g. "Master of Science"), major, graduation (month and year, "expected" if in the future), gpa (as written): \
+        my most recent degree.
+        - current_employer, current_title: my current job, or the most recent one if none is current.
+        - years_experience: whole years of full-time professional work, counted from the dates (internships excluded); "" if unclear.
+        - education: one line per degree, most recent first: "School | Degree, Major | Start – End | GPA if stated".
+        - employment: one line per job, most recent first: "Company | Title | Location | Start – End".
+        - notes: anything you left empty and why, briefly.
+
+        <resume_tex>
+        \(tex)
+        </resume_tex>
+        """
+    }
+
+    static let profileSchema = """
+    {"type":"object","required":["school","degree","major","graduation","gpa","current_employer","current_title","years_experience","education","employment","notes"],
+     "properties":{"school":{"type":"string"},"degree":{"type":"string"},"major":{"type":"string"},"graduation":{"type":"string"},
+      "gpa":{"type":"string"},"current_employer":{"type":"string"},"current_title":{"type":"string"},"years_experience":{"type":"string"},
+      "education":{"type":"string"},"employment":{"type":"string"},"notes":{"type":"string"}}}
+    """
+
     static func honestyPrompt(tex: String, sources: [String], github: String, folder: String) -> String {
         """
         You are the honesty checker for a new résumé variant. The file below was generated from my existing variants in the current \
@@ -1067,7 +1240,8 @@ final class JobHunt {
         """
     }
 
-    static func submitPrompt(lead: Lead, pdfPath: String, bank: AnswerBank, chrome: Bool = false) -> String {
+    static func submitPrompt(lead: Lead, pdfPath: String, bank base: AnswerBank, chrome: Bool = false) -> String {
+        let bank = lead.bank(base)
         var notes = ATS.formNotes(ATS.kind(lead.link))
         if chrome { notes = notes.replacingOccurrences(of: "upload_file", with: "file_upload") }   // the Chrome tool's name
         let target = [
@@ -1077,17 +1251,28 @@ final class JobHunt {
             "Résumé PDF to upload wherever the form asks for a résumé or CV: \(pdfPath)",
             notes.isEmpty ? nil : "Form notes for this site: \(notes)",
         ].compactMap { $0 }.joined(separator: "\n")
-        let answers = lead.answers.map { "- Q: \($0.question)\($0.required ? " (required)" : "")\n  A: \($0.answer)" }
+        let answers = lead.answers.filter { $0.kind != "choice" }.map { "- Q: \($0.question)\($0.required ? " (required)" : "")\n  A: \($0.answer)" }
+        let choices = Lead.Choice.allCases.compactMap { c in lead.choice(c).map { "- \(c.rawValue): \($0)" } }
         let facts = [("Full name", bank.fullName), ("Email", bank.email), ("Phone", bank.phone), ("City / location", bank.city),
                      ("LinkedIn", bank.linkedin), ("GitHub", bank.github), ("Portfolio / website", bank.portfolio),
+                     ("Résumé link (when a form asks for a link or URL to my résumé instead of a file)", bank.resumeLink.isEmpty ? bank.portfolio : bank.resumeLink),
                      ("Work authorization", bank.workAuthorization), ("Needs visa sponsorship", bank.needsSponsorship),
+                     ("Citizenship / immigration status", bank.citizenship),
                      ("Earliest start date", bank.startDate), ("Willing to relocate", bank.relocation),
                      ("Salary expectation", bank.salary.isEmpty ? "(leave blank; if required, stop and report it)" : bank.salary),
                      ("Gender", bank.gender.isEmpty ? "Decline to self-identify" : bank.gender),
                      ("Race / ethnicity", bank.race.isEmpty ? "Decline to self-identify" : bank.race),
                      ("Veteran status", bank.veteran.isEmpty ? "Decline to self-identify" : bank.veteran),
-                     ("Disability status", bank.disability.isEmpty ? "Decline to self-identify" : bank.disability)]
+                     ("Disability status", bank.disability.isEmpty ? "Decline to self-identify" : bank.disability),
+                     ("School", bank.school), ("Degree", bank.degree), ("Major / field of study", bank.major),
+                     ("Graduation date", bank.graduation), ("GPA", bank.gpa), ("Current or most recent employer", bank.currentEmployer),
+                     ("Current or most recent job title", bank.currentTitle), ("Years of professional experience", bank.yearsExperience),
+                     ("How I heard about the job", !bank.referralSource.isEmpty ? bank.referralSource
+                        : lead.source.hasPrefix("linkedin") ? "LinkedIn" : lead.source == "careers" ? "Company careers site" : "")]
             .map { "- \($0.0): \($0.1.isEmpty ? "(unknown; if the form requires it, stop and report it)" : $0.1)" }
+        let history = [("EDUCATION HISTORY (most recent first)", bank.education), ("EMPLOYMENT HISTORY (most recent first)", bank.employment)]
+            .filter { !$0.1.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .map { "\($0.0):\n\($0.1)" }
         let saved = bank.saved.sorted { $0.key < $1.key }.map { "- Q: \($0.key)\n  A: \($0.value)" }
         return """
         You submit one job application for me in \(chrome ? "Chrome" : "PrepBoard's built-in browser"), using only the answers below. Fill \
@@ -1116,8 +1301,11 @@ final class JobHunt {
         answers below. Press Submit once. Then read the confirmation (confirmation number, "application received" message or the email \
         notice) into `confirmation` and return status "submitted". If you cannot tell whether it went through, return "needs_you" and say \
         so; never submit twice.
+        - questions_only: true when the only thing that stopped you is questions in `unknown_questions` (the form was otherwise ready \
+        and nothing else, such as a sign-in, CAPTCHA, upload or error, blocked you); false otherwise, and false when you submitted.
         - Do nothing else in the browser: no other applications, no profile edits, no messages, no saving jobs.
 
+        \(choices.isEmpty ? "" : "MY CHOICES FOR THIS ROLE (these override any answer or fact below on the same subject):\n" + choices.joined(separator: "\n") + "\n")
         APPROVED ANSWERS (questions from this posting, approved by me):
         \(bullets(answers, empty: "(none beyond the standard facts)"))
 
@@ -1126,6 +1314,7 @@ final class JobHunt {
 
         SAVED ANSWERS (reuse when the form asks the same question):
         \(bullets(saved))
+        \(history.isEmpty ? "" : "\nUse these for education and work-experience sections (add one entry per line, as the form allows):\n" + history.joined(separator: "\n\n"))
         """
     }
 

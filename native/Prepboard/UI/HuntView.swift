@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 /// Applications / Hunt: every job the Mac found, grouped by what happens next.
 struct HuntView: View {
+    @Environment(AppState.self) private var app
     @Environment(\.modelContext) private var context
     @Query(sort: [SortDescriptor(\Lead.score, order: .reverse), SortDescriptor(\Lead.foundAt, order: .reverse)]) private var leads: [Lead]
     @Query(filter: #Predicate<Doc> { $0.fileType == "pdf" }) private var pdfs: [Doc]
@@ -52,6 +53,9 @@ struct HuntView: View {
         }
         .scrollIndicators(.hidden)
         .task { if settingsRows.isEmpty { _ = HuntSettings.current(context) } }
+        .onAppear(perform: openFromHome)
+        .onChange(of: app.huntShowNeedsYou) { openFromHome() }
+        .onChange(of: app.huntShowSettings) { openFromHome() }
         .sheet(isPresented: $showSettings) { if let settings { HuntSettingsSheet(settings: settings) } }
     }
 
@@ -115,6 +119,12 @@ struct HuntView: View {
 
     private var settings: HuntSettings? { settingsRows.first }
 
+    /// Home's "Needs you" card sends the user here on the right filter, or straight into the Answer Bank.
+    private func openFromHome() {
+        if app.huntShowNeedsYou { filter = .needsYou; app.huntShowNeedsYou = false }
+        if app.huntShowSettings { app.huntShowSettings = false; if settings == nil { _ = HuntSettings.current(context) }; showSettings = true }
+    }
+
     private func items(_ status: LeadStatus) -> [Lead] {
         leads.filter { $0.status == status && filter.includes($0) }
     }
@@ -169,6 +179,7 @@ struct LeadCard: View {
     let lead: Lead
     let pdfDoc: Doc?
     @Environment(AppState.self) private var app
+    @Environment(\.modelContext) private var context
     @Environment(\.openURL) private var openURL
     #if os(macOS)
     @Environment(JobHunt.self) private var hunt
@@ -221,6 +232,7 @@ struct LeadCard: View {
                     }
                 }
             }
+            if ![.submitted, .submitting, .skipped].contains(lead.status) { choices }
             answers
             if let reviewHint {
                 Label(reviewHint, systemImage: lead.submitRequested ? "clock" : "checklist")
@@ -242,25 +254,54 @@ struct LeadCard: View {
         #endif
     }
 
-    @ViewBuilder
-    private var answers: some View {
-        let list = lead.answers
-        if !list.isEmpty {
-            VStack(alignment: .leading, spacing: PB.s2) {
-                Text("Application answers").font(.system(size: 13, weight: .semibold)).padding(.top, PB.s1)
-                ForEach(list.indices, id: \.self) { i in AnswerField(answer: list[i], text: answer(i)) }
+    /// This role's own decisions; each overrides the Answer Bank for this application only.
+    private var choices: some View {
+        let bank = HuntSettings.current(context).answerBank
+        return VStack(alignment: .leading, spacing: PB.s2) {
+            Text("Your choices for this role").font(.system(size: 13, weight: .semibold)).padding(.top, PB.s1)
+            FlowLayout(spacing: PB.s2) {
+                choicePicker("Relocate", .relocate, options: ["Yes", "No", "Open to it"], fallback: bank.relocation)
+                choicePicker("Onsite / hybrid", .onsite, options: ["Yes", "No"], fallback: "")
+            }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: PB.s2)], alignment: .leading, spacing: PB.s2) {
+                PBTextField(label: "Salary" + (bank.salary.isEmpty ? "" : " (default \(bank.salary))"), text: choiceText(.salary))
+                PBTextField(label: "Start date" + (bank.startDate.isEmpty ? "" : " (default \(bank.startDate))"), text: choiceText(.startDate))
             }
         }
     }
 
-    /// Writes one answer back into `answersJSON`; a filled-in needs_you answer becomes a drafted one, so Submit can unlock.
+    private func choicePicker(_ title: String, _ c: Lead.Choice, options: [String], fallback: String) -> some View {
+        Picker(title, selection: Binding(get: { lead.choice(c) ?? "" }, set: { lead.setChoice(c, $0) })) {
+            Text(fallback.isEmpty ? "\(title): ask me" : "\(title): default (\(fallback))").tag("")
+            ForEach(options, id: \.self) { Text("\(title): \($0)").tag($0) }
+        }
+        .pickerStyle(.menu).labelsHidden().tint(PB.ink).fixedSize()
+    }
+
+    private func choiceText(_ c: Lead.Choice) -> Binding<String> {
+        Binding(get: { lead.choice(c) ?? "" }, set: { lead.setChoice(c, $0) })
+    }
+
+    @ViewBuilder
+    private var answers: some View {
+        let list = lead.answers.indices.filter { lead.answers[$0].kind != "choice" }
+        if !list.isEmpty {
+            VStack(alignment: .leading, spacing: PB.s2) {
+                Text("Application answers").font(.system(size: 13, weight: .semibold)).padding(.top, PB.s1)
+                ForEach(list, id: \.self) { i in AnswerField(answer: lead.answers[i], text: answer(i)) }
+            }
+        }
+    }
+
+    /// Writes one answer back into `answersJSON`; a filled-in needs_you answer becomes the user's own ("yours"), so Submit can unlock
+    /// and the answer is remembered in the Answer Bank for the next form that asks.
     private func answer(_ i: Int) -> Binding<String> {
         Binding(get: { lead.answers.indices.contains(i) ? lead.answers[i].answer : "" },
                 set: { value in
                     var all = lead.answers
                     guard all.indices.contains(i) else { return }
                     all[i].answer = value
-                    if all[i].kind == "needs_you", !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { all[i].kind = "drafted" }
+                    if all[i].kind == "needs_you", !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { all[i].kind = "yours" }
                     lead.answers = all
                     lead.updatedAt = .now
                 })
@@ -280,6 +321,20 @@ struct LeadCard: View {
                         .buttonStyle(PillButtonStyle(filled: false, compact: true))
                 }
             }
+            #if os(macOS)
+            if lead.answers.contains(where: { $0.kind == "needs_you" }), ![.submitted, .submitting, .tailoring].contains(lead.status) {
+                Button("Draft answers with Claude") {
+                    if lead.submitRequested { lead.submitRequested = false; lead.updatedAt = .now }
+                    Task {
+                        let n = await hunt.draftAnswers(lead)
+                        app.message = n == 0 ? (hunt.error ?? "Nothing to draft: the remaining questions are legal or need your own answer.")
+                            : "Drafted \(n) answer\(n == 1 ? "" : "s") for \(lead.company). Review them before submitting."
+                    }
+                }
+                .buttonStyle(PillButtonStyle(filled: false, compact: true))
+                .disabled(!claude.isReady || hunt.isRunning || claude.busy)
+            }
+            #endif
             if lead.status == .submitted, !lead.roleId.isEmpty {
                 Button("Open role") { app.openRole(lead.roleId) }.buttonStyle(PillButtonStyle(compact: true))
             }
@@ -338,6 +393,7 @@ struct LeadCard: View {
 
     /// Queues the submit for the Mac; the Mac itself submits right away when Claude Code is ready and the hunt is idle.
     private func submit() {
+        rememberAnswers()
         if lead.status == .needsYou { lead.status = .ready; lead.flagged = "" }
         lead.submitRequested = true
         lead.updatedAt = .now
@@ -345,6 +401,17 @@ struct LeadCard: View {
         if claude.isReady, !hunt.isRunning, !claude.busy { Task { await hunt.submit(lead) } }   // else the queue timer picks it up
 
         #endif
+    }
+
+    /// Saves what the user typed into the Answer Bank, then re-fills every other waiting application with it.
+    private func rememberAnswers() {
+        let settings = HuntSettings.current(context)
+        let bank = settings.answerBank.remembering(lead.answers, company: lead.company)
+        guard bank != settings.answerBank else { return }
+        settings.answerBank = bank; settings.updatedAt = .now
+        let others = ((try? context.fetch(FetchDescriptor<Lead>())) ?? []).filter { $0.id != lead.id }
+        let unblocked = Lead.applyBank(bank, to: others)
+        if unblocked > 0 { app.message = "Saved your answers. \(unblocked) more application\(unblocked == 1 ? " is" : "s are") ready again." }
     }
 
     private var sourceName: String {
@@ -419,6 +486,7 @@ private struct ResumeSheet: View {
 struct HuntSettingsSheet: View {
     @Bindable var settings: HuntSettings
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
     #if os(macOS)
     @Environment(JobHunt.self) private var hunt
     @Environment(HuntBrowser.self) private var huntBrowser
@@ -433,6 +501,7 @@ struct HuntSettingsSheet: View {
     @AppStorage(HuntPrefs.keepApplyingKey) private var keepApplying = false
     @AppStorage(HuntPrefs.resumePDFKey) private var resumePDF = ""
     @State private var fillOutcome = ""
+    @State private var fillingHistory = false
     #endif
     @State private var regions: String
     @State private var companies: String
@@ -440,6 +509,7 @@ struct HuntSettingsSheet: View {
     @State private var minScore: String
     @State private var tailorLimit: String
     @State private var submitLimit: String
+    @State private var sponsorshipOutcome = ""
 
     init(settings: HuntSettings) {
         _settings = Bindable(wrappedValue: settings)
@@ -504,9 +574,10 @@ struct HuntSettingsSheet: View {
                 section("Answer Bank", trailing: {
                     #if os(macOS)
                     Button("Fill from résumé", action: fillFromResume).buttonStyle(PillButtonStyle(filled: false, compact: true))
+                        .disabled(fillingHistory || hunt.isRunning || claude.busy)
                     #endif
                 }) {
-                    Text("Legal answers are filled only from here, never drafted. Leave a field empty to decline.")
+                    Text("Legal answers are filled only from here, never drafted. Answers you type on an application are saved here for the next one. Fill from résumé reads contact details, education and work history from your résumé and LinkedIn.")
                         .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
                     #if os(macOS)
                     if !fillOutcome.isEmpty {
@@ -518,6 +589,7 @@ struct HuntSettingsSheet: View {
                               systemImage: "exclamationmark.circle")
                             .font(.system(size: 12)).foregroundStyle(PB.sunInk).fixedSize(horizontal: false, vertical: true)
                     }
+                    sponsorshipRow
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: PB.s3)], alignment: .leading, spacing: PB.s3) {
                         PBTextField(label: "Full name", text: bank(\.fullName))
                         PBTextField(label: "Email", text: bank(\.email))
@@ -526,8 +598,9 @@ struct HuntSettingsSheet: View {
                         PBTextField(label: "LinkedIn", text: bank(\.linkedin))
                         PBTextField(label: "GitHub", text: bank(\.github))
                         PBTextField(label: "Portfolio", text: bank(\.portfolio))
+                        PBTextField(label: "Résumé link (blank = portfolio)", text: bank(\.resumeLink))
                         PBTextField(label: "Work authorization", text: bank(\.workAuthorization))
-                        PBTextField(label: "Needs sponsorship (Yes / No)", text: bank(\.needsSponsorship))
+                        PBTextField(label: "Citizenship / immigration status", text: bank(\.citizenship))
                         PBTextField(label: "Start date", text: bank(\.startDate))
                         PBTextField(label: "Relocation (Yes / No / Open to it)", text: bank(\.relocation))
                         PBTextField(label: "Salary expectation", text: bank(\.salary))
@@ -535,6 +608,37 @@ struct HuntSettingsSheet: View {
                         PBTextField(label: "Race / ethnicity", text: bank(\.race))
                         PBTextField(label: "Veteran status", text: bank(\.veteran))
                         PBTextField(label: "Disability status", text: bank(\.disability))
+                        PBTextField(label: "How did you hear about us", text: bank(\.referralSource))
+                    }
+                    if [\AnswerBank.gender, \.race, \.veteran, \.disability].contains(where: { settings.answerBank[keyPath: $0].isEmpty }) {
+                        Text("Empty voluntary self-identification fields are answered \u{201C}Decline to self-identify\u{201D}. Fill them in to answer every form the same way.")
+                            .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
+                    }
+                    Text("Education and work").font(.system(size: 13, weight: .semibold)).padding(.top, PB.s2)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: PB.s3)], alignment: .leading, spacing: PB.s3) {
+                        PBTextField(label: "School", text: bank(\.school))
+                        PBTextField(label: "Degree", text: bank(\.degree))
+                        PBTextField(label: "Major", text: bank(\.major))
+                        PBTextField(label: "Graduation", text: bank(\.graduation))
+                        PBTextField(label: "GPA", text: bank(\.gpa))
+                        PBTextField(label: "Current employer", text: bank(\.currentEmployer))
+                        PBTextField(label: "Current title", text: bank(\.currentTitle))
+                        PBTextField(label: "Years of experience", text: bank(\.yearsExperience))
+                    }
+                    PBTextField(label: "Education history, one per line", text: bank(\.education), axis: .vertical)
+                    PBTextField(label: "Employment history, one per line", text: bank(\.employment), axis: .vertical)
+                    if !settings.answerBank.saved.isEmpty {
+                        Text("Saved answers (\(settings.answerBank.saved.count)): reused when a form asks the same question.")
+                            .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
+                        ForEach(settings.answerBank.saved.keys.sorted(), id: \.self) { key in
+                            HStack(alignment: .top, spacing: PB.s2) {
+                                PBTextField(label: key, text: savedAnswer(key), axis: .vertical)
+                                CircleIconButton(systemImage: "trash", size: 28, label: "Forget this answer") {
+                                    var b = settings.answerBank; b.saved[key] = nil; settings.answerBank = b
+                                }
+                                .padding(.top, 20)
+                            }
+                        }
                     }
                 }
                 #if os(macOS)
@@ -553,6 +657,7 @@ struct HuntSettingsSheet: View {
         .pbSheetFrame(minWidth: 440, idealWidth: 620, minHeight: 420, idealHeight: 720)
         #endif
         .presentationDetents([.large])
+        .onDisappear { Lead.applyBank(settings.answerBank, to: (try? context.fetch(FetchDescriptor<Lead>())) ?? []) }
         .onChange(of: regions) { settings.regions = lines(regions, commas: true) }
         .onChange(of: companies) { settings.companies = lines(companies) }
         .onChange(of: keywords) { settings.keywords = lines(keywords, commas: true) }
@@ -564,6 +669,38 @@ struct HuntSettingsSheet: View {
     /// One entry per line; with `commas`, commas split too (companies keep the "name | url" form, so newline only).
     private func lines(_ text: String, commas: Bool = false) -> [String] {
         text.split { $0 == "\n" || (commas && $0 == ",") }.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
+
+    /// One switch for sponsorship: it answers every sponsorship question and decides which fetched roles are worth applying to.
+    private var sponsorshipRow: some View {
+        VStack(alignment: .leading, spacing: PB.s1) {
+            Toggle("I need visa sponsorship, now or in the future", isOn: Binding(
+                get: { settings.answerBank.needsSponsorship == "Yes" },
+                set: { on in
+                    var b = settings.answerBank; b.needsSponsorship = on ? "Yes" : "No"; settings.answerBank = b; settings.updatedAt = .now
+                    let n = Lead.applySponsorship(on, to: (try? context.fetch(FetchDescriptor<Lead>())) ?? [])
+                    sponsorshipOutcome = n == 0 ? "" : on ? "Skipped \(n) role\(n == 1 ? "" : "s") that say they don't sponsor."
+                        : "Brought back \(n) role\(n == 1 ? "" : "s") skipped for sponsorship."
+                }))
+                .toggleStyle(CheckboxToggleStyle(labeled: true))
+            Text(settings.answerBank.needsSponsorship.isEmpty ? "Not set yet: forms that ask about sponsorship stop until you choose. Turn it on, or off to answer No."
+                 : settings.answerBank.needsSponsorship == "Yes" ? "Forms get \u{201C}Yes\u{201D}. Roles that say they don't sponsor, need US citizenship or a clearance are skipped."
+                 : "Forms get \u{201C}No\u{201D}. Every fetched role is considered.")
+                .font(.system(size: 12)).foregroundStyle(settings.answerBank.needsSponsorship.isEmpty ? PB.sunInk : PB.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            if settings.answerBank.needsSponsorship.isEmpty {
+                Button("I don't need sponsorship") { var b = settings.answerBank; b.needsSponsorship = "No"; settings.answerBank = b }
+                    .buttonStyle(PillButtonStyle(filled: false, compact: true))
+            }
+            if !sponsorshipOutcome.isEmpty {
+                Text(sponsorshipOutcome).font(.system(size: 12)).foregroundStyle(PB.ink2)
+            }
+        }
+    }
+
+    private func savedAnswer(_ key: String) -> Binding<String> {
+        Binding(get: { settings.answerBank.saved[key] ?? "" },
+                set: { value in var b = settings.answerBank; b.saved[key] = value; settings.answerBank = b })
     }
 
     private func bank(_ kp: WritableKeyPath<AnswerBank, String>) -> Binding<String> {
@@ -651,11 +788,23 @@ struct HuntSettingsSheet: View {
         guard let path, let tex = try? String(contentsOfFile: path, encoding: .utf8) else {
             fillOutcome = "No .tex résumé found in the résumé folder."; return
         }
-        let (bank, filled) = ResumeLibrary.filling(settings.answerBank, from: ResumeLibrary.contact(fromTex: tex))
+        let (bank, contact) = ResumeLibrary.filling(settings.answerBank, from: ResumeLibrary.contact(fromTex: tex))
         settings.answerBank = bank
         let file = (path as NSString).lastPathComponent
-        fillOutcome = filled.isEmpty ? "Nothing new in \(file); your answers already cover it."
-            : "Filled \(ListFormatter.localizedString(byJoining: filled)) from \(file)."
+        func outcome(_ filled: [String]) -> String {
+            filled.isEmpty ? "Nothing new in \(file); your answers already cover it." : "Filled \(ListFormatter.localizedString(byJoining: filled)) from \(file)."
+        }
+        fillOutcome = outcome(contact)
+        guard claude.isReady else {
+            fillOutcome += " Connect Claude Code to read education and work history too."; return
+        }
+        fillingHistory = true
+        fillOutcome = "Reading education and work history from \(file)" + (bank.linkedin.isEmpty ? "…" : " and LinkedIn…")
+        Task {
+            defer { fillingHistory = false }
+            do { fillOutcome = outcome(contact + (try await hunt.fillHistory(tex: tex, settings: settings))) }
+            catch { fillOutcome = outcome(contact) + " Couldn't read history: \(error.localizedDescription)" }
+        }
     }
 
     /// The stored LinkedIn sign-in: Keychain only, typed into LinkedIn's page by PrepBoard itself, never shown to Claude.
@@ -998,6 +1147,8 @@ struct HuntRunCard: View {
         case .submitting(let name): return "Submitting to \(name)…"
         case .honesty(let name): return "Checking the claims in \(name)…"
         case .editing(let name): return "Rebuilding the résumé for \(name)…"
+        case .readingProfile: return "Reading your education and work history…"
+        case .drafting(let name): return "Drafting answers for \(name)…"
         case .idle: break
         }
         if let e = hunt.error { return e }

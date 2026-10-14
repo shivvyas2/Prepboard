@@ -36,6 +36,7 @@ struct DashboardView: View {
         let sess = tasks.filter { $0.roleId == activeRole?.id }
         if width > 1100 {
             VStack(spacing: 16) {
+                NeedsYouCard()
                 HStack(alignment: .top, spacing: 16) { hero(now).frame(maxHeight: .infinity); upNext(sess, now: now).frame(width: 380) }
                     .fixedSize(horizontal: false, vertical: true)
                 stats(sess, now: now)
@@ -54,6 +55,7 @@ struct DashboardView: View {
             }
         } else {
             VStack(spacing: 16) {
+                NeedsYouCard()
                 hero(now)
                 upNext(sess, now: now)
                 stats(sess, now: now)
@@ -448,6 +450,88 @@ struct DashboardView: View {
             }
         }
         .pbCard()
+    }
+}
+
+/// Home's alerts: every application that stopped for the user, hunt runs that stopped (LinkedIn sign-in, Chrome), and Answer Bank
+/// fields whose emptiness stops forms. Hidden when nothing is waiting.
+private struct NeedsYouCard: View {
+    @Environment(AppState.self) private var app
+    @Query(sort: \Lead.updatedAt, order: .reverse) private var leads: [Lead]
+    @Query private var settingsRows: [HuntSettings]
+    #if os(macOS)
+    @Environment(JobHunt.self) private var hunt
+    #endif
+
+    private struct Item: Identifiable {
+        let id: String, icon: String, title: String, detail: String, action: String
+        let urgent: Bool
+        let open: () -> Void
+    }
+
+    private var alerts: [Item] {
+        var list: [Item] = []
+        #if os(macOS)
+        if !hunt.isRunning, let stop = hunt.lastSummary, (stop.hasPrefix("Stopped") || stop.hasPrefix("Failed")) {
+            list.append(Item(id: "hunt-run", icon: "pause.circle", title: stop.hasPrefix("Failed") ? "Hunt run failed" : "Hunt run stopped", detail: hunt.error ?? stop,
+                              action: "Open Hunt", urgent: true) { app.section = .hunt })
+        }
+        #endif
+        let waiting = leads.filter { $0.status == .needsYou || $0.status == .failed || ($0.status == .ready && !$0.flagged.isEmpty && !$0.submitRequested) }
+        for lead in waiting {
+            let open = lead.answers.filter { $0.kind == "needs_you" }.map(\.question)
+            let detail = !open.isEmpty ? "Answer: " + open.prefix(3).joined(separator: " · ") + (open.count > 3 ? " +\(open.count - 3) more" : "")
+                : [lead.reason, lead.flagged.split(separator: "\n").first.map(String.init) ?? ""].first { !$0.isEmpty } ?? "Needs your review"
+            list.append(Item(id: lead.id, icon: lead.status == .failed ? "exclamationmark.triangle" : "hand.raised",
+                              title: "\(lead.company) · \(lead.title)", detail: detail, action: lead.status == .failed ? "Retry" : "Review",
+                              urgent: lead.status != .failed) { app.huntShowNeedsYou = true; app.section = .hunt })
+        }
+        if let bank = settingsRows.first?.answerBank, !leads.isEmpty || settingsRows.first?.auto == true {
+            let missing = bank.missingStopping
+            if !missing.isEmpty {
+                list.append(Item(id: "bank", icon: "person.text.rectangle", title: "Answer Bank is missing \(missing.count) answer\(missing.count == 1 ? "" : "s")",
+                                  detail: "Forms that ask for \(ListFormatter.localizedString(byJoining: missing)) stop for you until these are filled.",
+                                  action: "Fill in", urgent: false) { app.huntShowSettings = true; app.section = .hunt })
+            }
+        }
+        return list
+    }
+
+    var body: some View {
+        let list = alerts
+        if !list.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                CardHeader(title: "Needs you", count: "\(list.count)") {
+                    Button("All in Hunt →") { app.huntShowNeedsYou = true; app.section = .hunt }
+                        .buttonStyle(PillButtonStyle(filled: false, compact: true))
+                }
+                VStack(spacing: 8) {
+                    ForEach(list.prefix(6)) { a in row(a) }
+                    if list.count > 6 {
+                        Text("\(list.count - 6) more in Hunt").font(.system(size: 12)).foregroundStyle(PB.muted)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(.top, 12)
+            }
+            .pbCard()
+        }
+    }
+
+    private func row(_ a: Item) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: a.icon).font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(a.urgent ? PB.sunInk : PB.red)
+                .frame(width: 32, height: 32)
+                .background(Circle().fill(a.urgent ? PB.sunSoft : PB.redSoft))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(a.title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                Text(a.detail).font(.system(size: 12)).foregroundStyle(PB.muted).lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Button(a.action, action: a.open).buttonStyle(PillButtonStyle(filled: false, compact: true))
+        }
     }
 }
 

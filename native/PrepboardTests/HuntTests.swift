@@ -284,15 +284,126 @@ final class HuntTests: XCTestCase {
     func testCitizenshipQuestionsAreNeverDrafted() {
         var bank = AnswerBank()
         bank.workAuthorization = "Authorized"; bank.needsSponsorship = "No"
-        bank.saved = ["What is your citizenship status?": "US citizen"]
         for q in ["What is your citizenship status?", "Immigration status", "Please state your nationality", "Are you a U.S. citizen or permanent resident?"] {
             let b = JobHunt.bankAnswer(for: q, bank: bank)
             XCTAssertEqual(b?.answer, ""); XCTAssertEqual(b?.kind, "needs_you"); XCTAssertEqual(b?.legal, true, q)
         }
-        let merged = JobHunt.mergeAnswers([FormAnswer(question: "What is your citizenship status?", answer: "US citizen", kind: "drafted", required: true),
+        var merged = JobHunt.mergeAnswers([FormAnswer(question: "What is your citizenship status?", answer: "US citizen", kind: "drafted", required: true),
                                            FormAnswer(question: "Do you require visa sponsorship?", answer: "", kind: "needs_you", required: true)], bank: bank)
         XCTAssertEqual(merged.map(\.kind), ["needs_you", "bank"])
         XCTAssertEqual(merged[0].answer, ""); XCTAssertEqual(merged[1].answer, "No")
+        // Once the bank has it, every citizenship question is answered from there, never from a draft.
+        bank.citizenship = "Citizen of India, F-1 OPT"
+        merged = JobHunt.mergeAnswers([FormAnswer(question: "Please state your nationality", answer: "US citizen", kind: "drafted", required: true)], bank: bank)
+        XCTAssertEqual(merged[0].kind, "bank"); XCTAssertEqual(merged[0].answer, "Citizen of India, F-1 OPT")
+    }
+
+    func testEducationAndWorkQuestionsUseTheBank() {
+        var bank = AnswerBank()
+        bank.school = "Pace University"; bank.degree = "Master of Science"; bank.major = "Computer Science"; bank.graduation = "May 2025"
+        bank.currentEmployer = "Luna"; bank.currentTitle = "iOS Engineer"; bank.yearsExperience = "2"; bank.referralSource = "LinkedIn"
+        let cases: [(String, String)] = [
+            ("Which school or university did you attend?", "Pace University"), ("Highest degree obtained", "Master of Science"),
+            ("Major / Field of study", "Computer Science"), ("Expected graduation date", "May 2025"),
+            ("Current employer", "Luna"), ("Current job title", "iOS Engineer"), ("Years of professional experience", "2"),
+            ("How did you hear about this position?", "LinkedIn"),
+        ]
+        for (q, expected) in cases { XCTAssertEqual(bank.answer(for: q)?.answer, expected, q) }
+        XCTAssertNil(AnswerBank.rule(for: "Describe a major accomplishment"))
+        XCTAssertNil(AnswerBank.rule(for: "How many years of experience do you have with SwiftUI?"))
+        XCTAssertEqual(AnswerBank.rule(for: "Gender identity")?.whenEmpty, .decline)
+        XCTAssertEqual(AnswerBank().answer(for: "Are you Hispanic or Latino?")?.answer, "Decline to self-identify")
+    }
+
+    func testTypedAnswersAreRememberedAndUnblockOtherLeads() {
+        var bank = AnswerBank()
+        bank.workAuthorization = "Authorized"
+        let typed = [FormAnswer(question: "Are you willing to work onsite 5 days a week?", answer: "Yes", kind: "yours", required: true),
+                     FormAnswer(question: "What is your citizenship status?", answer: "Citizen of India", kind: "yours", required: true),
+                     FormAnswer(question: "Are you legally authorized to work?", answer: "No", kind: "yours", required: true),
+                     FormAnswer(question: "Why do you want to join Apple?", answer: "Because", kind: "yours", required: true),
+                     FormAnswer(question: "Why this role?", answer: "Fit", kind: "yours", required: true),
+                     FormAnswer(question: "Cover letter", answer: "Dear", kind: "drafted", required: false)]
+        bank = bank.remembering(typed, company: "Apple")
+        XCTAssertEqual(bank.saved, ["Are you willing to work onsite 5 days a week?": "Yes"])   // posting-specific and drafted answers are not saved
+        XCTAssertEqual(bank.citizenship, "Citizen of India")                                   // empty field filled
+        XCTAssertEqual(bank.workAuthorization, "Authorized")                                   // filled field never overwritten
+
+        let stuck = Lead(company: "Google", title: "SWE", status: .needsYou)
+        stuck.answers = [FormAnswer(question: "Are you willing to work onsite 5 days a week? *", answer: "", kind: "needs_you", required: true),
+                         FormAnswer(question: "Nationality", answer: "", kind: "needs_you", required: true)]
+        stuck.flagged = "Are you willing to work onsite 5 days a week? *\nNationality"
+        let honesty = Lead(company: "Meta", title: "SWE", status: .needsYou)
+        honesty.answers = [FormAnswer(question: "Nationality", answer: "", kind: "needs_you", required: true)]
+        honesty.flagged = "\"Led a team of 10\" is not in any source"
+        XCTAssertEqual(Lead.applyBank(bank, to: [stuck, honesty]), 1)
+        XCTAssertEqual(stuck.status, .ready); XCTAssertEqual(stuck.flagged, "")
+        XCTAssertEqual(stuck.answers.map(\.answer), ["Yes", "Citizen of India"])
+        XCTAssertEqual(honesty.status, .needsYou)          // an honesty flag stays with the user
+        XCTAssertTrue(honesty.canSubmit)
+    }
+
+    func testSponsorshipJudgment() {
+        for jd in ["We are unable to sponsor visas for this role.", "This position does not offer visa sponsorship.", "No sponsorship available.",
+                   "Candidates must be authorized to work without sponsorship.", "Must be a U.S. citizen.", "Requires an active Secret clearance.",
+                   "Applicants must not now or in the future require sponsorship."] {
+            XCTAssertNotNil(Lead.sponsorshipBlock(jd: jd), jd)
+        }
+        for jd in ["We sponsor visas.", "Visa sponsorship is available.", "Will you now or in the future require sponsorship? (application question)"] {
+            XCTAssertNil(Lead.sponsorshipBlock(jd: jd), jd)
+        }
+        let blocked = Lead(company: "Defense Co", title: "SWE", jd: "US citizenship required.", status: .ready)
+        blocked.variantName = "Shiv-Vyas-Defense-SWE"
+        let fine = Lead(company: "Apple", title: "iOS", jd: "Build great apps.", status: .ready)
+        let sent = Lead(company: "Old", title: "SWE", jd: "No sponsorship.", status: .submitted)
+        XCTAssertEqual(Lead.applySponsorship(true, to: [blocked, fine, sent]), 1)
+        XCTAssertEqual(blocked.status, .skipped); XCTAssertTrue(blocked.reason.hasPrefix(Lead.sponsorshipSkipPrefix))
+        XCTAssertEqual(fine.status, .ready); XCTAssertEqual(sent.status, .submitted)
+        XCTAssertEqual(Lead.applySponsorship(false, to: [blocked, fine, sent]), 1)
+        XCTAssertEqual(blocked.status, .ready)
+    }
+
+    func testPerRoleChoicesOverrideTheBank() {
+        var bank = AnswerBank(); bank.relocation = "No"; bank.salary = ""
+        let lead = Lead(company: "Apple", title: "iOS")
+        lead.answers = [FormAnswer(question: "Are you willing to relocate?", answer: "", kind: "needs_you", required: true)]
+        lead.setChoice(.relocate, "Yes"); lead.setChoice(.salary, "150000")
+        XCTAssertEqual(lead.choice(.relocate), "Yes")
+        XCTAssertEqual(lead.bank(bank).relocation, "Yes"); XCTAssertEqual(lead.bank(bank).salary, "150000")
+        let merged = lead.bank(bank).merge(lead.answers)
+        XCTAssertEqual(merged.first { $0.question == "Are you willing to relocate?" }?.answer, "Yes")
+        XCTAssertEqual(merged.filter { $0.kind == "choice" }.count, 2)   // choices survive a merge
+        lead.setChoice(.relocate, "")
+        XCTAssertNil(lead.choice(.relocate))
+        let prompt = JobHunt.submitPrompt(lead: lead, pdfPath: "/tmp/r.pdf", bank: bank)
+        XCTAssertTrue(prompt.contains("MY CHOICES FOR THIS ROLE")); XCTAssertTrue(prompt.contains("Salary expectation: 150000"))
+    }
+
+    func testResumeLinkFallsBackToPortfolio() {
+        var bank = AnswerBank()
+        XCTAssertEqual(bank.answer(for: "Link to your resume")?.kind, "needs_you")
+        bank.portfolio = "https://shiv.dev"
+        XCTAssertEqual(bank.answer(for: "Resume URL")?.answer, "https://shiv.dev")
+        bank.resumeLink = "https://shiv.dev/resume.pdf"
+        XCTAssertEqual(bank.answer(for: "Please share a link to your CV")?.answer, "https://shiv.dev/resume.pdf")
+        XCTAssertEqual(bank.answer(for: "Portfolio website")?.answer, "https://shiv.dev")
+    }
+
+    func testDraftPromptUsesTheWebAndMyMaterialOnly() {
+        var bank = AnswerBank(); bank.employment = "Luna | iOS Engineer | NYC | 2024 – now"
+        let lead = Lead(company: "Figma", title: "iOS Engineer", jd: "Build the Figma iOS app.")
+        let prompt = JobHunt.draftPrompt(lead: lead, questions: ["What are you most proud of?"], tex: "", github: "repo: Prepboard", bank: bank, folder: "/r")
+        XCTAssertTrue(prompt.contains("WebSearch")); XCTAssertTrue(prompt.contains("What are you most proud of?"))
+        XCTAssertTrue(prompt.contains("Luna | iOS Engineer")); XCTAssertTrue(prompt.contains("Never invent"))
+        XCTAssertTrue(JobHunt.draftTools.contains("WebFetch"))
+    }
+
+    func testMissingStoppingFields() {
+        var bank = AnswerBank()
+        XCTAssertTrue(bank.missingStopping.contains("citizenship"))
+        bank.fullName = "A"; bank.email = "a@b.c"; bank.phone = "1"; bank.workAuthorization = "Yes"; bank.needsSponsorship = "No"
+        bank.citizenship = "X"; bank.startDate = "Now"; bank.relocation = "Yes"
+        XCTAssertEqual(bank.missingStopping, [])
     }
 
     func testRelocationAndStartDateAreBankOnly() {

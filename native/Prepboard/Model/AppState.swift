@@ -43,6 +43,8 @@ final class AppState {
     var showProfile = false
     var showNewPrep = false
     var showPipeline = false             // the full-screen pipeline board
+    var huntShowNeedsYou = false         // Hunt opens on its "Needs you" filter (from the Home alerts card)
+    var huntShowSettings = false         // Hunt opens its settings sheet (from the Home alerts card)
     var newPrepRoleID: String?           // planner builds the plan for this existing role (e.g. one found by job sync)
     var quizSessionID: String?
     var playingVideo: Video?
