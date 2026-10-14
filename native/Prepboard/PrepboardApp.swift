@@ -35,6 +35,7 @@ struct PrepboardApp: App {
         if let path = UserDefaults.standard.string(forKey: "PrepboardImport"), let data = try? Data(contentsOf: URL(fileURLWithPath: path)) {
             try? Transfer.importData(data, into: container.mainContext, replace: true)
         }
+        DocOrder.normalize(container.mainContext)
     }
 
     var body: some Scene {

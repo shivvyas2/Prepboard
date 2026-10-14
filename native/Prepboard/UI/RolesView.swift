@@ -98,7 +98,7 @@ struct RoleDetailView: View {
 
     var body: some View {
         let tasks = allTasks.filter { $0.roleId == role.id && !$0.isBreak }.sorted { $0.start < $1.start }
-        let docs = allDocs.filter { $0.roleId == role.id }
+        let docs = DocOrder.arranged(allDocs.filter { $0.roleId == role.id })
         let progress = allTasks.progress(for: role.id)
 
         GeometryReader { geo in

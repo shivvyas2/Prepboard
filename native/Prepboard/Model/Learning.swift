@@ -120,15 +120,16 @@ enum PlanWriter {
     /// Inserts the plan's new guides and its sessions. A ref's `doc_key` may also be "existing:<doc id>" to point at a guide the
     /// role already has. Returns the new guides with their outlines, for the caller to write.
     @discardableResult
-    static func insert(_ p: Plan, into role: Role, context: ModelContext, after: Date? = nil, orderFrom: Int = 0) -> [(Doc, Plan.Doc)] {
+    static func insert(_ p: Plan, into role: Role, context: ModelContext, after: Date? = nil) -> [(Doc, Plan.Doc)] {
         let roleId = role.id
+        let first = DocOrder.next(.guide, roleId: roleId, context: context)   // new guides continue the role's numbering
         let existing = Set(((try? context.fetch(FetchDescriptor<Doc>(predicate: #Predicate { $0.roleId == roleId }))) ?? []).map(\.id))
         var docIds: [String: String] = [:]
         var created: [(Doc, Plan.Doc)] = []
         for (i, d) in p.docs.enumerated() {
             let doc = Doc(roleId: role.id, title: d.title,
                           body: "_Writing this guide…_\n\n" + d.headings.map { "## \($0)\n" }.joined(separator: "\n"),
-                          tags: ["guide"], order: orderFrom + i)
+                          tags: ["guide"], order: first + i)
             context.insert(doc)
             docIds[d.key] = doc.id
             created.append((doc, d))

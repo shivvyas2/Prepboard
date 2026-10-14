@@ -283,6 +283,7 @@ final class Cloud {
                 applyingRemote = false
                 synced = SyncSnapshot(context: context, profile: profile)
                 status = .synced
+                if DocOrder.normalize(context) > 0 { schedulePush() }   // older apps numbered documents in shared bands
                 needsOnboarding = true
             } else {
                 applyingRemote = true
@@ -290,6 +291,7 @@ final class Cloud {
                 applyingRemote = false
                 synced = SyncSnapshot(context: context, profile: profile)
                 status = .synced
+                if DocOrder.normalize(context) > 0 { schedulePush() }   // older apps numbered documents in shared bands
             }
             lastPull = .now
         } catch {
@@ -343,6 +345,7 @@ final class Cloud {
             applyingRemote = false
             synced = SyncSnapshot(context: context, profile: profile)
             status = .synced
+            if DocOrder.normalize(context) > 0 { schedulePush() }   // older apps numbered documents in shared bands
             lastError = nil
             lastPull = .now
         } catch { applyingRemote = false; report(error) }

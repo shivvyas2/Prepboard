@@ -95,11 +95,14 @@ struct DashboardView: View {
             Text(next != nil ? "Next interview" : roles.isEmpty ? "Get started" : "No interview scheduled").pbLabelStyle()
             Text(next?.company ?? (roles.isEmpty ? "What are you preparing for?" : "No interview scheduled")).font(.pbDisplay).kerning(-1.4)
                 .fixedSize(horizontal: false, vertical: true)
-            Text(next.map { [$0.title, $0.interviewAt?.pbFull, $0.interviewNote].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ") }
-                 ?? (roles.isEmpty ? "Chat with the planner: tell it the role and paste the job posting, and it builds your timeline, sessions and study guides."
-                                   : "Add an interview date to a role to start a countdown."))
-                .font(.system(size: 14)).foregroundStyle(PB.muted)
-                .fixedSize(horizontal: false, vertical: true)
+            if let next {
+                InterviewBriefView(role: next).padding(.top, 2)
+            } else {
+                Text(roles.isEmpty ? "Chat with the planner: tell it the role and paste the job posting, and it builds your timeline, sessions and study guides."
+                                   : "Add an interview date to a role to start a countdown.")
+                    .font(.system(size: 14)).foregroundStyle(PB.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let next {
                 HStack(spacing: 8) {
                     Button("Open timeline") { app.timelineRoleID = next.id; app.section = .timeline; app.scrollTarget = "now" }
@@ -457,5 +460,113 @@ struct InvertedGhostStyle: ButtonStyle {
             .overlay(Capsule().strokeBorder(Color.white.opacity(0.3)))
             .contentShape(Capsule())
             .opacity(configuration.isPressed ? 0.7 : 1)
+    }
+}
+
+/// The next interview at a glance: title and round, the key facts as pills, a join → start → end track, and the rest of the
+/// note as one line per detail.
+private struct InterviewBriefView: View {
+    let role: Role
+
+    var body: some View {
+        let brief = InterviewBrief(note: role.interviewNote)
+        VStack(alignment: .leading, spacing: PB.s3) {
+            HStack(alignment: .firstTextBaseline, spacing: PB.s2) {
+                Text(role.title).font(.system(size: 16, weight: .semibold)).foregroundStyle(PB.ink2)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !brief.round.isEmpty {
+                    Text(brief.round).font(.system(size: 12, weight: .semibold)).foregroundStyle(PB.cobalt)
+                        .lineLimit(1).fixedSize()
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(Capsule().fill(PB.cobaltSoft))
+                }
+            }
+            FlowLayout(spacing: PB.s2) {
+                if let at = role.interviewAt {
+                    fact("calendar", at.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
+                    fact("clock", brief.minutes.map { at.formatted(date: .omitted, time: .shortened) + " – " + at.addingTimeInterval(Double($0) * 60).formatted(date: .omitted, time: .shortened) }
+                         ?? at.formatted(date: .omitted, time: .shortened))
+                }
+                if let m = brief.minutes { fact("hourglass", "\(m) min") }
+                ForEach(brief.tools, id: \.self) { fact(Self.icon(tool: $0), $0) }
+            }
+            if let at = role.interviewAt, let minutes = brief.minutes { track(at: at, minutes: minutes, early: brief.earlyMinutes) }
+            if !brief.details.isEmpty {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 260), spacing: PB.s4, alignment: .top)], alignment: .leading, spacing: PB.s2) {
+                    ForEach(Array(brief.details.prefix(8).enumerated()), id: \.offset) { detail($0.element) }
+                }
+                .padding(.top, PB.s1)
+            }
+        }
+    }
+
+    private func fact(_ icon: String, _ text: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon).font(.system(size: 12, weight: .semibold)).foregroundStyle(PB.cobalt)
+            Text(text).font(.system(size: 13, weight: .medium)).foregroundStyle(PB.ink)
+        }
+        .lineLimit(1).fixedSize()
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(Capsule().fill(PB.surface))
+        .overlay(Capsule().strokeBorder(PB.line))
+    }
+
+    /// Join (when the note says how early), start and end on one line.
+    private func track(at: Date, minutes: Int, early: Int?) -> some View {
+        let steps: [(String, Date)] = (early.map { [("Join from", at.addingTimeInterval(-Double($0) * 60))] } ?? [])
+            + [("Starts", at), ("Ends", at.addingTimeInterval(Double(minutes) * 60))]
+        return HStack(alignment: .top, spacing: 0) {
+            ForEach(steps.indices, id: \.self) { i in
+                let last = i == steps.count - 1
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 0) {
+                        Circle().fill(steps[i].0 == "Starts" ? PB.sun : PB.cobalt).frame(width: 10, height: 10)
+                        if !last { Rectangle().fill(PB.line2).frame(height: 2) }
+                    }
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(steps[i].0).font(.system(size: 11, weight: .medium)).foregroundStyle(PB.muted)
+                        Text(steps[i].1.formatted(date: .omitted, time: .shortened)).font(.system(size: 14, weight: .semibold)).monospacedDigit()
+                    }
+                    .lineLimit(1).fixedSize()
+                }
+                .frame(maxWidth: last ? nil : .infinity, alignment: .leading)
+            }
+        }
+        .frame(maxWidth: 440, alignment: .leading)
+    }
+
+    private func detail(_ d: InterviewBrief.Detail) -> some View {
+        HStack(alignment: .top, spacing: PB.s2) {
+            Image(systemName: Self.icon(d.kind)).font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(d.kind == .warning ? PB.onSun : PB.cobalt)
+                .frame(width: 24, height: 24)
+                .background(Circle().fill(d.kind == .warning ? PB.sun : PB.cobaltSoft))
+            Text(d.text).font(.system(size: 13)).foregroundStyle(d.kind == .warning ? PB.sunInk : PB.ink2)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+                .padding(.top, 3)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private static func icon(_ kind: InterviewBrief.Kind) -> String {
+        switch kind {
+        case .person: "person.fill"
+        case .contact: "envelope.fill"
+        case .phone: "phone.fill"
+        case .language: "chevron.left.forwardslash.chevron.right"
+        case .warning: "exclamationmark"
+        case .timing: "clock.fill"
+        case .info: "info"
+        }
+    }
+
+    private static func icon(tool: String) -> String {
+        switch tool {
+        case "CoderPad", "HackerRank", "CodeSignal", "Karat", "HackerEarth", "Codility": "keyboard"
+        case "Onsite", "On-site": "building.2"
+        case "Phone screen": "phone"
+        default: "video"
+        }
     }
 }

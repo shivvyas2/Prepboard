@@ -349,7 +349,7 @@ final class AutoPrep {
                     .filter { !$0.isEmpty }.joined(separator: "\n\n")
             }
             let earliest = Date.now.addingTimeInterval(10 * 60)
-            let created = PlanWriter.insert(plan, into: role, context: context, after: earliest, orderFrom: (docs.map(\.order).max() ?? 0) + 1)
+            let created = PlanWriter.insert(plan, into: role, context: context, after: earliest)
             let count = ((try? context.fetch(FetchDescriptor<PrepTask>(predicate: #Predicate { $0.roleId == roleId }))) ?? [])
                 .filter { $0.start >= earliest }.count
             let line = "- \(DateCoding.string(.now).prefix(10)) · PrepBoard · Prep plan built: \(count) sessions until the interview"

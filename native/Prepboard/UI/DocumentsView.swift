@@ -18,7 +18,7 @@ struct DocumentsView: View {
         }
     }
 
-    /// Documents grouped by role (roles first, then General), ordered by guide number.
+    /// Documents grouped by role (roles first, then General), each role's in kind order (guides, essentials, …) and by number.
     private var groups: [(title: String, docs: [Doc])] {
         let byRole = Dictionary(grouping: filtered, by: \.roleId)
         var out: [(String, [Doc])] = roles.compactMap { r in byRole[r.id].map { ("\(r.company) · \(r.title)", $0) } }
@@ -26,7 +26,7 @@ struct DocumentsView: View {
         let known = Set(roles.map(\.id))
         let orphans = byRole.filter { !$0.key.isEmpty && !known.contains($0.key) }.flatMap(\.value)
         if !orphans.isEmpty { out.append(("Other", orphans)) }
-        return out.map { ($0.0, $0.1.sorted { ($0.order, $1.updatedAt) < ($1.order, $0.updatedAt) }) }
+        return out.map { ($0.0, DocOrder.arranged($0.1)) }
     }
 
     var body: some View {
@@ -104,8 +104,16 @@ struct DocumentsView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(groups, id: \.title) { group in
-                        Text(group.title).pbLabelStyle().padding(.top, 12).padding(.horizontal, 4)
-                        ForEach(group.docs) { docCard($0) }
+                        Text(group.title).font(.system(size: 14, weight: .semibold)).padding(.top, 16).padding(.horizontal, 4)
+                        let kinds = Dictionary(grouping: group.docs, by: \.kind)
+                        ForEach(kinds.keys.sorted(), id: \.self) { kind in
+                            HStack(spacing: 6) {
+                                Text(kind.title).pbLabelStyle()
+                                Text("\(kinds[kind]?.count ?? 0)").font(.system(size: 11, weight: .semibold)).foregroundStyle(PB.muted)
+                            }
+                            .padding(.top, 6).padding(.horizontal, 4)
+                            ForEach(kinds[kind] ?? []) { docCard($0) }
+                        }
                     }
                     if allDocs.isEmpty { Text("No documents.").foregroundStyle(PB.muted).padding(32) }
                 }
@@ -128,14 +136,15 @@ struct DocumentsView: View {
         let next = tasks.first { t in !t.done && t.end > .now && t.refs.contains { $0.docId == d.id } }
         return Button { app.selectedDocID = d.id; app.docEditing = false } label: {
             HStack(alignment: .top, spacing: 12) {
-                Text(d.isPDF ? "PDF" : d.tags.contains("research") ? "Rs" : String(format: "%02d", min(d.order, 99)))
-                    .font(.system(size: 12, weight: .semibold, design: .monospaced)).foregroundStyle(PB.muted)
-                    .frame(width: 24, alignment: .leading)
+                Image(systemName: d.symbol)
+                    .font(.system(size: 13, weight: .medium)).foregroundStyle(active ? PB.cobalt : PB.muted)
+                    .frame(width: 24, alignment: .leading).padding(.top, 2)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(d.title.isEmpty ? "Untitled" : d.title).font(.system(size: 14, weight: .semibold))
                         .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
-                    Text(next.map { "Next: \($0.start.formatted(.dateTime.weekday(.abbreviated))) \(TimeFmt.hm($0.start))" }
-                         ?? "Edited \(d.updatedAt.formatted(.relative(presentation: .named)))")
+                    Text((d.kind == .guide ? "Guide \(d.order) · " : "")
+                         + (next.map { "Next: \($0.start.formatted(.dateTime.weekday(.abbreviated))) \(TimeFmt.hm($0.start))" }
+                            ?? "Edited \(d.updatedAt.formatted(.relative(presentation: .named)))"))
                         .font(.system(size: 12)).foregroundStyle(PB.muted)
                 }
                 Spacer(minLength: 0)

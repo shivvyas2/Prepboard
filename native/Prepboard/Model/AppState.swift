@@ -95,6 +95,7 @@ final class AppState {
     @discardableResult
     func newDoc(_ context: ModelContext, roleId: String = "", title: String = "", body: String = "", tags: [String] = []) -> Doc {
         let d = Doc(roleId: roleId, title: title, body: body, tags: tags)
+        d.order = DocOrder.next(d.kind, roleId: roleId, context: context)
         context.insert(d)
         openDoc(d.id, edit: true)
         return d

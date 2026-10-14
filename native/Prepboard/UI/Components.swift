@@ -98,8 +98,8 @@ struct RefChip: View {
         if let doc {
             Button { app.openDoc(doc.id, heading: ref.heading) } label: {
                 HStack(spacing: 8) {
-                    Text(String(format: "%02d", min(doc.order, 99)))
-                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    Image(systemName: doc.symbol)
+                        .font(.system(size: 10, weight: .semibold))
                         .frame(width: 22, height: 22)
                         .foregroundStyle(inverted ? PB.onSun : PB.ink)
                         .background(Circle().fill(inverted ? PB.sun : PB.card))
@@ -292,7 +292,7 @@ struct SessionEditorSheet: View {
                 Text("Linked documents").pbLabelStyle()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 4) {
-                        ForEach(docs) { d in
+                        ForEach(DocOrder.arranged(docs)) { d in
                             let linked = draft.refs.contains { $0.docId == d.id }
                             Button {
                                 if linked { draft.refs.removeAll { $0.docId == d.id } }
@@ -301,7 +301,7 @@ struct SessionEditorSheet: View {
                                 HStack(spacing: 12) {
                                     Image(systemName: linked ? "checkmark.circle.fill" : "circle")
                                         .foregroundStyle(linked ? PB.cobalt : PB.line2)
-                                    Text(String(format: "%02d", min(d.order, 99))).font(.pbMono).foregroundStyle(PB.muted)
+                                    Image(systemName: d.symbol).font(.system(size: 12)).foregroundStyle(PB.muted).frame(width: 18)
                                     Text(d.title.isEmpty ? "Untitled" : d.title).font(.system(size: 13)).lineLimit(1)
                                     Spacer(minLength: 0)
                                 }
@@ -354,8 +354,8 @@ struct DocRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                Text(doc.tags.contains("research") ? "Rs" : String(format: "%02d", min(doc.order, 99)))
-                    .font(.pbMono).foregroundStyle(PB.ink2)
+                Image(systemName: doc.symbol)
+                    .font(.system(size: 14, weight: .medium)).foregroundStyle(PB.cobalt)
                     .frame(width: 36, height: 36)
                     .background(RoundedRectangle(cornerRadius: 12).fill(PB.surface))
                     .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(PB.line))
@@ -602,5 +602,26 @@ struct PipelineView: View {
         }
         .buttonStyle(.plain)
         .draggable(role.id)
+    }
+}
+
+extension Doc {
+    /// A symbol for what the document is about, from its type, tags and title; replaces the old order number.
+    var symbol: String {
+        if isPDF { return tags.contains("resume") ? "person.text.rectangle" : "doc.richtext" }
+        let t = title.lowercased()
+        func has(_ words: String...) -> Bool { words.contains { t.contains($0) } }
+        if has("start here", "read first", "overview of") { return "signpost.right.fill" }
+        if has("recap", "retro", "debrief", "review of round", "post-mortem") { return "arrow.counterclockwise" }
+        if has("game plan", "plan for", "strategy", "checklist", "day-of", "day of") { return "flag.fill" }
+        if has("system design", "architecture", "design the", "scalab") { return "square.3.layers.3d" }
+        if has("behavio", "star ", "stories", "leadership", "values") { return "person.2.fill" }
+        if has("coderpad", "coding", "problem", "leetcode", "algorithm", "data structure", "drill", "practice") { return "chevron.left.forwardslash.chevron.right" }
+        if has("question", "q&a", "faq", "ask them") { return "questionmark.bubble.fill" }
+        if tags.contains("research") || has("research", "company", "team", "culture", "product") { return "building.2.fill" }
+        if has("brief", "overview", "summary", "what to expect") { return "doc.text.magnifyingglass" }
+        if has("swift", "ios", "avkit", "avfoundation", "concurrency", "memory", "os ", "operating system", "networking") { return "cpu" }
+        if has("notes", "journal") { return "note.text" }
+        return "book.closed.fill"
     }
 }

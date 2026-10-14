@@ -182,7 +182,7 @@ struct EssentialsView: View {
     private func ensureDoc(_ t: Topic) -> Doc {
         if let d = doc(t, role: role) { return d }
         let d = Doc(roleId: role?.id ?? "", title: t.title, body: "", tags: ["essentials", "essentials:\(t.id)"],
-                    order: 100 + (Self.topics.firstIndex { $0.id == t.id } ?? 0))
+                    order: 1 + (Self.topics.firstIndex { $0.id == t.id } ?? 0))
         context.insert(d)
         try? context.save()
         return d
