@@ -28,7 +28,7 @@ struct SessionLearnRow: View {
                 if task.videos.isEmpty {
                     pill(searching ? "Searching YouTube…" : "▶ Find videos") { findVideos() }.disabled(searching)
                 }
-                if let error { Text(error).font(.system(size: 11)).foregroundStyle(inverted ? .white.opacity(0.8) : Color(hex: 0xC2410C)).lineLimit(1) }
+                if let error { Text(error).font(.system(size: 11)).foregroundStyle(inverted ? .white.opacity(0.85) : PB.red).lineLimit(1) }
             }
         }
         .padding(.top, 4)
@@ -126,7 +126,7 @@ struct QuizSheet: View {
             .overlay(alignment: .bottom) { Rectangle().fill(PB.line).frame(height: 1) }
             ScrollView { content.padding(24) }
         }
-        .frame(minWidth: 560, idealWidth: 640, minHeight: 520)
+        .pbSheetFrame(minWidth: 480, idealWidth: 640, minHeight: 420, idealHeight: 640)
         .background(PB.card)
         .task { await start() }
     }
@@ -142,9 +142,9 @@ struct QuizSheet: View {
             .frame(maxWidth: .infinity).padding(.vertical, 64)
         case .error(let msg):
             VStack(alignment: .leading, spacing: 12) {
-                Text(msg).font(.system(size: 13)).foregroundStyle(Color(hex: 0x9A3412))
+                Text(msg).font(.system(size: 13)).foregroundStyle(PB.red)
                     .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 12).fill(Color(hex: 0xFBE4D8)))
+                    .background(RoundedRectangle(cornerRadius: 12).fill(PB.redSoft))
                 Button("Try again") { Task { await start() } }.buttonStyle(PillButtonStyle())
             }
         case .question:
@@ -171,13 +171,13 @@ struct QuizSheet: View {
                         Text(String("ABCD".map { $0 }[k])).font(.system(size: 12, weight: .bold, design: .monospaced))
                             .frame(width: 24, height: 24)
                             .foregroundStyle(isRight || isWrong ? .white : PB.ink)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(isRight ? Color(hex: 0x2F7D4F) : isWrong ? Color(hex: 0xC2410C) : PB.surface))
+                            .background(RoundedRectangle(cornerRadius: 8).fill(isRight ? PB.green : isWrong ? PB.red : PB.surface))
                         Text(q.options[k]).font(.system(size: 14)).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
                         Spacer(minLength: 0)
                     }
                     .padding(12)
-                    .background(RoundedRectangle(cornerRadius: 14).fill(isRight ? Color(hex: 0xE6F3EA) : isWrong ? Color(hex: 0xFBE4D8) : PB.card))
-                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(isRight ? Color(hex: 0x2F7D4F) : isWrong ? Color(hex: 0xC2410C) : PB.line2, lineWidth: 1.5))
+                    .background(RoundedRectangle(cornerRadius: 14).fill(isRight ? PB.greenSoft : isWrong ? PB.redSoft : PB.card))
+                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(isRight ? PB.green : isWrong ? PB.red : PB.line2, lineWidth: 1.5))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -254,8 +254,8 @@ struct ResultsView: View {
                 Text("Learn more").pbLabelStyle()
                 FlowLayout(spacing: 8) {
                     ForEach(attempt.weakTopics, id: \.self) { w in
-                        Text(w).font(.system(size: 11, weight: .bold)).foregroundStyle(Color(hex: 0xC2410C))
-                            .padding(.horizontal, 8).padding(.vertical, 4).background(RoundedRectangle(cornerRadius: 8).fill(Color(hex: 0xFBE4D8)))
+                        Text(w).font(.system(size: 11, weight: .bold)).foregroundStyle(PB.red)
+                            .padding(.horizontal, 8).padding(.vertical, 4).background(RoundedRectangle(cornerRadius: 8).fill(PB.redSoft))
                     }
                 }
             }
@@ -264,9 +264,9 @@ struct ResultsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("\(k + 1). \(it.question)").font(.system(size: 13, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
                     Text((it.isCorrect ? "✓ Your answer: " : "✗ Your answer: ") + (it.chosen.flatMap { $0 < it.options.count ? it.options[$0] : nil } ?? "—"))
-                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(it.isCorrect ? Color(hex: 0x2F7D4F) : Color(hex: 0xC2410C))
+                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(it.isCorrect ? PB.green : PB.red)
                     if !it.isCorrect {
-                        Text("Correct: \(it.options[it.answer])").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color(hex: 0x2F7D4F))
+                        Text("Correct: \(it.options[it.answer])").font(.system(size: 13, weight: .semibold)).foregroundStyle(PB.green)
                     }
                     Text(it.explanation).font(.system(size: 13)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
                 }
@@ -351,10 +351,14 @@ struct ScoresView: View {
 
     private func cell(_ label: String, _ value: String, highlight: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label).pbLabelStyle()
-            Text(value).font(.system(size: 26, weight: .bold))
+            if highlight {
+                Text(label).font(.pbLabel).kerning(0.9).textCase(.uppercase).foregroundStyle(PB.onSun.opacity(0.9))
+            } else {
+                Text(label).pbLabelStyle()
+            }
+            Text(value).font(.system(size: 26, weight: .bold)).foregroundStyle(highlight ? PB.onSun : PB.ink)
         }
-        .pbCard(padding: 16, fill: highlight ? PB.sunSoft : PB.surface, radius: PB.rLG)
+        .pbCard(padding: 16, fill: highlight ? PB.sun : PB.surface, radius: PB.rLG)
     }
 
     private func leaderboard(_ board: [TopicScore]) -> some View {
@@ -372,7 +376,7 @@ struct ScoresView: View {
                     GeometryReader { g in
                         ZStack(alignment: .leading) {
                             Capsule().fill(PB.surface)
-                            Capsule().fill(t.pct < 70 ? Color(hex: 0xC2410C) : PB.cobalt).frame(width: g.size.width * CGFloat(t.pct) / 100)
+                            Capsule().fill(t.pct < 70 ? PB.red : PB.cobalt).frame(width: g.size.width * CGFloat(t.pct) / 100)
                         }
                     }
                     .frame(width: 160, height: 8)
@@ -405,8 +409,8 @@ struct ScoresView: View {
                     HStack {
                         Text(w.topic).font(.system(size: 14, weight: .semibold))
                         Spacer()
-                        Text("\(w.pct)%").font(.system(size: 11, weight: .bold)).foregroundStyle(Color(hex: 0xC2410C))
-                            .padding(.horizontal, 8).padding(.vertical, 4).background(RoundedRectangle(cornerRadius: 8).fill(Color(hex: 0xFBE4D8)))
+                        Text("\(w.pct)%").font(.system(size: 11, weight: .bold)).foregroundStyle(PB.red)
+                            .padding(.horizontal, 8).padding(.vertical, 4).background(RoundedRectangle(cornerRadius: 8).fill(PB.redSoft))
                     }
                     FlowLayout(spacing: 8) {
                         if let (d, h) = section { RefChip(ref: DocRef(docId: d.id, heading: h), doc: d) }

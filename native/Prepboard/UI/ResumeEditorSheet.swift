@@ -96,7 +96,7 @@ struct ResumeEditorSheet: View {
         }
         .padding(PB.s6)
         .background(PB.card)
-        .frame(minWidth: 1180, idealWidth: 1280, minHeight: 760, idealHeight: 900)
+        .pbSheetFrame(minWidth: 820, idealWidth: 1280, minHeight: 520, idealHeight: 900)
         .onAppear(perform: load)
         .onChange(of: text) { schedulePreview() }
         .onDisappear { previewTask?.cancel() }

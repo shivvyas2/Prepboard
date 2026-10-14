@@ -12,6 +12,7 @@ struct ClaudePanel: View {
     @Query private var roles: [Role]
     @State private var input = ""
     @State private var includeContext = true
+    @State private var hostWindow: NSWindow?
     @FocusState private var inputFocused: Bool
 
     private struct Context { let label: String; let text: String; let roleId: String }
@@ -42,66 +43,112 @@ struct ClaudePanel: View {
             if app.claudeTerminal {
                 ClaudeTerminalView(directory: claude.workingDirectory)
             } else {
+                transcript(ctx)
+                composer(ctx)
+            }
+        }
+        .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
+        .background(RoundedRectangle(cornerRadius: PB.rXL, style: .continuous).fill(PB.card))
+        .overlay(RoundedRectangle(cornerRadius: PB.rXL, style: .continuous).strokeBorder(PB.line))
+        .clipShape(RoundedRectangle(cornerRadius: PB.rXL, style: .continuous))
+        .shadow(color: PB.shadow.opacity(0.05), radius: 12, y: 4)
+        .background(HostWindowReader { hostWindow = $0 })
+    }
+
+    private var header: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 8) {
+                ClaudeMark().frame(width: 18, height: 18)
+                    .frame(width: 34, height: 34).background(RoundedRectangle(cornerRadius: 10).fill(PB.surface))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Claude Code").font(.system(size: 15, weight: .semibold)).foregroundStyle(PB.ink)
+                    Label(claude.workingDirectory.lastPathComponent, systemImage: "folder")
+                        .font(.pbMono).foregroundStyle(PB.muted).lineLimit(1).truncationMode(.middle)
+                        .help(claude.workingDirectory.path)
+                }
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+                if !WorkspaceManager.shared.isDetached(.claude) {
+                    CircleIconButton(systemImage: "arrow.up.right.square", size: 30, label: "Open Claude in a separate window") {
+                        WorkspaceManager.shared.open(.claude)
+                    }
+                }
+                Menu {
+                    Button("New conversation") { claude.reset() }
+                    Button("Restart terminal") { ClaudeTerminal.shared.restart(in: claude.workingDirectory) }
+                    Button("Change folder…") { claude.chooseWorkingDirectory() }
+                    Divider()
+                    Text("Chat can read files and search the web")
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .frame(width: 30, height: 30)
+                        .background(Circle().fill(PB.surface))
+                        .overlay(Circle().strokeBorder(PB.line))
+                }
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+                .accessibilityLabel("Claude options").help("Claude options")
+                CircleIconButton(systemImage: "xmark", size: 30, label: "Close Claude") {
+                    if WorkspaceManager.shared.isDetached(.claude) { hostWindow?.close() }
+                    else { app.showClaude = false }
+                }
+            }
+            HStack(spacing: 4) {
+                modeButton("Chat", icon: "bubble.left.and.bubble.right", terminal: false)
+                modeButton("Terminal", icon: "terminal", terminal: true)
+            }
+            .padding(4)
+            .background(RoundedRectangle(cornerRadius: 12).fill(PB.surface))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(PB.line))
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+        .overlay(alignment: .bottom) { Rectangle().fill(PB.line).frame(height: 1) }
+    }
+
+    private func modeButton(_ title: String, icon: String, terminal: Bool) -> some View {
+        let selected = app.claudeTerminal == terminal
+        return Button { app.claudeTerminal = terminal } label: {
+            Label(title, systemImage: icon)
+                .font(.system(size: 12, weight: selected ? .semibold : .medium))
+                .frame(maxWidth: .infinity).frame(height: 32)
+                .foregroundStyle(selected ? PB.cobalt : PB.ink2)
+                .background(RoundedRectangle(cornerRadius: 9).fill(selected ? PB.card : .clear))
+                .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(selected ? PB.cobalt.opacity(0.25) : .clear))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
+        .help(terminal ? "Run interactive Claude Code in your prep folder (⇧⌘J)" : "Ask questions with your current document or session as context")
+    }
+
+    private func transcript(_ ctx: Context?) -> some View {
+        GeometryReader { geometry in
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 20) {
                         if claude.messages.isEmpty { intro(ctx) }
                         ForEach(claude.messages) { m in bubble(m, ctx: ctx).id(m.id) }
                         if let status = claude.status {
-                            HStack(spacing: 8) { ProgressView().controlSize(.small); Text(status).font(.system(size: 12)).foregroundStyle(PB.muted) }
+                            HStack(alignment: .top, spacing: 8) {
+                                ProgressView().controlSize(.small)
+                                Text(status).font(.system(size: 12)).foregroundStyle(PB.muted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
                         if let error = claude.error {
                             Text(error).font(.system(size: 12)).foregroundStyle(PB.red)
+                                .fixedSize(horizontal: false, vertical: true)
                                 .padding(12).frame(maxWidth: .infinity, alignment: .leading)
                                 .background(RoundedRectangle(cornerRadius: 12).fill(PB.red.opacity(0.08)))
                         }
                         Color.clear.frame(height: 1).id("bottom")
                     }
+                    // Wide Markdown tables and code scroll inside the message, never widen the panel.
+                    .frame(width: max(0, geometry.size.width - 32), alignment: .leading)
                     .padding(16)
                 }
                 .onChange(of: claude.messages.last?.text) { proxy.scrollTo("bottom", anchor: .bottom) }
-            }
-            composer(ctx)
+                .onChange(of: claude.messages.count) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
         }
-        .frame(maxHeight: .infinity)
-        .background(RoundedRectangle(cornerRadius: PB.rXL, style: .continuous).fill(PB.card))
-        .overlay(RoundedRectangle(cornerRadius: PB.rXL, style: .continuous).strokeBorder(PB.line))
-        .clipShape(RoundedRectangle(cornerRadius: PB.rXL, style: .continuous))
-        .shadow(color: Color(hex: 0x3C2D14).opacity(0.07), radius: 14, y: 8)
-    }
-
-    private var header: some View {
-        HStack(spacing: 12) {
-            ClaudeMark().frame(width: 18, height: 18)
-                .frame(width: 30, height: 30).background(Circle().fill(Color(hex: 0xF5EDE4)))
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Claude Code").font(.system(size: 15, weight: .semibold))
-                Text(claude.workingDirectory.lastPathComponent).font(.pbMono).foregroundStyle(PB.muted).lineLimit(1)
-            }
-            Spacer(minLength: 0)
-            Picker("", selection: Binding(get: { app.claudeTerminal }, set: { app.claudeTerminal = $0 })) {
-                Text("Chat").tag(false)
-                Text("Terminal").tag(true)
-            }
-            .pickerStyle(.segmented).labelsHidden().fixedSize()
-            .help("Terminal runs the full Claude Code in your prep folder (⇧⌘J)")
-            if !WorkspaceManager.shared.isDetached(.claude) {
-                Button { WorkspaceManager.shared.open(.claude) } label: { Image(systemName: "macwindow.on.rectangle").frame(width: 30, height: 30) }
-                    .buttonStyle(.plain).help("Open Claude in its own window, to put it on another screen")
-            }
-            Menu {
-                Button("New conversation") { claude.reset() }
-                Button("Restart terminal") { ClaudeTerminal.shared.restart(in: claude.workingDirectory) }
-                Button("Change folder…") { claude.chooseWorkingDirectory() }
-                Divider()
-                Text("Tools allowed: read files, search the web")
-            } label: { Image(systemName: "ellipsis").frame(width: 30, height: 30) }
-            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
-            CircleIconButton(systemImage: "xmark", size: 32, label: "Close Claude") { app.showClaude = false }
-        }
-        .padding(.horizontal, 16).padding(.vertical, 12)
-        .overlay(alignment: .bottom) { Rectangle().fill(PB.line).frame(height: 1) }
     }
 
     private func intro(_ ctx: Context?) -> some View {
@@ -112,6 +159,7 @@ struct ClaudePanel: View {
             ForEach(suggestions(ctx), id: \.self) { s in
                 Button { send(s, ctx: ctx) } label: {
                     Text(s).font(.system(size: 13, weight: .medium)).multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 12).padding(.vertical, 12)
                         .background(RoundedRectangle(cornerRadius: 12).fill(PB.surface))
@@ -137,6 +185,8 @@ struct ClaudePanel: View {
         Group {
             if m.role == .user {
                 Text(m.text).font(.system(size: 13, weight: .medium)).foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .multilineTextAlignment(.leading)
                     .padding(.horizontal, 16).padding(.vertical, 12)
                     .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(PB.cobalt))
                     .frame(maxWidth: .infinity, alignment: .trailing)
@@ -146,12 +196,13 @@ struct ClaudePanel: View {
                     MarkdownView(blocks: MarkdownParser.parse(m.text))
                     if !claude.isRunning || m.id != claude.messages.last?.id {
                         HStack(spacing: 8) {
-                            Button("Save as document") { save(m, ctx: ctx) }
+                            Button { save(m, ctx: ctx) } label: { Label("Save", systemImage: "doc.badge.plus") }
                                 .buttonStyle(PillButtonStyle(filled: false, compact: true))
-                            Button("Copy") {
+                                .help("Save reply as a document")
+                            Button {
                                 NSPasteboard.general.clearContents()
                                 NSPasteboard.general.setString(m.text, forType: .string)
-                            }
+                            } label: { Label("Copy", systemImage: "doc.on.doc") }
                             .buttonStyle(PillButtonStyle(filled: false, compact: true))
                         }
                     }
@@ -164,15 +215,17 @@ struct ClaudePanel: View {
         VStack(alignment: .leading, spacing: 8) {
             if let ctx, claude.sessionId == nil {
                 Toggle(isOn: $includeContext) {
-                    Text("Include \(ctx.label)").font(.system(size: 12)).foregroundStyle(PB.ink2).lineLimit(1)
+                    Text("Include \(ctx.label)").font(.system(size: 12)).foregroundStyle(PB.ink2).lineLimit(2)
                 }
                 .toggleStyle(.checkbox)
+                .help(ctx.label)
             }
             HStack(alignment: .bottom, spacing: 8) {
                 TextField("Ask Claude…", text: $input, axis: .vertical)
                     .textFieldStyle(.plain).lineLimit(1...6).font(.system(size: 14))
                     .focused($inputFocused)
                     .onSubmit { send(input, ctx: ctx) }
+                    .accessibilityLabel("Message Claude")
                     .padding(.horizontal, 16).padding(.vertical, 12)
                     .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(PB.surface))
                     .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(PB.line))
@@ -180,7 +233,7 @@ struct ClaudePanel: View {
                     CircleIconButton(systemImage: "stop.fill", size: 40, active: true, label: "Stop") { claude.stop() }
                 } else {
                     CircleIconButton(systemImage: "arrow.up", size: 40, active: true, label: "Send") { send(input, ctx: ctx) }
-                        .disabled(input.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }
@@ -190,6 +243,7 @@ struct ClaudePanel: View {
     }
 
     private func send(_ text: String, ctx: Context?) {
+        guard !claude.isRunning, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         claude.send(text, context: includeContext ? ctx?.text : nil)
         input = ""
     }

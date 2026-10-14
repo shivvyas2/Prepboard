@@ -70,7 +70,7 @@ struct AuthView: View {
                     .minimumScaleFactor(0.6)
                     .fixedSize(horizontal: false, vertical: true)
                 Text("Plan every interview on a timeline, keep your notes next to the hour you'll use them, and pick up on any device.")
-                    .foregroundStyle(.white.opacity(0.75)).fixedSize(horizontal: false, vertical: true)
+                    .foregroundStyle(.white.opacity(0.85)).fixedSize(horizontal: false, vertical: true)
             }
             HStack(spacing: -10) {
                 ForEach(0..<5) { i in
@@ -173,10 +173,10 @@ struct AuthView: View {
 
     private func banner(_ m: (ok: Bool, text: String)) -> some View {
         Text(m.text).font(.system(size: 14))
-            .foregroundStyle(m.ok ? PB.cobalt : Color(hex: 0x9A3412))
+            .foregroundStyle(m.ok ? PB.cobalt : PB.red)
             .fixedSize(horizontal: false, vertical: true)
             .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 12).fill(m.ok ? PB.cobaltSoft : Color(hex: 0xFBE4D8)))
+            .background(RoundedRectangle(cornerRadius: 12).fill(m.ok ? PB.cobaltSoft : PB.redSoft))
     }
 
     // MARK: actions

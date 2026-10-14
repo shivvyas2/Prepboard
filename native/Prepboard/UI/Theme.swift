@@ -1,32 +1,36 @@
 import SwiftUI
 
-/// Light, minimal palette (matches the web app).
+/// Shared native color and component tokens.
 extension Color {
     init(hex: UInt32) {
         self.init(red: Double((hex >> 16) & 0xFF) / 255, green: Double((hex >> 8) & 0xFF) / 255, blue: Double(hex & 0xFF) / 255)
     }
 }
 
-/// Warm beige base with cobalt blue accents and sun yellow highlights (matches the web app).
+/// Cool white surfaces, cobalt for actions and selection, orange for what needs attention now (matches the web app).
 enum PB {
-    // Warm beige base
-    static let bg = Color(hex: 0xEFE9DF)
-    static let bg2 = Color(hex: 0xE9E1D3)
-    static let surface = Color(hex: 0xF7F2EA)
-    static let card = Color(hex: 0xFFFDF9)
-    static let ink = Color(hex: 0x1D1A16)
-    static let ink2 = Color(hex: 0x4F4A42)
-    static let muted = Color(hex: 0x8C8579)
-    static let line = Color(hex: 0xE7DFD2)
-    static let line2 = Color(hex: 0xD9CFBF)
-    // Accents
-    static let cobalt = Color(hex: 0x1F4FD8)
-    static let cobaltSoft = Color(hex: 0xE5EBFB)
-    static let sun = Color(hex: 0xF7C744)
-    static let sunSoft = Color(hex: 0xEBDCAF)   // sand yellow
-    static let onSun = Color(hex: 0x2B2410)
-    static let red = Color(hex: 0xC2410C)
-    static let green = Color(hex: 0x2F7D4F)
+    // Neutral white base: a light gray page so pure-white cards stand out
+    static let bg = Color(hex: 0xF4F5F7)
+    static let bg2 = Color(hex: 0xEFF1F4)
+    static let surface = Color(hex: 0xF6F7F9)
+    static let card = Color(hex: 0xFFFFFF)
+    static let ink = Color(hex: 0x15171C)
+    static let ink2 = Color(hex: 0x474D5A)
+    static let muted = Color(hex: 0x6A7080)
+    static let line = Color(hex: 0xE8EAEE)
+    static let line2 = Color(hex: 0xD8DBE1)
+    // Accents. `sun` is the orange accent: badges, "now" and highlights.
+    static let cobalt = Color(hex: 0x1E4FE0)
+    static let cobaltSoft = Color(hex: 0xE9EFFD)
+    static let sun = Color(hex: 0xE8590C)       // deep orange: badges, "now", time left
+    static let sunSoft = Color(hex: 0xFDEBDD)
+    static let onSun = Color.white
+    static let sunInk = Color(hex: 0xB4470F)   // orange text on light backgrounds
+    static let red = Color(hex: 0xD1343B)
+    static let redSoft = Color(hex: 0xFDE8E8)
+    static let green = Color(hex: 0x1F8A5B)
+    static let greenSoft = Color(hex: 0xE3F4EC)
+    static let shadow = Color(hex: 0x1A2233)
 
     static let rXL: CGFloat = 28, rLG: CGFloat = 20, rMD: CGFloat = 14
 
@@ -35,7 +39,7 @@ enum PB {
     /// Minimum tap target (Apple HIG): 44 pt on touch screens; the Mac uses a pointer.
     #if os(iOS)
     static let minTap: CGFloat = 44
-    static func controlHeight(compact: Bool) -> CGFloat { compact ? 40 : 48 }
+    static func controlHeight(compact: Bool) -> CGFloat { compact ? 44 : 48 }
     #else
     static let minTap: CGFloat = 0
     static func controlHeight(compact: Bool) -> CGFloat { compact ? 32 : 40 }
@@ -62,7 +66,7 @@ struct CardModifier: ViewModifier {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(fill))
             .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(PB.line))
-            .shadow(color: Color(hex: 0x3C2D14).opacity(0.07), radius: 14, y: 8)
+            .shadow(color: PB.shadow.opacity(0.05), radius: 12, y: 4)
     }
 }
 
@@ -76,23 +80,28 @@ extension View {
 }
 
 struct PillButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
     var filled = true
     var compact = false
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: compact ? 13 : 14, weight: filled ? .semibold : .medium))
+            .lineLimit(1)
             .padding(.horizontal, compact ? 16 : 24)
             .frame(height: PB.controlHeight(compact: compact))
             .foregroundStyle(filled ? Color.white : PB.ink2)
-            .background(Capsule().fill(filled ? PB.cobalt : Color.clear))
+            .background(Capsule().fill(filled ? PB.cobalt : PB.card))
             .overlay(Capsule().strokeBorder(filled ? Color.clear : PB.line2))
             .contentShape(Capsule())
+            .opacity(isEnabled ? 1 : 0.45)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
 struct CircleIconButton: View {
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var hovering = false
     let systemImage: String
     var size: CGFloat = 44
     var active = false
@@ -103,13 +112,17 @@ struct CircleIconButton: View {
             Image(systemName: systemImage)
                 .font(.system(size: size * 0.38, weight: .regular))
                 .frame(width: size, height: size)
-                .foregroundStyle(active ? Color.white : PB.ink2)
-                .background(Circle().fill(active ? PB.cobalt : PB.card))
-                .overlay(Circle().strokeBorder(active ? PB.cobalt : PB.line))
+                .foregroundStyle(active ? Color.white : hovering ? PB.ink : PB.ink2)
+                .background(Circle().fill(active ? PB.cobalt : hovering ? PB.surface : PB.card))
+                .overlay(Circle().strokeBorder(active ? PB.cobalt : hovering ? PB.line2 : PB.line))
+                .shadow(color: PB.cobalt.opacity(active ? 0.28 : 0), radius: 8, y: 4)
                 // Touch: at least 44 pt to tap, even when the circle is drawn smaller.
                 .contentShape(Rectangle().inset(by: -max(0, PB.minTap - size) / 2))
         }
         .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovering)
+        .opacity(isEnabled ? 1 : 0.4)
         .accessibilityLabel(label.isEmpty ? systemImage : label)
         .help(label)
     }
@@ -211,5 +224,39 @@ extension Date {
     var pbDay: String { formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) }
     @MainActor var pbFull: String {
         "\(formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())), \(TimeFmt.hm(self)) \(formatted(.dateTime.timeZone()))"
+    }
+}
+
+// MARK: - Sheets that fit the window
+
+private struct WindowSizeKey: EnvironmentKey { static let defaultValue: CGSize = .zero }
+extension EnvironmentValues {
+    /// The main window's content size, so sheets can stay inside it. Zero until measured.
+    var pbWindowSize: CGSize {
+        get { self[WindowSizeKey.self] }
+        set { self[WindowSizeKey.self] = newValue }
+    }
+}
+
+/// Sizes a sheet to its ideal size but never larger than the window it opens over, so its close and Done buttons
+/// stay on screen in a small window. Content taller than that should scroll.
+private struct SheetFrame: ViewModifier {
+    @Environment(\.pbWindowSize) private var window
+    var minWidth: CGFloat, idealWidth: CGFloat, minHeight: CGFloat, idealHeight: CGFloat
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        let maxW = window.width > 0 ? max(320, window.width - 48) : .infinity
+        let maxH = window.height > 0 ? max(300, window.height - 48) : .infinity
+        content.frame(minWidth: min(minWidth, maxW), idealWidth: min(idealWidth, maxW), maxWidth: maxW,
+                      minHeight: min(minHeight, maxH), idealHeight: min(idealHeight, maxH), maxHeight: maxH)
+        #else
+        content
+        #endif
+    }
+}
+
+extension View {
+    func pbSheetFrame(minWidth: CGFloat = 420, idealWidth: CGFloat, minHeight: CGFloat = 360, idealHeight: CGFloat) -> some View {
+        modifier(SheetFrame(minWidth: minWidth, idealWidth: idealWidth, minHeight: minHeight, idealHeight: idealHeight))
     }
 }

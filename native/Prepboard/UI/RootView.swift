@@ -5,6 +5,7 @@ struct RootView: View {
     @Environment(AppState.self) private var app
     @Environment(Cloud.self) private var cloud
     @Environment(\.modelContext) private var context
+    @State private var windowSize: CGSize = .zero
     #if os(macOS)
     @Environment(ClaudeCode.self) private var claude
     @Environment(WorkspaceManager.self) private var workspace
@@ -32,11 +33,17 @@ struct RootView: View {
         .foregroundStyle(PB.ink)
         .tint(PB.cobalt)
         .modifier(AppSheets())
+        .background(GeometryReader { g in
+            Color.clear
+                .onAppear { windowSize = g.size }
+                .onChange(of: g.size) { windowSize = g.size }
+        })
+        .environment(\.pbWindowSize, windowSize)
         #if os(macOS)
         .background(HostWindowReader { workspace.registerMain($0) })
         .overlay(alignment: .top) {
             if let s = workspace.suggestion {
-                WorkspaceBanner(layouts: s).padding(.top, 20).padding(.horizontal, 120)
+                WorkspaceBanner(layouts: s).padding(.top, 20).padding(.horizontal, 24)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
@@ -51,88 +58,127 @@ struct RootView: View {
 
     private var wideShell: some View {
         HStack(alignment: .top, spacing: 0) {
-            // The rail scrolls when the window is short (iPad landscape, small Mac windows), so nothing is cut off.
-            GeometryReader { railGeo in
-            ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 12) {
-                PrepBoardLogo(size: 48).help("PrepBoard").padding(.bottom, 8)
-                Button { app.showProfile = true } label: {
-                    ProfileAvatar(size: 48)
-                        .padding(4)
-                        .overlay(Circle().strokeBorder(PB.line2, lineWidth: 1.5))
-                        .overlay(alignment: .topTrailing) {
-                            Circle().fill(PB.sun).frame(width: 12, height: 12)
-                                .overlay(Circle().strokeBorder(PB.bg, lineWidth: 2)).offset(x: 1, y: -1)
-                        }
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain).help("Profile")
-                .padding(.bottom, 16)
-                ForEach(Section.allCases) { s in
-                    CircleIconButton(systemImage: s.icon, size: 48, active: app.section == s, label: s.rawValue) { app.section = s }
-                        #if os(macOS)
-                        .contextMenu {
-                            Button("Open in New Window") { workspace.open(.section(s)) }
-                            if workspace.screens.count > 1 {
-                                Menu("Open on") {
-                                    ForEach(workspace.screens) { sc in Button(sc.name) { workspace.open(.section(s), on: sc) } }
-                                }
-                            }
-                        }
-                        #endif
-                }
-                Spacer()
-                #if os(macOS)
-                if claude.isReady {
-                    Button { app.showClaude.toggle() } label: {
-                        ClaudeMark().frame(width: 24, height: 24)
-                            .frame(width: 48, height: 48)
-                            .background(Circle().fill(Color(hex: 0xF5EDE4)))
-                            .overlay(Circle().strokeBorder(app.showClaude ? Color(hex: 0xD97757) : PB.line, lineWidth: app.showClaude ? 2 : 1))
-                            .contentShape(Circle())
-                    }
-                    .buttonStyle(.plain).help("Ask Claude Code (⌘J)")
-                    .contextMenu { Button("Open Claude in Its Own Window") { workspace.open(.claude) } }
-                }
-                #endif
-                CircleIconButton(systemImage: "square.and.arrow.down", size: 48, label: "Import JSON") { app.showImporter = true }
-                CircleIconButton(systemImage: "square.and.arrow.up", size: 48, label: "Export JSON") { app.prepareExport(context) }
-            }
-            .padding(.vertical, 24)
-            #if os(macOS)
-            .padding(.top, 16)
-            #endif
-            .frame(width: 80)
-            .frame(minHeight: railGeo.size.height)
-            }
-            .scrollBounceBehavior(.basedOnSize)
-            }
-            .frame(width: 80)
-
+            rail
             VStack(alignment: .leading, spacing: 24) {
                 topBar
-                HStack(alignment: .top, spacing: 16) {
-                    content.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    if let v = app.sideVideo, !videoDetached {
-                        VStack { SideVideoPanel(video: v); Spacer(minLength: 0) }
-                            .frame(width: app.showClaude ? 360 : 440)
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
-                    }
-                    #if os(macOS)
-                    if app.showClaude && claude.isReady && !workspace.isDetached(.claude) {
-                        ClaudePanel().frame(width: app.claudeTerminal ? 640 : 400).padding(.bottom, 24)
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
-                    }
-                    #endif
-                }
-                .animation(.snappy, value: app.showClaude)
-                .animation(.snappy, value: app.sideVideo)
+                workspaceContent
             }
             .padding(.top, 24).padding(.trailing, 24)
             #if os(macOS)
             .padding(.top, 12)
             #endif
         }
+    }
+
+    /// The rail scrolls when the window is short (iPad landscape, small Mac windows), so nothing is cut off.
+    private var rail: some View {
+        GeometryReader { railGeo in
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 12) {
+                    PrepBoardLogo(size: 48).help("PrepBoard").padding(.bottom, 8)
+                    Button { app.showProfile = true } label: {
+                        ProfileAvatar(size: 48)
+                            .padding(4)
+                            .overlay(Circle().strokeBorder(PB.line2, lineWidth: 1.5))
+                            .overlay(alignment: .topTrailing) {
+                                Circle().fill(PB.sun).frame(width: 12, height: 12)
+                                    .overlay(Circle().strokeBorder(PB.bg, lineWidth: 2)).offset(x: 1, y: -1)
+                            }
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain).help("Profile")
+                    .padding(.bottom, 16)
+                    ForEach(Section.allCases) { s in
+                        CircleIconButton(systemImage: s.icon, size: 48, active: app.section == s, label: s.rawValue) { app.section = s }
+                            .accessibilityAddTraits(app.section == s ? [.isSelected] : [])
+                            #if os(macOS)
+                            .contextMenu {
+                                Button("Open in New Window") { workspace.open(.section(s)) }
+                                if workspace.screens.count > 1 {
+                                    Menu("Open on") {
+                                        ForEach(workspace.screens) { sc in Button(sc.name) { workspace.open(.section(s), on: sc) } }
+                                    }
+                                }
+                            }
+                            #endif
+                    }
+                    Spacer()
+                    #if os(macOS)
+                    if claude.isReady {
+                        Button { app.showClaude.toggle() } label: {
+                            ClaudeMark().frame(width: 24, height: 24)
+                                .frame(width: 48, height: 48)
+                                .background(Circle().fill(PB.card))
+                                .overlay(Circle().strokeBorder(app.showClaude ? PB.cobalt : PB.line, lineWidth: app.showClaude ? 2 : 1))
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain).help("Ask Claude Code (⌥C)")
+                        .accessibilityLabel("Claude Code")
+                        .accessibilityAddTraits(app.showClaude ? [.isSelected] : [])
+                        .contextMenu { Button("Open Claude in Its Own Window") { workspace.open(.claude) } }
+                    }
+                    #endif
+                    CircleIconButton(systemImage: "square.and.arrow.down", size: 48, label: "Import JSON") { app.showImporter = true }
+                    CircleIconButton(systemImage: "square.and.arrow.up", size: 48, label: "Export JSON") { app.prepareExport(context) }
+                }
+                .padding(.vertical, 24)
+                #if os(macOS)
+                .padding(.top, 16)
+                #endif
+                .frame(width: 80)
+                .frame(minHeight: railGeo.size.height)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+        }
+        .frame(width: 80)
+    }
+
+    /// Claude Code floats over the page instead of docking, so the page keeps its full width and stays usable behind it.
+    private var workspaceContent: some View {
+        GeometryReader { geo in
+            let panelWidth: CGFloat = app.claudeTerminal ? 560 : 400
+            let hasVideo = app.sideVideo != nil && !videoDetached
+            let dockVideo = hasVideo && geo.size.width >= 896
+            let mainWidth = max(0, geo.size.width - (dockVideo ? 356 : 0))
+            ZStack(alignment: .topTrailing) {
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(spacing: 12) {
+                        if let video = app.sideVideo, hasVideo && !dockVideo {
+                            SideVideoPanel(video: video, compact: true)
+                                .frame(maxWidth: 320)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        content.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    }
+                    .frame(width: mainWidth, height: geo.size.height, alignment: .top)
+                    if let video = app.sideVideo, dockVideo {
+                        SideVideoPanel(video: video).frame(width: 340)
+                    }
+                }
+                #if os(macOS)
+                if claudeVisible {
+                    ClaudePanel()
+                        .frame(width: min(panelWidth, max(0, geo.size.width - 16)))
+                        .frame(maxHeight: .infinity)
+                        .padding(.bottom, 20)
+                        .shadow(color: PB.shadow.opacity(0.16), radius: 28, x: -4, y: 12)
+                        .onExitCommand { app.showClaude = false }
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+                #endif
+            }
+            .animation(.snappy, value: claudeVisible)
+            .animation(.snappy, value: app.claudeTerminal)
+            .frame(width: geo.size.width, height: geo.size.height)
+        }
+    }
+
+    private var claudeVisible: Bool {
+        #if os(macOS)
+        app.showClaude && claude.isReady && !workspace.isDetached(.claude)
+        #else
+        false
+        #endif
     }
 
     private var videoDetached: Bool {
@@ -143,38 +189,18 @@ struct RootView: View {
         #endif
     }
 
+    /// The rail is the only navigation and each page carries its own heading, so the top bar holds just search and New.
     private var topBar: some View {
         @Bindable var app = app
-        return ViewThatFits(in: .horizontal) {
-            topBarContent(showTabs: true)
-            topBarContent(showTabs: false)
-        }
-    }
-
-    private func topBarContent(showTabs: Bool) -> some View {
-        @Bindable var app = app
         return HStack(spacing: 12) {
-            if showTabs { HStack(spacing: 4) {
-                ForEach(Section.allCases) { s in
-                    Button { app.section = s } label: {
-                        Text(s.rawValue).font(.system(size: 14, weight: .medium))
-                            .padding(.horizontal, 16).frame(height: 40)
-                            .foregroundStyle(app.section == s ? Color.white : PB.ink2)
-                            .background(Capsule().fill(app.section == s ? PB.cobalt : Color.clear))
-                            .contentShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .focusEffectDisabled()
-                }
-            } }
-            Spacer(minLength: 12)
+            Spacer(minLength: 0)
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").font(.system(size: 13)).foregroundStyle(PB.muted)
                 TextField("Search roles, docs, sessions…", text: $app.searchText)
                     .textFieldStyle(.plain)
                     .onChange(of: app.searchText) { if !app.searchText.isEmpty { app.section = .search } }
             }
-            .padding(.horizontal, 16).frame(minWidth: 200, maxWidth: 360).frame(height: 44)
+            .padding(.horizontal, 16).frame(minWidth: 140, maxWidth: 360).frame(height: 44)
             .background(Capsule().fill(PB.card)).overlay(Capsule().strokeBorder(PB.line))
             newMenu
         }
@@ -201,7 +227,7 @@ struct RootView: View {
 
     #if os(iOS)
     /// iPhone tabs: the four most-used sections, then PrepBoard's own "More" (one top bar, no nested navigation).
-    private static let primaryTabs: [Section] = [.dashboard, .timeline, .practice, .documents]
+    private static let primaryTabs: [Section] = [.dashboard, .hunt, .roles, .timeline]
     private static let moreTabs: [Section] = Section.allCases.filter { !primaryTabs.contains($0) }
 
     private var compactShell: some View {
@@ -209,11 +235,11 @@ struct RootView: View {
             get: { Self.primaryTabs.contains(app.section) ? app.section.rawValue : "more" },
             set: { tag in
                 if let s = Self.primaryTabs.first(where: { $0.rawValue == tag }) { app.section = s }
-                else if Self.primaryTabs.contains(app.section) { app.section = .essentials }
+                else if Self.primaryTabs.contains(app.section) { app.section = .documents }
             })
         return TabView(selection: selection) {
             ForEach(Self.primaryTabs) { s in
-                compactPage { content }
+                compactPage { SectionContent(section: s) }
                     .tabItem { Label(s.rawValue, systemImage: s.icon) }
                     .tag(s.rawValue)
             }
@@ -224,7 +250,7 @@ struct RootView: View {
                             ForEach(Self.moreTabs) { s in
                                 Button { app.section = s } label: {
                                     Label(s.rawValue, systemImage: s.icon).font(.system(size: 14, weight: .semibold))
-                                        .padding(.horizontal, 16).frame(height: 40)
+                                        .padding(.horizontal, 16).frame(height: 44)
                                         .foregroundStyle(app.section == s ? Color.white : PB.ink)
                                         .background(Capsule().fill(app.section == s ? PB.cobalt : PB.card))
                                         .overlay(Capsule().strokeBorder(app.section == s ? Color.clear : PB.line))
@@ -234,7 +260,7 @@ struct RootView: View {
                             }
                         }
                     }
-                    content
+                    SectionContent(section: Self.moreTabs.contains(app.section) ? app.section : .documents)
                 }
             }
             .tabItem { Label("More", systemImage: "ellipsis") }
@@ -255,7 +281,7 @@ struct RootView: View {
                         .navigationBarTitleDisplayMode(.inline)
                         .toolbar {
                             ToolbarItem(placement: .principal) { PrepBoardMark().frame(width: 22, height: 26) }
-                            ToolbarItem(placement: .topBarTrailing) { newMenu.scaleEffect(0.85) }
+                            ToolbarItem(placement: .topBarTrailing) { newMenu }
                             ToolbarItem(placement: .topBarLeading) {
                                 Menu {
                                     Button("Profile") { app.showProfile = true }
@@ -279,6 +305,11 @@ struct AppSheets: ViewModifier {
         return content
             .sheet(item: $app.sessionEditor) { SessionEditorSheet(draft: $0) }
             .sheet(isPresented: $app.showProfile) { ProfileSheet() }
+            #if os(iOS)
+            .fullScreenCover(isPresented: $app.showPipeline) { PipelineScreen() }
+            #else
+            .sheet(isPresented: $app.showPipeline) { PipelineScreen() }
+            #endif
             .sheet(isPresented: $app.showNewPrep, onDismiss: { app.newPrepRoleID = nil }) { NewPrepView() }
             .sheet(item: $app.playingVideo) { VideoPlayerSheet(video: $0) }
             .sheet(item: Binding(get: { app.quizSessionID.map(IdentifiedString.init) }, set: { app.quizSessionID = $0?.id })) { QuizSheet(sessionID: $0.id) }

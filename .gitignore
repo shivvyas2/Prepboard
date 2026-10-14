@@ -21,3 +21,5 @@ node_modules/
 # Supabase keys (generated / local only)
 web/config.js
 native/Secrets.xcconfig
+native/build-*/
+*.noindex

@@ -75,13 +75,13 @@ struct PrepTimelineView: View {
     private func header(_ role: Role?) -> some View {
         HStack(alignment: .bottom, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Prep plan" + (role.map { " · \($0.company) — \($0.title)" } ?? "")).pbLabelStyle()
+                Text("Prep plan" + (role.map { " · \($0.company) · \($0.title)" } ?? "")).pbLabelStyle()
                 Text("Timeline").font(.pbDisplay).kerning(-1.4)
             }
             Spacer(minLength: 0)
             if roles.count > 1 {
                 Menu {
-                    ForEach(roles) { r in Button("\(r.company) — \(r.title)") { app.timelineRoleID = r.id } }
+                    ForEach(roles) { r in Button("\(r.company) · \(r.title)") { app.timelineRoleID = r.id } }
                 } label: {
                     Text(role?.company ?? "Role").font(.system(size: 13, weight: .medium))
                 }
@@ -114,6 +114,7 @@ struct PrepTimelineView: View {
                 Text(title).font(.system(size: 13, weight: .medium))
                 Text("\(count)").font(.pbMono).opacity(0.6)
             }
+            .lineLimit(1).fixedSize()
             .padding(.horizontal, 16).frame(height: 36)
             .foregroundStyle(on ? Color.white : PB.ink2)
             .background(Capsule().fill(on ? PB.cobalt : PB.card))
@@ -274,7 +275,8 @@ struct PrepTimelineView: View {
             .frame(width: 58, alignment: .leading)
             VStack(alignment: .leading, spacing: 4) {
                 Text("INTERVIEW").font(.pbLabel).kerning(0.9).opacity(0.55)
-                Text("\(role.company) — \(role.title)").font(.system(size: 21, weight: .bold)).kerning(-0.4)
+                Text(role.company).font(.system(size: 21, weight: .bold)).kerning(-0.4)
+                Text(role.title).font(.system(size: 14, weight: .medium)).opacity(0.75)
                 if !role.interviewNote.isEmpty { Text(role.interviewNote).opacity(0.65) }
             }
             Spacer(minLength: 0)
@@ -314,7 +316,7 @@ struct SessionCard: View {
                 Text(TimeFmt.hm(task.start)).font(.system(size: 15, weight: .semibold, design: .monospaced))
                     .foregroundStyle(st == .missed ? PB.muted : fg)
                 Text(TimeFmt.hm(task.end)).font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(current ? Color.white.opacity(0.6) : PB.muted)
+                    .foregroundStyle(current ? Color.white.opacity(0.85) : PB.muted)
             }
             .frame(width: 58, alignment: .leading)
 
@@ -322,7 +324,7 @@ struct SessionCard: View {
                 if !task.isBreak {
                     HStack(spacing: 12) {
                         KindLabel(kind: task.kind, inverted: current)
-                        Text(TimeFmt.duration(task.minutes)).font(.pbMono).foregroundStyle(current ? Color.white.opacity(0.6) : PB.muted)
+                        Text(TimeFmt.duration(task.minutes)).font(.pbMono).foregroundStyle(current ? Color.white.opacity(0.85) : PB.muted)
                         if current {
                             Text("NOW").font(.system(size: 11, weight: .bold)).foregroundStyle(PB.onSun)
                                 .padding(.horizontal, 8).padding(.vertical, 4)

@@ -12,6 +12,7 @@ struct PrepboardApp: App {
     #if os(macOS)
     @State private var deviceBridge = DeviceBridge()
     @State private var jobSync = JobSync()
+    @State private var autoPrep = AutoPrep()
     @State private var jobHunt = JobHunt()
     @State private var huntBrowser = HuntBrowser()
     @State private var browserServer = BrowserServer()
@@ -21,7 +22,12 @@ struct PrepboardApp: App {
 
     init() {
         do {
-            container = try ModelContainer(for: Role.self, Doc.self, PrepTask.self, QuizAttempt.self, Problem.self, Lead.self, HuntSettings.self)
+            if CloudConfig.isPreview {
+                container = try ModelContainer(for: Role.self, Doc.self, PrepTask.self, QuizAttempt.self, Problem.self, Lead.self, HuntSettings.self,
+                                               configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+            } else {
+                container = try ModelContainer(for: Role.self, Doc.self, PrepTask.self, QuizAttempt.self, Problem.self, Lead.self, HuntSettings.self)
+            }
         } catch {
             fatalError("Could not open the Prepboard store: \(error)")
         }
@@ -66,19 +72,21 @@ struct PrepboardApp: App {
                 #if os(macOS)
                 .environment(deviceBridge)
                 .environment(jobSync)
+                .environment(autoPrep)
                 .environment(jobHunt)
                 .environment(huntBrowser)
                 .environment(browserServer)
                 .environment(WorkspaceManager.shared)
                 .task {
+                    guard !CloudConfig.isPreview else { return }
                     // Extra windows get the same models and store as the main one (their own AppState for sections).
-                    let (profile, cloud, browser, claude, github, deviceBridge, jobSync, jobHunt, huntBrowser, browserServer, container) =
-                        (profile, cloud, browser, claude, github, deviceBridge, jobSync, jobHunt, huntBrowser, browserServer, container)
+                    let (profile, cloud, browser, claude, github, deviceBridge, jobSync, jobHunt, huntBrowser, browserServer, container, autoPrep) =
+                        (profile, cloud, browser, claude, github, deviceBridge, jobSync, jobHunt, huntBrowser, browserServer, container, autoPrep)
                     WorkspaceManager.shared.configure(app: app, claudeAvailable: { claude.isReady }) { view, state in
                         AnyView(view
                             .environment(state).environment(profile).environment(cloud).environment(browser)
                             .environment(claude).environment(github).environment(deviceBridge).environment(jobSync).environment(jobHunt)
-                            .environment(huntBrowser).environment(browserServer)
+                            .environment(autoPrep).environment(huntBrowser).environment(browserServer)
                             .environment(WorkspaceManager.shared)
                             .modelContainer(container)
                             .preferredColorScheme(.light))
@@ -86,9 +94,13 @@ struct PrepboardApp: App {
                 }
                 .task {
                     await claude.checkConnection()   // picks up an installed, signed-in Claude Code on launch
+                    // Previews and the unit-test host never start the sync, hunt or planner (they would act on the real store).
+                    guard !CloudConfig.isPreview, ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil else { return }
                     try? browserServer.start(browser: huntBrowser)   // the hunt and the LinkedIn sync refuse to run until this is up
                     _ = await browserServer.ready()   // the port arrives asynchronously; attach() below may run a sync or hunt at once
                     deviceBridge.attach(claude)
+                    jobSync.autoPrep = autoPrep
+                    autoPrep.attach(container: container, claude: claude)
                     jobSync.attach(container: container, claude: claude, browser: browserServer, huntBrowser: huntBrowser)
                     jobHunt.attach(container: container, claude: claude, cloud: cloud, github: github, browser: browserServer, huntBrowser: huntBrowser)
                 }
@@ -106,7 +118,7 @@ struct PrepboardApp: App {
                     fflush(stdout)   // stdout is block-buffered when piped; the launcher reads this line before quitting the app
                 }
                 #endif
-                .frame(minWidth: 1000, minHeight: 680)
+                .frame(minWidth: 720, minHeight: 560)
                 #endif
         }
         .modelContainer(container)
@@ -151,7 +163,7 @@ struct PrepboardCommands: Commands {
             Button("Search") { app.section = .search }
                 .keyboardShortcut("f", modifiers: .command)
             Button("Ask Claude") { app.claudeTerminal = false; app.showClaude.toggle() }
-                .keyboardShortcut("j", modifiers: .command)
+                .keyboardShortcut("c", modifiers: .option)
             Button("Claude Code Terminal") { app.claudeTerminal = true; app.showClaude = true }
                 .keyboardShortcut("j", modifiers: [.command, .shift])
         }

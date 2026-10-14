@@ -99,7 +99,7 @@ struct SearchView: View {
         var out: [Result] = []
         for r in roles {
             let blob = [r.company, r.title, r.team, r.notes, r.location, r.stageRaw].joined(separator: " ")
-            if hit(blob) { out.append(.init(id: r.id, kind: "Role", title: "\(r.company) — \(r.title)", snippet: r.notes, score: score(blob) + 50) { app.openRole(r.id) }) }
+            if hit(blob) { out.append(.init(id: r.id, kind: "Role", title: "\(r.company) · \(r.title)", snippet: r.notes, score: score(blob) + 50) { app.openRole(r.id) }) }
         }
         for t in tasks {
             let blob = t.title + " " + t.refs.map(\.heading).joined(separator: " ")

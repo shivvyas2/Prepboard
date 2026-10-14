@@ -9,35 +9,44 @@ struct HuntView: View {
     @Query private var settingsRows: [HuntSettings]
     @State private var showSettings = false
     @State private var showSkipped = false
+    @State private var filter: HuntFilter = .all
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: PB.s4) {
-                HStack(alignment: .bottom) {
-                    VStack(alignment: .leading, spacing: PB.s1) {
-                        Text("Applications").pbLabelStyle()
-                        Text("Hunt").font(.pbDisplay).kerning(-1.4)
-                    }
-                    Spacer()
-                    Button("Settings") { showSettings = true }.buttonStyle(PillButtonStyle(filled: false))
-                }
+                header
                 #if os(macOS)
-                HuntBrowserCard()
                 if let settings { HuntRunCard(settings: settings) }
+                HuntBrowserCard()
                 #endif
                 if leads.isEmpty {
-                    Text("No jobs found yet. Run the hunt on your Mac.").foregroundStyle(PB.muted)
-                        .frame(maxWidth: .infinity).padding(PB.s8).pbCard()
-                }
-                group("Ready to submit", leads.filter { $0.status == .ready })
-                group("Needs you", leads.filter { $0.status == .needsYou })
-                group("Failed", leads.filter { $0.status == .failed })
-                group("In progress", leads.filter { [.new, .tailoring, .submitting].contains($0.status) })
-                group("Submitted", leads.filter { $0.status == .submitted })
-                group("Skipped", leads.filter { $0.status == .skipped }, collapsed: !showSkipped) {
-                    Button(showSkipped ? "Hide" : "Show") { showSkipped.toggle() }.buttonStyle(PillButtonStyle(filled: false, compact: true))
+                    emptyState
+                } else {
+                    filters
+                    if !leads.contains(where: filter.includes) {
+                        VStack(alignment: .leading, spacing: PB.s2) {
+                            Text("Nothing here yet").font(.system(size: 16, weight: .semibold))
+                            Text(filter.emptyMessage).font(.system(size: 13)).foregroundStyle(PB.muted)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Button("Show all roles") { filter = .all }
+                                .buttonStyle(PillButtonStyle(filled: false, compact: true))
+                        }
+                        .pbCard(padding: PB.s4)
+                    }
+                    group("Ready to review", items(.ready))
+                    group("Needs your input", items(.needsYou))
+                    group("Needs another try", items(.failed))
+                    group("In progress", leads.filter { filter.includes($0) && [.new, .tailoring, .submitting].contains($0.status) })
+                    group("Submitted", items(.submitted))
+                    group("Skipped", items(.skipped), collapsed: filter == .all && !showSkipped) {
+                        if filter == .all {
+                            Button(showSkipped ? "Hide" : "Show") { showSkipped.toggle() }
+                                .buttonStyle(PillButtonStyle(filled: false, compact: true))
+                        }
+                    }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.bottom, PB.s8)
         }
         .scrollIndicators(.hidden)
@@ -45,7 +54,69 @@ struct HuntView: View {
         .sheet(isPresented: $showSettings) { if let settings { HuntSettingsSheet(settings: settings) } }
     }
 
+    private var header: some View {
+        VStack(alignment: .leading, spacing: PB.s3) {
+            HStack(alignment: .center, spacing: PB.s3) {
+                VStack(alignment: .leading, spacing: PB.s1) {
+                    Text("Applications").pbLabelStyle()
+                    Text("Hunt").font(.pbDisplay).kerning(-1.4)
+                }
+                Spacer(minLength: 0)
+                Button { showSettings = true } label: { Label("Settings", systemImage: "slider.horizontal.3") }
+                    .buttonStyle(PillButtonStyle(filled: false, compact: true))
+            }
+            #if os(iOS)
+            Label("Your Mac finds roles and submits what you queue here.", systemImage: "desktopcomputer")
+                .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
+            #endif
+        }
+    }
+
+    private var filters: some View {
+        VStack(alignment: .leading, spacing: PB.s2) {
+            FlowLayout(spacing: PB.s2) {
+                ForEach(HuntFilter.allCases) { item in
+                    Button { filter = item } label: {
+                        HStack(spacing: PB.s2) {
+                            Text(item.rawValue)
+                            Text("\(leads.filter(item.includes).count)")
+                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(Capsule().fill(filter == item ? Color.white.opacity(0.2) : PB.surface))
+                        }
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1).fixedSize()
+                        .foregroundStyle(filter == item ? Color.white : PB.ink2)
+                        .padding(.horizontal, PB.s3)
+                        .frame(minHeight: max(36, PB.minTap))
+                        .background(Capsule().fill(filter == item ? PB.cobalt : PB.card))
+                        .overlay(Capsule().strokeBorder(filter == item ? PB.cobalt : PB.line2))
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(item.rawValue), \(leads.filter(item.includes).count) roles")
+                    .accessibilityAddTraits(filter == item ? [.isSelected] : [])
+                }
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(alignment: .leading, spacing: PB.s3) {
+            Image(systemName: "sparkle.magnifyingglass").font(.system(size: 28)).foregroundStyle(PB.cobalt)
+            Text("No roles yet").font(.system(size: 19, weight: .semibold))
+            Text("Add target roles and a résumé folder in Settings, then run the hunt on your Mac.")
+                .font(.system(size: 14)).foregroundStyle(PB.ink2).fixedSize(horizontal: false, vertical: true)
+            Button("Set up your search") { showSettings = true }.buttonStyle(PillButtonStyle(compact: true))
+        }
+        .pbCard(padding: PB.s6)
+    }
+
     private var settings: HuntSettings? { settingsRows.first }
+
+    private func items(_ status: LeadStatus) -> [Lead] {
+        leads.filter { $0.status == status && filter.includes($0) }
+    }
 
     private func group(_ title: String, _ items: [Lead]) -> some View { group(title, items, collapsed: false) { EmptyView() } }
 
@@ -55,12 +126,39 @@ struct HuntView: View {
             VStack(alignment: .leading, spacing: 0) {
                 CardHeader(title: title, count: "\(items.count)", trailing: trailing)
                 if !collapsed {
-                    VStack(spacing: PB.s3) {
+                    LazyVStack(spacing: PB.s3) {
                         ForEach(items) { lead in LeadCard(lead: lead, pdfDoc: pdfs.first { $0.id == lead.pdfDocId }) }
                     }
                 }
             }
-            .pbCard()
+            .pbCard(padding: PB.s4)
+        }
+    }
+}
+
+private enum HuntFilter: String, CaseIterable, Identifiable {
+    case all = "All", review = "Review", needsYou = "Needs you", active = "In progress", submitted = "Submitted", skipped = "Skipped"
+    var id: String { rawValue }
+
+    func includes(_ lead: Lead) -> Bool {
+        switch self {
+        case .all: true
+        case .review: lead.status == .ready
+        case .needsYou: [.needsYou, .failed].contains(lead.status)
+        case .active: [.new, .tailoring, .submitting].contains(lead.status)
+        case .submitted: lead.status == .submitted
+        case .skipped: lead.status == .skipped
+        }
+    }
+
+    var emptyMessage: String {
+        switch self {
+        case .all: "Run a search on your Mac to find matching roles."
+        case .review: "Tailored applications will appear here when they’re ready for your review."
+        case .needsYou: "No applications need your input right now."
+        case .active: "No applications are being prepared or submitted right now."
+        case .submitted: "Applications you’ve sent will appear here, with a link to track each role."
+        case .skipped: "Roles you skip will stay here for reference."
         }
     }
 }
@@ -74,6 +172,7 @@ struct LeadCard: View {
     #if os(macOS)
     @Environment(JobHunt.self) private var hunt
     @Environment(ClaudeCode.self) private var claude
+    @AppStorage("hunt.browser") private var browserChoice: HuntBrowserChoice = .builtin
     #endif
     @State private var showPDF = false
     @State private var showEditor = false
@@ -81,7 +180,9 @@ struct LeadCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: PB.s3) {
             VStack(alignment: .leading, spacing: PB.s1) {
-                Text("\(lead.company) — \(lead.title)").font(.system(size: 15, weight: .semibold))
+                Text(lead.company).font(.system(size: 12, weight: .semibold)).foregroundStyle(PB.cobalt)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(lead.title).font(.system(size: 17, weight: .semibold))
                     .fixedSize(horizontal: false, vertical: true)
                 if !lead.location.isEmpty { Text(lead.location).font(.system(size: 12)).foregroundStyle(PB.muted) }
             }
@@ -119,6 +220,14 @@ struct LeadCard: View {
                 }
             }
             answers
+            if let reviewHint {
+                Label(reviewHint, systemImage: lead.submitRequested ? "clock" : "checklist")
+                    .font(.system(size: 12)).foregroundStyle(PB.ink2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(PB.s3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: PB.rMD).fill(PB.cobaltSoft))
+            }
             actions
         }
         .padding(PB.s4)
@@ -136,7 +245,7 @@ struct LeadCard: View {
         let list = lead.answers
         if !list.isEmpty {
             VStack(alignment: .leading, spacing: PB.s2) {
-                Text("Answers").font(.system(size: 13, weight: .semibold)).padding(.top, PB.s1)
+                Text("Application answers").font(.system(size: 13, weight: .semibold)).padding(.top, PB.s1)
                 ForEach(list.indices, id: \.self) { i in AnswerField(answer: list[i], text: answer(i)) }
             }
         }
@@ -151,28 +260,46 @@ struct LeadCard: View {
                     all[i].answer = value
                     if all[i].kind == "needs_you", !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { all[i].kind = "drafted" }
                     lead.answers = all
+                    lead.updatedAt = .now
                 })
     }
 
     private var actions: some View {
         FlowLayout(spacing: PB.s2) {
             if lead.status == .ready || lead.status == .needsYou {
-                Button(lead.submitRequested ? "Queued for your Mac" : "Submit", action: submit)
+                Button(lead.submitRequested ? "Queued for your Mac" : "Submit application", action: submit)
                     .buttonStyle(PillButtonStyle(compact: true))
                     .disabled(!lead.canSubmit || lead.submitRequested)
+                    #if os(macOS)
+                    .disabled(hunt.isOpeningChrome)
+                    #endif
+                if lead.submitRequested {
+                    Button("Cancel queue") { lead.submitRequested = false; lead.updatedAt = .now }
+                        .buttonStyle(PillButtonStyle(filled: false, compact: true))
+                }
             }
             if lead.status == .submitted, !lead.roleId.isEmpty {
                 Button("Open role") { app.openRole(lead.roleId) }.buttonStyle(PillButtonStyle(compact: true))
             }
             if pdfDoc != nil {
-                Button("Résumé") { showPDF = true }.buttonStyle(PillButtonStyle(filled: false, compact: true))
+                Button("Review résumé") { showPDF = true }.buttonStyle(PillButtonStyle(filled: false, compact: true))
             }
             if let url = URL(string: lead.link), !lead.link.isEmpty {
+                #if os(macOS)
+                Button(browserChoice == .chrome ? "Open in Chrome" : "Open posting") {
+                    if browserChoice == .chrome {
+                        Task { if !(await hunt.openChrome(url.absoluteString)) { app.message = hunt.chromeStatus } }
+                    } else { openURL(url) }
+                }
+                .buttonStyle(PillButtonStyle(filled: false, compact: true))
+                .disabled(hunt.isOpeningChrome)
+                #else
                 Button("Open posting") { openURL(url) }.buttonStyle(PillButtonStyle(filled: false, compact: true))
+                #endif
             }
             #if os(macOS)
             if ![.submitted, .submitting, .tailoring].contains(lead.status) {
-                Button("Regenerate") {
+                Button(lead.variantName.isEmpty ? "Prepare application" : "Regenerate") {
                     lead.submitRequested = false; lead.updatedAt = .now
                     Task { await hunt.tailor(lead) }
                 }
@@ -200,6 +327,13 @@ struct LeadCard: View {
         .padding(.top, PB.s1)
     }
 
+    private var reviewHint: String? {
+        guard [.ready, .needsYou].contains(lead.status) else { return nil }
+        if lead.submitRequested { return "Your Mac will submit this when Claude is available. You can cancel while it’s queued." }
+        if !lead.canSubmit { return "Complete the highlighted answers before submitting." }
+        return nil
+    }
+
     /// Queues the submit for the Mac; the Mac itself submits right away when Claude Code is ready and the hunt is idle.
     private func submit() {
         if lead.status == .needsYou { lead.status = .ready; lead.flagged = "" }
@@ -222,7 +356,7 @@ struct LeadCard: View {
 
     private var statusLabel: String? {
         switch lead.status {
-        case .ready: nil
+        case .ready: lead.submitRequested ? "Queued" : nil   // its group already says "Ready to review"
         case .new: "New"
         case .tailoring: "Tailoring"
         case .needsYou: "Needs you"
@@ -240,10 +374,10 @@ private struct AnswerField: View {
     @Binding var text: String
 
     var body: some View {
-        let needsYou = answer.kind == "needs_you"
+        let needsYou = answer.kind == "needs_you" || (answer.required && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         VStack(alignment: .leading, spacing: PB.s1) {
             Text(answer.question + (answer.required ? " (required)" : ""))
-                .font(.pbLabel).kerning(0.9).textCase(.uppercase)
+                .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(needsYou ? PB.red : PB.muted)
                 .fixedSize(horizontal: false, vertical: true)
             TextField(answer.question, text: $text, axis: .vertical)
@@ -273,7 +407,7 @@ private struct ResumeSheet: View {
         .padding(PB.s6)
         .background(PB.card)
         #if os(macOS)
-        .frame(minWidth: 720, idealWidth: 760, minHeight: 560, idealHeight: 820)
+        .pbSheetFrame(minWidth: 440, idealWidth: 760, minHeight: 420, idealHeight: 820)
         #endif
         .presentationDetents([.large])
     }
@@ -341,13 +475,14 @@ struct HuntSettingsSheet: View {
                     }
                 }
                 #if os(macOS)
-                section("Browser for heavy runs") {
+                section("Application browser") {
                     Picker("Browser", selection: $browserChoice) {
                         Text("Built-in browser").tag(HuntBrowserChoice.builtin)
-                        Text("Chrome with the Claude extension").tag(HuntBrowserChoice.chrome)
+                        Text("Chrome + Claude").tag(HuntBrowserChoice.chrome)
                     }
-                    .pickerStyle(.segmented).labelsHidden()
-                    Text("Discovery and submitting run there; the LinkedIn sync always uses the built-in browser. Chrome must be open with the Claude in Chrome extension connected.")
+                    .pickerStyle(.menu).labelsHidden().tint(PB.cobalt)
+                    .disabled(hunt.isRunning || claude.busy || hunt.isOpeningChrome)
+                    Text("Discovery and applications use this browser. Open Chrome and connect its Claude extension from the Hunt screen. LinkedIn sync always uses the built-in browser.")
                         .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
                 }
                 linkedInSection
@@ -395,7 +530,7 @@ struct HuntSettingsSheet: View {
         .scrollIndicators(.hidden)
         .background(PB.card)
         #if os(macOS)
-        .frame(minWidth: 560, minHeight: 640)
+        .pbSheetFrame(minWidth: 440, idealWidth: 620, minHeight: 420, idealHeight: 720)
         #endif
         .presentationDetents([.large])
         .onChange(of: regions) { settings.regions = lines(regions, commas: true) }
@@ -446,7 +581,7 @@ struct HuntSettingsSheet: View {
                         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(PB.line))
                 }
             }
-            HStack(spacing: PB.s2) {
+            FlowLayout(spacing: PB.s2) {
                 Button("Save") {
                     LinkedInSignIn.save(email: linkedInEmail.trimmingCharacters(in: .whitespacesAndNewlines), password: linkedInPassword)
                     linkedInPassword = ""
@@ -480,9 +615,10 @@ struct HuntSettingsSheet: View {
                     .disabled(hunt.isRunning || claude.busy || signingIn)
                 }
                 if signingIn { ProgressView().controlSize(.small) }
-                Spacer(minLength: 0)
-                Text(linkedInSaved ? "Saved in this Mac's Keychain" : "Not saved").font(.system(size: 12)).foregroundStyle(PB.muted)
             }
+            Label(linkedInSaved ? "Saved in this Mac’s Keychain" : "No sign-in saved", systemImage: linkedInSaved ? "lock.shield" : "lock")
+                .font(.system(size: 12)).foregroundStyle(PB.muted)
+                .fixedSize(horizontal: false, vertical: true)
             if !linkedInOutcome.isEmpty {
                 Text(linkedInOutcome).font(.system(size: 12)).foregroundStyle(linkedInOutcome == "Signed in to LinkedIn" ? PB.muted : PB.red)
                     .fixedSize(horizontal: false, vertical: true)
@@ -549,41 +685,84 @@ struct HuntBrowserCard: View {
     @State private var chosen = false   // the user toggled it by hand; their choice holds for the session
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            CardHeader(title: "Browser") {
+        VStack(alignment: .leading, spacing: PB.s3) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: PB.s3) { browserHeading; Spacer(minLength: 0); browserPicker }
+                VStack(alignment: .leading, spacing: PB.s2) { browserHeading; browserPicker }
+            }
+            if browserChoice == .chrome {
+                Text(hunt.chromeStatus ?? "Open Chrome, then connect the Claude extension for discovery and applications.")
+                    .font(.system(size: 13)).foregroundStyle(PB.ink2).fixedSize(horizontal: false, vertical: true)
+                FlowLayout(spacing: PB.s2) {
+                    Button { Task { await hunt.openChrome() } } label: {
+                        Label(hunt.isOpeningChrome ? "Opening Chrome…" : "Open Chrome", systemImage: "arrow.up.forward.app")
+                    }
+                    .buttonStyle(PillButtonStyle(compact: true))
+                    .disabled(hunt.isOpeningChrome)
+                    Button("Connect Claude extension") { hunt.openChromeSetup() }
+                        .buttonStyle(PillButtonStyle(filled: false, compact: true))
+                        .disabled(claude.busy)
+                }
+                Divider().overlay(PB.line)
+            }
+            HStack(spacing: PB.s2) {
+                Text(browserChoice == .chrome ? "LinkedIn sync browser" : "Built-in browser")
+                    .font(.system(size: 13, weight: .semibold))
+                Spacer(minLength: 0)
                 if browser.isLoading { ProgressView().controlSize(.small) }
-                Button(expanded ? "Hide" : "Show") { chosen = true; expanded.toggle() }
+                Button(expanded ? "Hide browser" : "Show browser") { chosen = true; expanded.toggle() }
                     .buttonStyle(PillButtonStyle(filled: false, compact: true))
             }
-            Text(subtitle).font(.system(size: 12)).foregroundStyle(PB.muted).lineLimit(1).truncationMode(.middle)
-                .padding(.bottom, expanded ? PB.s3 : 0)
+            Text(subtitle).font(.system(size: 12)).foregroundStyle(PB.muted).lineLimit(2).truncationMode(.middle)
+                .fixedSize(horizontal: false, vertical: true)
             if expanded {
                 HStack(spacing: PB.s2) {
-                    TextField("https://", text: $address)
+                    TextField("Website address", text: $address)
                         .textFieldStyle(.plain)
                         .font(.system(size: 13))
                         .padding(.horizontal, PB.s3).frame(height: PB.controlHeight(compact: true))
+                        .frame(minWidth: 0, maxWidth: .infinity)
                         .background(RoundedRectangle(cornerRadius: 12).fill(PB.surface))
                         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(PB.line))
                         .onSubmit(go)
-                    Button("Go", action: go).buttonStyle(PillButtonStyle(compact: true))
-                    Button("Back") { Task { try? await browser.back() } }.buttonStyle(PillButtonStyle(filled: false, compact: true))
-                    Button("Sign in to LinkedIn", action: signIn).buttonStyle(PillButtonStyle(filled: false, compact: true))
-                        .disabled(claude.busy)   // a run (hunt or sync) owns the page meanwhile
+                        .disabled(claude.busy)
+                    Button("Go", action: go).buttonStyle(PillButtonStyle(compact: true)).disabled(claude.busy)
                 }
-                .padding(.bottom, PB.s3)
+                FlowLayout(spacing: PB.s2) {
+                    Button { Task { try? await browser.back() } } label: { Label("Back", systemImage: "chevron.left") }
+                        .buttonStyle(PillButtonStyle(filled: false, compact: true)).disabled(claude.busy)
+                    Button("Sign in to LinkedIn", action: signIn).buttonStyle(PillButtonStyle(filled: false, compact: true))
+                        .disabled(claude.busy)
+                }
+                if claude.busy {
+                    Text("Claude is using the browser. Navigation controls will return when it finishes.")
+                        .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
+                }
                 HuntWebViewHost(webView: browser.webView)
-                    .frame(height: 520)
+                    .frame(maxWidth: .infinity).frame(height: 440)
                     .clipShape(RoundedRectangle(cornerRadius: PB.rMD, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: PB.rMD, style: .continuous).strokeBorder(PB.line))
             }
         }
         .pbCard(padding: PB.s4)
         .onAppear { if !chosen { expanded = hunt.isRunning && !hunt.usingChrome }; address = browser.url?.absoluteString ?? "" }
-        // A run in Chrome has nothing to show here, so it does not pull the card open. The card stays open after a run ends, so
-        // the page it stopped on (a LinkedIn sign-in, a form that needs you) is still there; Hide is the user's call.
+        // Leave a stopped application visible so the user can resolve a question or sign-in.
         .onChange(of: hunt.isRunning) { if hunt.isRunning, !hunt.usingChrome { expanded = true } }
         .onChange(of: browser.url) { address = browser.url?.absoluteString ?? "" }
+    }
+
+    private var browserHeading: some View {
+        Label("Application browser", systemImage: "globe")
+            .font(.system(size: 14, weight: .semibold))
+    }
+
+    private var browserPicker: some View {
+        Picker("Application browser", selection: $browserChoice) {
+            Text("Built-in").tag(HuntBrowserChoice.builtin)
+            Text("Chrome + Claude").tag(HuntBrowserChoice.chrome)
+        }
+        .labelsHidden().pickerStyle(.menu).tint(PB.cobalt)
+        .disabled(hunt.isRunning || claude.busy)
     }
 
     /// Title and URL of the current page, then what the hunt last did on it.
@@ -674,26 +853,45 @@ struct HuntRunCard: View {
     @Environment(JobHunt.self) private var hunt
     @Environment(ClaudeCode.self) private var claude
 
+    @Environment(AppState.self) private var app
+
     var body: some View {
-        HStack(alignment: .center, spacing: PB.s3) {
-            VStack(alignment: .leading, spacing: PB.s1) {
-                Text("Daily hunt").font(.system(size: 14, weight: .semibold))
-                Text(status).font(.system(size: 12)).foregroundStyle(hunt.error == nil || hunt.isRunning ? PB.muted : PB.red)
-                    .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: PB.s4) {
+            HStack(alignment: .top, spacing: PB.s3) {
+                VStack(alignment: .leading, spacing: PB.s1) {
+                    Text("Daily hunt")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text(status).font(.system(size: 13)).foregroundStyle(hunt.error == nil || hunt.isRunning ? PB.ink2 : PB.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                if hunt.isRunning { ProgressView().controlSize(.small) }
             }
-            Spacer(minLength: PB.s2)
-            Toggle("Run daily at", isOn: $settings.auto).toggleStyle(.checkbox).font(.system(size: 12))
-            Picker("", selection: $settings.runHour) {
-                ForEach(0..<24, id: \.self) { Text(TimeFmt.hour($0)).tag($0) }
-            }
-            .labelsHidden().pickerStyle(.menu).fixedSize()
-            Button("Rescan résumés") { hunt.rescan() }.buttonStyle(PillButtonStyle(filled: false, compact: true))
-            if hunt.isRunning {
-                ProgressView().controlSize(.small)
-            } else {
-                Button("Run now") { Task { await hunt.run() } }
+            FlowLayout(spacing: PB.s2) {
+                if !claude.isReady {
+                    Button("Connect Claude") { app.showProfile = true }.buttonStyle(PillButtonStyle(compact: true))
+                } else {
+                    Button { Task { await hunt.run() } } label: {
+                        Label(hunt.isRunning ? "Hunt running…" : "Find roles", systemImage: "magnifyingglass")
+                    }
                     .buttonStyle(PillButtonStyle(compact: true))
-                    .disabled(!claude.isReady || hunt.isRunning || claude.busy)
+                    .disabled(hunt.isRunning || claude.busy || hunt.isOpeningChrome)
+                }
+                Button("Rescan résumés") { hunt.rescan() }.buttonStyle(PillButtonStyle(filled: false, compact: true))
+                    .disabled(hunt.isRunning)
+            }
+            FlowLayout(spacing: PB.s3) {
+                HStack(spacing: PB.s2) {
+                    Toggle("Daily search", isOn: $settings.auto).toggleStyle(CheckboxToggleStyle(labeled: true))
+                    Picker("Daily search time", selection: $settings.runHour) {
+                        ForEach(0..<24, id: \.self) { Text(TimeFmt.hour($0)).tag($0) }
+                    }
+                    .labelsHidden().pickerStyle(.menu).fixedSize()
+                }
+                Text("\(hunt.tailoredToday) / \(settings.dailyTailorLimit) prepared today")
+                    .font(.system(size: 12)).foregroundStyle(PB.muted)
+                Text("\(hunt.submittedToday) / \(settings.dailySubmitLimit) submitted today")
+                    .font(.system(size: 12)).foregroundStyle(PB.muted)
             }
         }
         .pbCard(padding: PB.s4)
@@ -701,7 +899,7 @@ struct HuntRunCard: View {
 
     private var status: String {
         switch hunt.phase {
-        case .discovering: return hunt.usingChrome ? "Looking for jobs in Chrome… this can take a while." : "Looking for jobs in the browser above… this can take a while."
+        case .discovering: return hunt.usingChrome ? "Looking for jobs in Chrome… this can take a while." : "Looking for roles in the built-in browser…"
         case .tailoring(let done, let total): return "Tailoring résumés… \(done) of \(total) done."
         case .submitting(let name): return "Submitting to \(name)…"
         case .honesty(let name): return "Checking the claims in \(name)…"
@@ -709,8 +907,9 @@ struct HuntRunCard: View {
         case .idle: break
         }
         if let e = hunt.error { return e }
-        if !claude.isReady { return "Connect Claude Code in Profile to run the hunt." }
-        guard let last = hunt.lastRun else { return "Finds jobs, tailors a résumé for each and fills the application. Not run yet." }
+        if !claude.isReady { return "Connect Claude Code to discover roles and prepare applications on this Mac." }
+        if claude.busy { return "Claude is working on another task. You can start a search when it finishes." }
+        guard let last = hunt.lastRun else { return "Find matching roles and prepare a tailored résumé for each one." }
         return "Last run \(last.formatted(.relative(presentation: .named)))" + (hunt.lastSummary.map { " · \($0)" } ?? "")
     }
 }

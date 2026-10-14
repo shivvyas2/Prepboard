@@ -12,8 +12,16 @@ enum CloudConfig {
     private static func info(_ key: String) -> String {
         (Bundle.main.object(forInfoDictionaryKey: key) as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
     }
+    /// A disposable UI preview, with an in-memory store and no background automation.
+    static var isPreview: Bool {
+        #if DEBUG
+        UserDefaults.standard.bool(forKey: "PrepboardPreview")
+        #else
+        false
+        #endif
+    }
     /// Launch with `-PrepboardLocalOnly YES` to run without accounts (development/testing).
-    static var isConfigured: Bool { !url.isEmpty && !anonKey.isEmpty && !UserDefaults.standard.bool(forKey: "PrepboardLocalOnly") }
+    static var isConfigured: Bool { !isPreview && !url.isEmpty && !anonKey.isEmpty && !UserDefaults.standard.bool(forKey: "PrepboardLocalOnly") }
 }
 
 // MARK: - Row types (match supabase/migrations/*_prepboard.sql)

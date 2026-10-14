@@ -42,6 +42,7 @@ final class AppState {
     var claudeTerminal = false          // Claude panel: chat (false) or the real Claude Code terminal (true)
     var showProfile = false
     var showNewPrep = false
+    var showPipeline = false             // the full-screen pipeline board
     var newPrepRoleID: String?           // planner builds the plan for this existing role (e.g. one found by job sync)
     var quizSessionID: String?
     var playingVideo: Video?
@@ -56,7 +57,7 @@ final class AppState {
     var exportFile: JSONFile?
     var message: String?
 
-    func openRole(_ id: String) { selectedRoleID = id; section = .roles }
+    func openRole(_ id: String) { showPipeline = false; selectedRoleID = id; section = .roles }
     func planForRole(_ id: String) { newPrepRoleID = id; showNewPrep = true }
     func openDoc(_ id: String, edit: Bool = false, heading: String? = nil) {
         selectedDocID = id; docEditing = edit; docFilter = "all"

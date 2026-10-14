@@ -8,10 +8,41 @@ struct DetachedSectionView: View {
     @State private var window: NSWindow?
 
     var body: some View {
-        SectionContent(section: app.section)
+        VStack(spacing: 16) {
+            HStack {
+                Menu {
+                    ForEach(Section.allCases) { section in
+                        Button {
+                            app.section = section
+                        } label: {
+                            if app.section == section {
+                                Label(section.rawValue, systemImage: "checkmark")
+                            } else {
+                                Label(section.rawValue, systemImage: section.icon)
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Label(app.section.rawValue, systemImage: app.section.icon)
+                        Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold))
+                    }
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(PB.cobalt)
+                    .padding(.horizontal, 12).frame(height: 36)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(PB.card))
+                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(PB.line))
+                }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                .accessibilityLabel("Section: \(app.section.rawValue)")
+                .help("Switch the section in this window")
+                Spacer(minLength: 0)
+                Text("PrepBoard workspace").font(.system(size: 12)).foregroundStyle(PB.muted).lineLimit(1)
+            }
+            SectionContent(section: app.section)
+        }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(24).padding(.top, 12)
-            .frame(minWidth: 640, minHeight: 480)
+            .padding(16).padding(.top, 12)
+            .frame(minWidth: 480, minHeight: 480)
             .background(PB.background)
             .foregroundStyle(PB.ink)
             .tint(PB.cobalt)
@@ -47,25 +78,73 @@ struct WorkspaceBanner: View {
 
     var body: some View {
         if let best = layouts.first {
-            HStack(spacing: PB.s3) {
-                Image(systemName: "rectangle.3.group").font(.system(size: 18)).foregroundStyle(PB.cobalt)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(workspace.screens.count) screens connected").font(.system(size: 13, weight: .semibold))
-                    Text(Self.describe(best, screens: workspace.screens)).font(.system(size: 12)).foregroundStyle(PB.ink2).lineLimit(2)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: PB.s4) {
+                    summary(best).frame(minWidth: 220)
+                    Spacer(minLength: PB.s2)
+                    actions(best)
                 }
-                Spacer(minLength: PB.s2)
-                Button("Set up \(best.name)") { workspace.apply(best) }.buttonStyle(PillButtonStyle(compact: true)).fixedSize()
-                Menu("Other layouts") {
-                    ForEach(layouts.dropFirst()) { l in Button(l.name) { workspace.apply(l) } }
+                VStack(alignment: .leading, spacing: PB.s3) {
+                    summary(best)
+                    ViewThatFits(in: .horizontal) {
+                        actions(best)
+                        VStack(alignment: .leading, spacing: PB.s2) {
+                            setupButton(best)
+                            HStack(spacing: PB.s3) {
+                                otherLayouts
+                                dismissButton
+                            }
+                        }
+                    }
                 }
-                .menuStyle(.button).fixedSize()
-                Button("Not now") { workspace.dismissSuggestion() }.buttonStyle(.plain).foregroundStyle(PB.muted)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, PB.s4).padding(.vertical, PB.s3)
             .background(RoundedRectangle(cornerRadius: PB.rMD, style: .continuous).fill(PB.card))
             .overlay(RoundedRectangle(cornerRadius: PB.rMD, style: .continuous).strokeBorder(PB.line2))
             .shadow(color: .black.opacity(0.08), radius: 12, y: 4)
         }
+    }
+
+    private func summary(_ layout: WorkspaceLayout) -> some View {
+        HStack(alignment: .top, spacing: PB.s3) {
+            Image(systemName: "rectangle.3.group").font(.system(size: 18)).foregroundStyle(PB.cobalt)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(workspace.screens.count) screens connected").font(.system(size: 13, weight: .semibold))
+                Text(Self.describe(layout, screens: workspace.screens))
+                    .font(.system(size: 12)).foregroundStyle(PB.ink2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func actions(_ best: WorkspaceLayout) -> some View {
+        HStack(spacing: PB.s3) {
+            setupButton(best)
+            otherLayouts
+            dismissButton
+        }
+    }
+
+    private func setupButton(_ layout: WorkspaceLayout) -> some View {
+        Button("Set up \(layout.name)") { workspace.apply(layout) }
+            .buttonStyle(PillButtonStyle(compact: true)).fixedSize()
+    }
+
+    @ViewBuilder private var otherLayouts: some View {
+        if layouts.count > 1 {
+            Menu("Other layouts") {
+                ForEach(layouts.dropFirst()) { layout in Button(layout.name) { workspace.apply(layout) } }
+            }
+            .menuStyle(.button).fixedSize()
+        }
+    }
+
+    private var dismissButton: some View {
+        Button("Not now") { workspace.dismissSuggestion() }
+            .buttonStyle(.plain).foregroundStyle(PB.muted).fixedSize()
+            .padding(.vertical, 8)
     }
 
     /// "Coding on Acer K272HUL · Browse and Claude on Smart M50C"

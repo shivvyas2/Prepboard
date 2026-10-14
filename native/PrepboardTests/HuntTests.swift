@@ -396,6 +396,8 @@ final class HuntTests: XCTestCase {
         XCTAssertFalse(submit.contains("upload_file"))
         XCTAssertTrue(submit.contains("STOP CONDITIONS") && submit.contains("needs_you"))
         XCTAssertTrue(submit.contains("computer for clicks and scrolling"))
+        XCTAssertTrue(submit.contains("leave the application tab open for me"))
+        XCTAssertFalse(submit.contains("close it with tabs_close_mcp when done"))
         // Site notes name the Chrome upload tool when Chrome runs the submit.
         let ashby = JobHunt.submitPrompt(lead: Lead(company: "Mirage", title: "x", link: "https://jobs.ashbyhq.com/mirage/1"), pdfPath: "/tmp/r.pdf", bank: AnswerBank(), chrome: true)
         XCTAssertTrue(ashby.contains("use file_upload on that ref") && !ashby.contains("upload_file"), ashby)
@@ -445,6 +447,8 @@ final class HuntTests: XCTestCase {
         }
         XCTAssertTrue(JobHunt.isLinkedIn(lead.link) && JobHunt.isLinkedIn("https://linkedin.com/jobs/view/1"))
         XCTAssertFalse(JobHunt.isLinkedIn("https://jobs.ashbyhq.com/mirage/1") || JobHunt.isLinkedIn("https://jobs.apple.com/x") || JobHunt.isLinkedIn(""))
+        XCTAssertFalse(JobHunt.isLinkedIn("https://notlinkedin.com/jobs/1"))
+        XCTAssertFalse(JobHunt.isLinkedIn("https://linkedin.com.example.org/jobs/1"))
     }
 
     /// Scratch Keychain entries, so the user's own saved sign-in is never read, replaced or removed by a test run.
@@ -585,12 +589,50 @@ final class HuntTests: XCTestCase {
     func testClaudeCommandPinsTheBuiltInTools() {
         let browser = JobHunt.claudeCommand(browserFlags: "--chrome --strict-mcp-config --allowedTools mcp__claude-in-chrome__navigate", tools: "", schemaPath: "/tmp/s.json", cwd: "/tmp")
         XCTAssertTrue(browser.contains("claude -p --chrome --strict-mcp-config --allowedTools mcp__claude-in-chrome__navigate --output-format json"), browser)
-        XCTAssertTrue(browser.contains("--tools \"\" 2>/dev/null"), browser)
+        XCTAssertTrue(browser.hasSuffix("--tools \"\""), browser)
+        XCTAssertFalse(browser.contains("2>/dev/null"), "Keep CLI failures visible to the user")
         XCTAssertEqual(browser.components(separatedBy: "--allowedTools").count, 2, browser)   // only the browser's list
         let files = JobHunt.claudeCommand(browserFlags: nil, tools: JobHunt.fileTools, schemaPath: "/tmp/s.json", cwd: "/Users/x/Resumes")
         XCTAssertTrue(files.hasPrefix("cd '/Users/x/Resumes' && claude -p --output-format json"), files)
-        XCTAssertTrue(files.hasSuffix("--tools \"Read,Grep,Glob\" --allowedTools Read Grep Glob 2>/dev/null"), files)
+        XCTAssertTrue(files.hasSuffix("--tools \"Read,Grep,Glob\" --allowedTools Read Grep Glob"), files)
         XCTAssertFalse(files.contains("Bash") || files.contains("WebSearch") || files.contains("Write"))
+    }
+
+    func testBrowserLinksRequireAWebSchemeAndHost() {
+        XCTAssertEqual(JobHunt.webURL("  https://jobs.example.com/a?ref=b  ")?.host, "jobs.example.com")
+        for invalid in ["", "jobs.example.com", "file:///tmp/resume.pdf", "javascript:alert(1)", "https://"] {
+            XCTAssertNil(JobHunt.webURL(invalid), invalid)
+        }
+    }
+
+    func testClaudeResultKeepsJSONSeparateFromDiagnostics() throws {
+        let output = ClaudeCode.ShellResult(
+            stdout: "Shell banner {not json}\n" + #"{"is_error":false,"structured_output":{"status":"needs_you","reason":"Sign in","unknown_questions":[],"confirmation":""}}"#,
+            stderr: "An extension warning", exitCode: 0)
+        let result = try JobHunt.decodeResult(SubmitResult.self, output: output)
+        XCTAssertEqual(result.status, "needs_you")
+        XCTAssertEqual(result.reason, "Sign in")
+    }
+
+    func testClaudeResultSurfacesCLIAndStructuredFailures() {
+        let failures: [(ClaudeCode.ShellResult, String)] = [
+            (.init(stdout: "", stderr: "unknown option '--chrome'", exitCode: 1), "unknown option '--chrome'"),
+            (.init(stdout: #"{"is_error":true,"errors":["Browser extension is not connected"]}"#, stderr: "", exitCode: 0), "Browser extension is not connected"),
+            (.init(stdout: #"{"permission_denials":[{"tool_name":"file_upload"}]}"#, stderr: "", exitCode: 0), "permissions"),
+        ]
+        for (output, expected) in failures {
+            XCTAssertThrowsError(try JobHunt.decodeResult(SubmitResult.self, output: output)) { error in
+                XCTAssertTrue(error.localizedDescription.contains(expected), error.localizedDescription)
+            }
+        }
+    }
+
+    func testShellDrainsBothPipesAndPreservesExitStatus() async {
+        let output = await ClaudeCode.shellResult("/usr/bin/yes 'extension unavailable' | /usr/bin/head -c 131072 >&2; /usr/bin/printf '%s' '{\"ok\":true}'; exit 7")
+        XCTAssertTrue(output.stdout.hasSuffix(#"{"ok":true}"#), output.stdout)
+        XCTAssertTrue(output.stderr.contains("extension unavailable"))
+        XCTAssertGreaterThanOrEqual(output.stderr.utf8.count, 131072)
+        XCTAssertEqual(output.exitCode, 7)
     }
 
     func testDailyCounterKeysAreDateScoped() {

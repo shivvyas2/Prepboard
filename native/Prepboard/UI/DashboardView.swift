@@ -134,11 +134,11 @@ struct DashboardView: View {
     private func cell(_ v: Int, _ label: String) -> some View {
         VStack(spacing: 4) {
             Text(String(format: "%02d", v)).font(.system(size: 28, weight: .bold)).monospacedDigit()
-            Text(label).font(.system(size: 11)).foregroundStyle(PB.muted)
+            Text(label).font(.system(size: 11, weight: .semibold)).opacity(0.9)
         }
+        .foregroundStyle(PB.onSun)
         .frame(minWidth: 74).padding(.vertical, 12)
-        .background(RoundedRectangle(cornerRadius: PB.rLG).fill(PB.sunSoft))
-        .overlay(RoundedRectangle(cornerRadius: PB.rLG).strokeBorder(PB.sun.opacity(0.45)))
+        .background(RoundedRectangle(cornerRadius: PB.rLG).fill(PB.sun))
     }
 
     private var greeting: String {
@@ -155,9 +155,9 @@ struct DashboardView: View {
         if let t = current ?? sess.first(where: { !$0.done && !$0.isBreak && $0.end > now }) {
             VStack(alignment: .leading, spacing: 12) {
                 Text(current != nil ? "Happening now" : "Up next").font(.pbLabel).kerning(0.9).textCase(.uppercase)
-                    .foregroundStyle(PB.sun)
+                    .foregroundStyle(PB.sunSoft)
                 Text("\(t.start.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())) · \(TimeFmt.hm(t.start))–\(TimeFmt.hm(t.end))")
-                    .font(.system(size: 13, design: .monospaced)).foregroundStyle(.white.opacity(0.7))
+                    .font(.system(size: 13, design: .monospaced)).foregroundStyle(.white.opacity(0.85))
                 Text(t.title).font(.system(size: 21, weight: .semibold)).kerning(-0.3).foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
                 if !t.refs.isEmpty {
@@ -177,9 +177,9 @@ struct DashboardView: View {
             Text("All sessions done.").foregroundStyle(PB.muted).frame(maxWidth: .infinity, maxHeight: .infinity).pbCard()
         } else {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Up next").font(.pbLabel).kerning(0.9).textCase(.uppercase).foregroundStyle(PB.sun)
+                Text("Up next").font(.pbLabel).kerning(0.9).textCase(.uppercase).foregroundStyle(PB.sunSoft)
                 Text("No sessions yet").font(.system(size: 21, weight: .semibold)).foregroundStyle(.white)
-                Text("Your timeline fills in as soon as you create a plan.").font(.system(size: 13)).foregroundStyle(.white.opacity(0.75))
+                Text("Your timeline fills in as soon as you create a plan.").font(.system(size: 13)).foregroundStyle(.white.opacity(0.85))
                 Spacer(minLength: 0)
                 Button("✦ Start something new") { app.showNewPrep = true }.buttonStyle(InvertedGhostStyle())
             }
@@ -223,13 +223,18 @@ struct DashboardView: View {
 
     private func stat(_ label: String, value: String, suffix: String? = nil, highlight: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label).pbLabelStyle()
+            if highlight {
+                Text(label).font(.pbLabel).kerning(0.9).textCase(.uppercase).foregroundStyle(PB.onSun.opacity(0.9))
+            } else {
+                Text(label).pbLabelStyle()
+            }
             HStack(alignment: .firstTextBaseline, spacing: 0) {
                 Text(value).font(.system(size: 26, weight: .bold)).kerning(-0.6)
-                if let suffix { Text(suffix).font(.system(size: 15, weight: .semibold)).foregroundStyle(PB.muted) }
+                if let suffix { Text(suffix).font(.system(size: 15, weight: .semibold)).foregroundStyle(highlight ? PB.onSun : PB.muted) }
             }
+            .foregroundStyle(highlight ? PB.onSun : PB.ink)
         }
-        .pbCard(padding: 16, fill: highlight ? PB.sunSoft : PB.surface, radius: PB.rLG)
+        .pbCard(padding: 16, fill: highlight ? PB.sun : PB.surface, radius: PB.rLG)
     }
 
     // MARK: today's hour strip
@@ -300,7 +305,7 @@ struct DashboardView: View {
                     .strikethrough(st == .done)
                     .foregroundStyle(current ? Color.white : t.isBreak ? PB.muted : PB.ink)
                 Text(TimeFmt.hm(t.start)).font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(current ? Color.white.opacity(0.7) : PB.muted)
+                    .foregroundStyle(current ? Color.white.opacity(0.85) : PB.muted)
             }
             .padding(.horizontal, 8).padding(.vertical, 8)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -324,7 +329,7 @@ struct DashboardView: View {
         let cal = Calendar.current
         let items: [(PrepTask, String, Color, Color)] =
             work.filter { $0.status(at: now) == .current }.map { ($0, "Now", PB.sun, PB.onSun) }
-            + work.filter { $0.end <= now }.map { ($0, "Catch up", Color(hex: 0xFBE4D8), Color(hex: 0xC2410C)) }
+            + work.filter { $0.end <= now }.map { ($0, "Catch up", PB.sun, PB.onSun) }
             + work.filter { $0.start > now }.prefix(4).map {
                 ($0, cal.isDateInToday($0.start) ? "Today" : $0.start.formatted(.dateTime.weekday(.abbreviated)), PB.cobaltSoft, PB.cobalt)
             }
@@ -406,6 +411,7 @@ struct DashboardView: View {
                             }
                             if let iv {
                                 Text("★ Interview \(TimeFmt.hm(iv))").font(.system(size: 11, weight: .bold)).foregroundStyle(PB.onSun)
+                                    .lineLimit(1).fixedSize()
                                     .padding(.horizontal, 8).padding(.vertical, 4).background(Capsule().fill(PB.sun))
                             }
                         }
@@ -424,15 +430,7 @@ struct DashboardView: View {
     // MARK: pipeline & recent
 
     private var pipeline: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            CardHeader(title: "Pipeline") {
-                Text("Drag roles between stages").font(.system(size: 13)).foregroundStyle(PB.muted)
-                CircleIconButton(systemImage: "plus", size: 32, label: "Add role") { app.newRole(context) }
-            }
-            .padding(.horizontal, 8)
-            PipelineView(roles: roles, tasks: tasks)
-        }
-        .pbCard(padding: 16, fill: PB.surface.opacity(0.7))
+        PipelineSummary(roles: roles)
     }
 
     private var recent: some View {

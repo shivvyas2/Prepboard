@@ -55,9 +55,15 @@ struct ClaudeTerminalView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSView {
         let container = NSView()
+        container.wantsLayer = true
+        container.layer?.masksToBounds = true
         let term = ClaudeTerminal.shared.view
         term.removeFromSuperview()
         term.translatesAutoresizingMaskIntoConstraints = false
+        term.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        term.setContentHuggingPriority(.defaultLow, for: .vertical)
+        term.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        term.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         container.addSubview(term)
         NSLayoutConstraint.activate([
             term.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
@@ -70,6 +76,17 @@ struct ClaudeTerminalView: NSViewRepresentable {
         return container
     }
 
-    func updateNSView(_ v: NSView, context: Context) {}
+    func updateNSView(_ v: NSView, context: Context) {
+        let term = ClaudeTerminal.shared.view
+        term.nativeBackgroundColor = NSColor(PB.card)
+        term.nativeForegroundColor = NSColor(PB.ink)
+        term.caretColor = NSColor(PB.cobalt)
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSView, context: Context) -> CGSize? {
+        // The terminal follows the panel's viewport; its initial 600 pt frame is not a minimum width.
+        guard let width = proposal.width, let height = proposal.height else { return nil }
+        return CGSize(width: max(0, width), height: max(0, height))
+    }
 }
 #endif

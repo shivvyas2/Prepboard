@@ -34,10 +34,12 @@ final class ClaudeCode {
     /// Checks that the `claude` CLI is installed and signed in.
     func checkConnection() async {
         connection = .checking
-        let out = await Self.shell(#"command -v claude >/dev/null || { echo NOT_INSTALLED; exit 0; }; claude --version; claude auth status"#)
+        let result = await Self.shellResult(#"command -v claude >/dev/null || { echo NOT_INSTALLED; exit 0; }; claude --version; claude auth status"#)
+        let out = result.stdout
         if out.contains("NOT_INSTALLED") { connection = .notInstalled; return }
         let version = out.split(separator: "\n").first.map(String.init) ?? "Claude Code"
-        connection = out.contains(#""loggedIn": true"#) ? .connected(version) : .signedOut
+        let signedIn = Self.jsonObject(out)?["loggedIn"] as? Bool ?? false
+        connection = signedIn ? .connected(version) : .signedOut
     }
 
     func connect() async {
@@ -68,8 +70,34 @@ final class ClaudeCode {
         return (dirs + [ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"]).joined(separator: ":")
     }
 
+    struct ShellResult {
+        var stdout: String
+        var stderr: String
+        var exitCode: Int32
+    }
+
+    /// Ignore a login shell's banner before the JSON emitted by the CLI.
+    nonisolated static func jsonObject(_ output: String) -> [String: Any]? {
+        guard let end = output.lastIndex(of: "}") else { return nil }
+        for start in output.indices where output[start] == "{" && start <= end {
+            if let object = try? JSONSerialization.jsonObject(with: Data(output[start...end].utf8)) as? [String: Any] { return object }
+        }
+        return nil
+    }
+
+    /// Written by one pipe reader and read only after its DispatchGroup has completed.
+    private final class PipeCapture: @unchecked Sendable {
+        var data = Data()
+    }
+
     /// Runs a command in a login shell and returns stdout+stderr.
     nonisolated static func shell(_ command: String, stdin: String? = nil) async -> String {
+        let result = await shellResult(command, stdin: stdin)
+        return result.stdout + (result.stderr.isEmpty ? "" : "\n" + result.stderr)
+    }
+
+    /// Keeps diagnostics separate from JSON output. Both pipes are drained concurrently, including after the child exits.
+    nonisolated static func shellResult(_ command: String, stdin: String? = nil) async -> ShellResult {
         await withCheckedContinuation { cont in
             let p = Process()
             p.executableURL = URL(fileURLWithPath: "/bin/zsh")
@@ -78,27 +106,34 @@ final class ClaudeCode {
             var env = ProcessInfo.processInfo.environment
             env["PB_PATH"] = searchPath
             p.environment = env
-            let out = Pipe(), inp = Pipe()
-            p.standardOutput = out; p.standardError = out; p.standardInput = inp
-            // Drain stdout as it arrives: a child that writes more than the 64 KB pipe buffer would otherwise block forever.
-            let lock = NSLock()
-            var buffer = Data()
-            out.fileHandleForReading.readabilityHandler = { h in
-                lock.lock(); buffer.append(h.availableData); lock.unlock()
-            }
-            p.terminationHandler = { _ in
-                lock.lock()
-                out.fileHandleForReading.readabilityHandler = nil
-                buffer.append(out.fileHandleForReading.readDataToEndOfFile())
-                let text = String(decoding: buffer, as: UTF8.self)
-                lock.unlock()
-                cont.resume(returning: text)
-            }
+            let out = Pipe(), err = Pipe(), inp = Pipe()
+            p.standardOutput = out; p.standardError = err; p.standardInput = inp
             do {
                 try p.run()
-                if let stdin { inp.fileHandleForWriting.write(Data(stdin.utf8)) }
-                try? inp.fileHandleForWriting.close()
-            } catch { cont.resume(returning: "ERROR \(error.localizedDescription)") }
+                // Concurrent readers prevent a full stderr or stdout pipe from stalling a long browser run.
+                let readers = DispatchGroup()
+                let stdout = PipeCapture(), stderr = PipeCapture()
+                readers.enter()
+                DispatchQueue.global().async {
+                    stdout.data = out.fileHandleForReading.readDataToEndOfFile()
+                    readers.leave()
+                }
+                readers.enter()
+                DispatchQueue.global().async {
+                    stderr.data = err.fileHandleForReading.readDataToEndOfFile()
+                    readers.leave()
+                }
+                DispatchQueue.global().async {
+                    if let stdin { try? inp.fileHandleForWriting.write(contentsOf: Data(stdin.utf8)) }
+                    try? inp.fileHandleForWriting.close()
+                    p.waitUntilExit()
+                    readers.wait()
+                    cont.resume(returning: ShellResult(stdout: String(decoding: stdout.data, as: UTF8.self),
+                                                       stderr: String(decoding: stderr.data, as: UTF8.self), exitCode: p.terminationStatus))
+                }
+            } catch {
+                cont.resume(returning: ShellResult(stdout: "", stderr: error.localizedDescription, exitCode: -1))
+            }
         }
     }
 

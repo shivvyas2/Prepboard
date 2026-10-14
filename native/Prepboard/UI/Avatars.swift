@@ -208,7 +208,7 @@ struct AIKeySection: View {
                 Text("Sign in to add your key.").font(.system(size: 12)).foregroundStyle(PB.muted)
             }
             if let message {
-                Text(message.text).font(.system(size: 12)).foregroundStyle(message.ok ? PB.cobalt : Color(hex: 0xC2410C))
+                Text(message.text).font(.system(size: 12)).foregroundStyle(message.ok ? PB.cobalt : PB.red)
             }
         }
         .padding(12)
@@ -249,12 +249,17 @@ struct ProfileSheet: View {
 
     var body: some View {
         @Bindable var profile = profile
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(spacing: 0) {
             HStack {
                 Text("Profile").font(.system(size: 18, weight: .semibold))
                 Spacer()
                 CircleIconButton(systemImage: "xmark", size: 32, label: "Close") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
             }
+            .padding(.horizontal, 24).padding(.vertical, 16)
+            Divider().overlay(PB.line)
+            ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 16) {
                 ProfileAvatar(size: 72)
                 VStack(alignment: .leading, spacing: 8) {
@@ -288,6 +293,10 @@ struct ProfileSheet: View {
             #endif
             AIKeySection()
             accountSection
+            }
+            .padding(24)
+            }
+            Divider().overlay(PB.line)
             HStack(spacing: 8) {
                 Button("Upload photo") { importing = true }.buttonStyle(PillButtonStyle(filled: false, compact: true))
                 if profile.photo != nil {
@@ -297,9 +306,9 @@ struct ProfileSheet: View {
                 Spacer()
                 Button("Done") { dismiss() }.buttonStyle(PillButtonStyle()).keyboardShortcut(.defaultAction)
             }
+            .padding(.horizontal, 24).padding(.vertical, 14)
         }
-        .padding(24)
-        .frame(minWidth: 460)
+        .pbSheetFrame(minWidth: 460, idealWidth: 560, idealHeight: 860)
         .background(PB.card)
         .fileImporter(isPresented: $importing, allowedContentTypes: [.image]) { result in
             guard case let .success(url) = result else { return }
@@ -313,7 +322,7 @@ struct ProfileSheet: View {
     private var accountSection: some View {
         if cloud.configured, let user = cloud.user {
             HStack(spacing: 12) {
-                Circle().fill(cloud.status == .synced ? Color(hex: 0x2F7D4F) : cloud.status == .syncing ? PB.sun : Color(hex: 0xC2410C))
+                Circle().fill(cloud.status == .synced ? PB.green : cloud.status == .syncing ? PB.sun : PB.red)
                     .frame(width: 8, height: 8)
                 Text("\(user.email ?? "Signed in") · \(cloud.status.rawValue)").font(.system(size: 13)).lineLimit(1)
                 Spacer()
@@ -329,7 +338,7 @@ struct ProfileSheet: View {
     private var claudeSection: some View {
         HStack(spacing: 12) {
             ClaudeMark().frame(width: 26, height: 26)
-                .padding(8).background(Circle().fill(Color(hex: 0xF5EDE4)))
+                .padding(8).background(Circle().fill(PB.surface))
             VStack(alignment: .leading, spacing: 4) {
                 Text("Claude Code").font(.system(size: 14, weight: .semibold))
                 Text(claudeStatus).font(.system(size: 12)).foregroundStyle(PB.muted).lineLimit(2)
@@ -402,7 +411,7 @@ struct MacBridgeSection: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 ClaudeMark().frame(width: 22, height: 22)
-                    .padding(8).background(Circle().fill(Color(hex: 0xF5EDE4)))
+                    .padding(8).background(Circle().fill(PB.surface))
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Claude Code on my Mac").font(.system(size: 14, weight: .semibold))
                     Text(statusText).font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)

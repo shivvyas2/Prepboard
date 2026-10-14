@@ -88,7 +88,7 @@ struct PDFDocView: View {
                         HStack { Text(doc.title).font(.headline); Spacer(); Button("Done") { fullScreen = false }.keyboardShortcut(.cancelAction) }.padding(16)
                         PDFKitView(data: data)
                     }
-                    .frame(minWidth: 900, minHeight: 700)
+                    .pbSheetFrame(minWidth: 600, idealWidth: 960, minHeight: 440, idealHeight: 720)
                 }
                 #endif
             } else if let error {
@@ -189,7 +189,7 @@ struct SideVideoPanel: View {
         .background(PB.card)
         .clipShape(RoundedRectangle(cornerRadius: compact ? 16 : PB.rXL, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: compact ? 16 : PB.rXL, style: .continuous).strokeBorder(PB.line))
-        .shadow(color: Color(hex: 0x3C2D14).opacity(0.07), radius: 14, y: 8)
+        .shadow(color: PB.shadow.opacity(0.06), radius: 14, y: 6)
     }
 }
 

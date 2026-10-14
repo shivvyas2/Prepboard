@@ -8,7 +8,14 @@ struct CardHeader<Trailing: View>: View {
     var body: some View {
         HStack(spacing: 12) {
             Text(title).font(.system(size: 15, weight: .semibold))
-            if let count { Text(count).font(.pbMono).foregroundStyle(PB.muted) }
+            if let count {
+                // A non-zero count is something waiting on you, so it gets the orange badge; anything else stays quiet.
+                let pending = (Int(count) ?? 0) > 0
+                Text(count).font(.system(size: 11, weight: .bold, design: .rounded)).lineLimit(1).fixedSize()
+                    .foregroundStyle(pending ? PB.onSun : PB.muted)
+                    .padding(.horizontal, 7).frame(minWidth: 22, minHeight: 20)
+                    .background(Capsule().fill(pending ? PB.sun : PB.surface))
+            }
             Spacer(minLength: 0)
             trailing()
         }
@@ -25,10 +32,10 @@ extension SessionKind {
         switch self {
         case .study: PB.cobalt
         case .practice: PB.ink
-        case .mock: Color(hex: 0xC2410C)
-        case .review: Color(hex: 0x2F7D4F)
-        case .logistics: Color(hex: 0x8A6D1F)
-        case .break: Color(hex: 0xBCB4A6)
+        case .mock: PB.red
+        case .review: PB.green
+        case .logistics: Color(hex: 0x86600C)
+        case .break: Color(hex: 0xC3C7CF)
         }
     }
 }
@@ -276,7 +283,7 @@ struct SessionEditorSheet: View {
                     Text("Role").pbLabelStyle()
                     Picker("", selection: $draft.roleId) {
                         Text("None").tag("")
-                        ForEach(roles) { Text("\($0.company) — \($0.title)").tag($0.id) }
+                        ForEach(roles) { Text("\($0.company) · \($0.title)").tag($0.id) }
                     }
                     .labelsHidden().pickerStyle(.menu).tint(PB.ink)
                 }
@@ -367,6 +374,159 @@ struct DocRow: View {
 }
 
 /// Kanban of roles by stage. Drag a tile onto another column to change its stage.
+/// The pipeline at a glance: one tile per active stage with its count and the companies in it. Tapping opens the full board.
+struct PipelineSummary: View {
+    let roles: [Role]
+    @Environment(AppState.self) private var app
+    private let stages: [Stage] = [.saved, .applied, .recruiter, .technical, .onsite, .offer]
+
+    var body: some View {
+        Button { app.showPipeline = true } label: {
+            VStack(alignment: .leading, spacing: 0) {
+                CardHeader(title: "Pipeline", count: "\(roles.filter { $0.stage != .closed }.count)") {
+                    HStack(spacing: 4) {
+                        Text("Open board").font(.system(size: 13, weight: .semibold))
+                        Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundStyle(PB.cobalt)
+                }
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) { ForEach(stages) { stage in tile(stage).frame(minWidth: 104) } }
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3), spacing: 8) {
+                        ForEach(stages) { stage in tile(stage) }
+                    }
+                }
+            }
+            .pbCard(padding: 20)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Pipeline. Open the full board")
+    }
+
+    private func tile(_ stage: Stage) -> some View {
+        let items = roles.filter { $0.stage == stage }
+        let hot = stage.isHot && !items.isEmpty
+        return VStack(alignment: .leading, spacing: 4) {
+            Text(stage.rawValue).font(.system(size: 12, weight: .semibold)).opacity(hot ? 0.9 : 0.7)
+            Text("\(items.count)").font(.system(size: 24, weight: .bold)).monospacedDigit()
+            Text(items.isEmpty ? " " : items.prefix(2).map(\.company).joined(separator: ", ") + (items.count > 2 ? " +\(items.count - 2)" : ""))
+                .font(.system(size: 11)).lineLimit(1).opacity(hot ? 0.9 : 0.6)
+        }
+        .foregroundStyle(hot ? Color.white : PB.ink)
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: PB.rMD, style: .continuous).fill(hot ? PB.cobalt : PB.surface))
+    }
+}
+
+enum PipelineFilter: String, CaseIterable, Identifiable {
+    case all = "All", new = "New this week", interviewing = "Upcoming interview", email = "Found in email"
+    var id: String { rawValue }
+    func includes(_ r: Role) -> Bool {
+        switch self {
+        case .all: true
+        case .new: r.isNew
+        case .interviewing: (r.interviewAt ?? .distantPast) > .now
+        case .email: !r.source.isEmpty
+        }
+    }
+}
+
+extension Role {
+    /// Added in the last week (by hand or by the Gmail/LinkedIn sync).
+    var isNew: Bool { createdAt > Date.now.addingTimeInterval(-7 * 86400) }
+}
+
+/// The whole pipeline board on its own screen, with drag between stages and "+ Add" in each column.
+struct PipelineScreen: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var app
+    @Environment(\.modelContext) private var context
+    @Query(sort: \Role.createdAt, order: .reverse) private var roles: [Role]
+    @Query private var tasks: [PrepTask]
+    @State private var query = ""
+    @State private var filter: PipelineFilter = .all
+
+    private var shown: [Role] {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        return roles.filter { r in
+            filter.includes(r) && (q.isEmpty || r.company.lowercased().contains(q) || r.title.lowercased().contains(q))
+        }
+    }
+
+    private var filterBar: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: PB.s3) { searchField.frame(maxWidth: 320); chips; Spacer(minLength: 0) }
+            VStack(alignment: .leading, spacing: PB.s3) { searchField; chips }
+        }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").font(.system(size: 13)).foregroundStyle(PB.muted)
+            TextField("Filter by company or title", text: $query).textFieldStyle(.plain)
+            if !query.isEmpty {
+                Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(PB.muted) }
+                    .buttonStyle(.plain).accessibilityLabel("Clear filter")
+            }
+        }
+        .font(.system(size: 13))
+        .padding(.horizontal, 14).frame(height: 40)
+        .background(Capsule().fill(PB.card)).overlay(Capsule().strokeBorder(PB.line))
+    }
+
+    private var chips: some View {
+        HStack(spacing: PB.s2) {
+            ForEach(PipelineFilter.allCases) { f in
+                let n = roles.filter(f.includes).count
+                Button { filter = f } label: {
+                    HStack(spacing: 6) {
+                        Text(f.rawValue)
+                        Text("\(n)").font(.system(size: 11, weight: .bold)).opacity(0.8)
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .lineLimit(1).fixedSize()
+                    .padding(.horizontal, 14).frame(height: 36)
+                    .foregroundStyle(filter == f ? Color.white : PB.ink2)
+                    .background(Capsule().fill(filter == f ? PB.cobalt : PB.card))
+                    .overlay(Capsule().strokeBorder(filter == f ? PB.cobalt : PB.line))
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(filter == f ? [.isSelected] : [])
+            }
+        }
+        .fixedSize()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: PB.s4) {
+            HStack(spacing: 12) {
+                CircleIconButton(systemImage: "xmark", label: "Close") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Pipeline").font(.system(size: 22, weight: .semibold))
+                    Text("Drag roles between stages").font(.system(size: 12)).foregroundStyle(PB.muted)
+                }
+                Spacer()
+                Button("+ New role") { app.newRole(context) }.buttonStyle(PillButtonStyle(compact: true))
+            }
+            filterBar
+            ScrollView(.vertical) {
+                PipelineView(roles: shown, tasks: tasks, showAdd: true)
+            }
+            .scrollIndicators(.hidden)
+        }
+        .padding(PB.s6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(PB.background)
+        #if os(macOS)
+        .pbSheetFrame(minWidth: 640, idealWidth: 1400, minHeight: 440, idealHeight: 900)
+        #endif
+    }
+}
+
 struct PipelineView: View {
     let roles: [Role]
     let tasks: [PrepTask]
@@ -421,9 +581,16 @@ struct PipelineView: View {
         let hot = role.stage.isHot
         return Button { app.openRole(role.id) } label: {
             VStack(alignment: .leading, spacing: 4) {
-                Text(role.company).font(.system(size: 14, weight: .semibold))
-                Text(role.title).font(.system(size: 13)).opacity(0.65).fixedSize(horizontal: false, vertical: true)
-                if let at = role.interviewAt { Text(at.pbShort).font(.pbMono).opacity(0.65) }
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(role.company).font(.system(size: 14, weight: .semibold))
+                    Spacer(minLength: 0)
+                    if role.isNew {
+                        Text("New").font(.system(size: 10, weight: .bold)).foregroundStyle(PB.onSun).fixedSize()
+                            .padding(.horizontal, 6).padding(.vertical, 2).background(Capsule().fill(PB.sun))
+                    }
+                }
+                Text(role.title).font(.system(size: 13)).opacity(hot ? 0.85 : 0.65).fixedSize(horizontal: false, vertical: true)
+                if let at = role.interviewAt { Text(at.pbShort).font(.pbMono).opacity(hot ? 0.85 : 0.65) }
                 ProgressBar(value: tasks.progress(for: role.id), inverted: hot).padding(.top, 8)
             }
             .foregroundStyle(hot ? Color.white : PB.ink)

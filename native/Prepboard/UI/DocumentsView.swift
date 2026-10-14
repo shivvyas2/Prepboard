@@ -21,7 +21,7 @@ struct DocumentsView: View {
     /// Documents grouped by role (roles first, then General), ordered by guide number.
     private var groups: [(title: String, docs: [Doc])] {
         let byRole = Dictionary(grouping: filtered, by: \.roleId)
-        var out: [(String, [Doc])] = roles.compactMap { r in byRole[r.id].map { ("\(r.company) — \(r.title)", $0) } }
+        var out: [(String, [Doc])] = roles.compactMap { r in byRole[r.id].map { ("\(r.company) · \(r.title)", $0) } }
         if let general = byRole[""] { out.append(("General", general)) }
         let known = Set(roles.map(\.id))
         let orphans = byRole.filter { !$0.key.isEmpty && !known.contains($0.key) }.flatMap(\.value)
@@ -78,7 +78,7 @@ struct DocumentsView: View {
                 Menu {
                     Button("All documents") { app.docFilter = "all" }
                     Button("General") { app.docFilter = "none" }
-                    ForEach(roles) { r in Button("\(r.company) — \(r.title)") { app.docFilter = r.id } }
+                    ForEach(roles) { r in Button("\(r.company) · \(r.title)") { app.docFilter = r.id } }
                 } label: {
                     HStack {
                         Text(filterTitle).lineLimit(1)
@@ -119,7 +119,7 @@ struct DocumentsView: View {
         switch app.docFilter {
         case "all": "All documents"
         case "none": "General"
-        default: roles.first { $0.id == app.docFilter }.map { "\($0.company) — \($0.title)" } ?? "All documents"
+        default: roles.first { $0.id == app.docFilter }.map { "\($0.company) · \($0.title)" } ?? "All documents"
         }
     }
 
@@ -229,7 +229,7 @@ struct DocEditorView: View {
                         HStack(spacing: 8) {
                             Picker("", selection: $doc.roleId) {
                                 Text("General").tag("")
-                                ForEach(roles) { Text("\($0.company) — \($0.title)").tag($0.id) }
+                                ForEach(roles) { Text("\($0.company) · \($0.title)").tag($0.id) }
                             }
                             .labelsHidden().pickerStyle(.menu).tint(PB.ink2).fixedSize()
                             TextField("tags, comma separated", text: Binding(
@@ -269,7 +269,7 @@ struct DocEditorView: View {
         .background(RoundedRectangle(cornerRadius: PB.rXL, style: .continuous).fill(PB.card))
         .overlay(RoundedRectangle(cornerRadius: PB.rXL, style: .continuous).strokeBorder(PB.line))
         .clipShape(RoundedRectangle(cornerRadius: PB.rXL, style: .continuous))
-        .shadow(color: Color(hex: 0x3C2D14).opacity(0.07), radius: 14, y: 8)
+        .shadow(color: PB.shadow.opacity(0.06), radius: 14, y: 6)
         .confirmationDialog("Delete this document?", isPresented: $confirmDelete) {
             Button("Delete", role: .destructive) {
                 for t in tasks where t.refs.contains(where: { $0.docId == doc.id }) { t.refs.removeAll { $0.docId == doc.id } }

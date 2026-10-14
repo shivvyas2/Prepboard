@@ -46,7 +46,7 @@
 
 ## iPad & iPhone
 
-Native SwiftUI, iPad-first: it uses the full display in both orientations, with a side rail on iPad and a tab bar on iPhone.
+Native SwiftUI, iPad-first: clean white surfaces, cobalt actions and orange highlights. iPad uses the side rail; iPhone keeps Home, Hunt, Roles and Timeline in the tab bar, with the remaining tools under More. Browser and application controls adapt to narrow windows and Split View.
 
 | iPad | iPad Timeline | iPhone |
 |---|---|---|
@@ -58,7 +58,7 @@ Distribution is through TestFlight; see [Releases](https://github.com/shivvyas2/
 
 ## Mac
 
-The same SwiftUI app runs natively on macOS, with keyboard shortcuts, the Claude Code side panel (⌘J) and the in-app browser. Download the DMG from [Releases](https://github.com/shivvyas2/Prepboard/releases/latest).
+The same SwiftUI app runs natively on macOS, with keyboard shortcuts, the floating Claude Code panel (⌥C) and the in-app browser. Download the DMG from [Releases](https://github.com/shivvyas2/Prepboard/releases/latest).
 
 > The Mac build isn't notarized yet. On first launch, right-click **PrepBoard.app → Open**, then confirm.
 
@@ -109,8 +109,13 @@ The `*_lifeos_placeholder.sql` files are empty stand-ins for another app's migra
 node bridge/claude-bridge.mjs
 ```
 
+### Browser-assisted applications (Mac)
+In **Hunt → Application browser**, choose **Built-in** or **Chrome + Claude**. For Chrome, use **Open Chrome**, then **Connect extension** to complete Claude's interactive browser setup. Browser connection and site/file permissions are checked when a task runs; setup errors appear in Hunt. Application tabs stay open when a form needs your input.
+
+Set your target roles, résumé folder and Answer Bank in Hunt Settings. **Daily search** automates discovery and résumé preparation while the Mac app is open. Review the résumé and required answers, then choose **Submit** for each application; you can cancel a queued application before it starts. iPhone and iPad can review and queue applications for the Mac.
+
 ### Developer launch flags (native)
-`-PrepboardLocalOnly YES` (no accounts) · `-PrepboardSection timeline|documents|scores|browse` · `-PrepboardOpenURL https://…` · `-PrepboardImport /path/export.json` · `-PrepboardBrowserSmoke 1` (debug builds: drives the built-in browser through `claude -p` and prints the reply)
+`-PrepboardPreview YES` (debug builds: disposable in-memory data, no cloud connection or background hunt/sync/bridge services; useful for layout checks) · `-PrepboardLocalOnly YES` (no accounts) · `-PrepboardSection timeline|documents|scores|browse` · `-PrepboardOpenURL https://…` · `-PrepboardImport /path/export.json` · `-PrepboardBrowserSmoke 1` (debug builds: drives the built-in browser through `claude -p` and prints the reply)
 
 ## Privacy & security
 

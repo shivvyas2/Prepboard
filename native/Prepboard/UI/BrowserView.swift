@@ -98,6 +98,7 @@ struct BrowserView: View {
                     .opacity(browser.url == nil ? 0 : 1)
                 if browser.url == nil { startPage }
             }
+            .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
             .clipShape(RoundedRectangle(cornerRadius: PB.rLG, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: PB.rLG, style: .continuous).strokeBorder(PB.line))
             .padding(.bottom, 24)
@@ -112,37 +113,72 @@ struct BrowserView: View {
 
     private var toolbar: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                CircleIconButton(systemImage: "chevron.left", size: 40, label: "Back") { browser.webView.goBack() }
-                    .disabled(!browser.canGoBack).opacity(browser.canGoBack ? 1 : 0.4)
-                CircleIconButton(systemImage: "chevron.right", size: 40, label: "Forward") { browser.webView.goForward() }
-                    .disabled(!browser.canGoForward).opacity(browser.canGoForward ? 1 : 0.4)
-                CircleIconButton(systemImage: browser.isLoading ? "xmark" : "arrow.clockwise", size: 40, label: browser.isLoading ? "Stop" : "Reload") {
-                    if browser.isLoading { browser.webView.stopLoading() } else { _ = browser.webView.reload() }
-                }
+            ViewThatFits(in: .horizontal) {
                 HStack(spacing: 8) {
-                    Image(systemName: browser.url?.scheme == "https" ? "lock.fill" : "globe").font(.system(size: 12)).foregroundStyle(PB.muted)
-                    TextField("Search or enter website", text: $address)
-                        .textFieldStyle(.plain)
-                        .focused($addressFocused)
-                        .onSubmit { browser.go(address); addressFocused = false }
-                        #if os(iOS)
-                        .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.webSearch)
-                        #endif
+                    navigationButtons
+                    addressField.frame(minWidth: 220)
+                    Button { openInBrowser() } label: {
+                        Label("Open in browser", systemImage: "arrow.up.right.square")
+                    }
+                    .buttonStyle(PillButtonStyle(filled: false, compact: true)).fixedSize()
+                    .disabled(browser.url == nil).help("Open this page in your default browser")
+                    Button { saveToNotes() } label: { Label("Save to notes", systemImage: "doc.badge.plus") }
+                        .buttonStyle(PillButtonStyle(compact: true)).fixedSize().disabled(browser.url == nil)
                 }
-                .padding(.horizontal, 16).frame(height: 40)
-                .background(Capsule().fill(PB.card)).overlay(Capsule().strokeBorder(PB.line))
-                Button { if let u = browser.url { openURL(u) } } label: {
-                    Label("Safari", systemImage: "safari").font(.system(size: 13, weight: .medium))
+                VStack(spacing: 8) {
+                    addressField
+                    HStack(spacing: 8) {
+                        navigationButtons
+                        Spacer(minLength: 0)
+                        CircleIconButton(systemImage: "arrow.up.right.square", size: controlSize, label: "Open this page in your default browser") { openInBrowser() }
+                            .disabled(browser.url == nil)
+                        CircleIconButton(systemImage: "doc.badge.plus", size: controlSize, active: true, label: "Save page to notes") { saveToNotes() }
+                            .disabled(browser.url == nil)
+                    }
                 }
-                .buttonStyle(PillButtonStyle(filled: false, compact: true)).disabled(browser.url == nil)
-                .help("Open this page in Safari")
-                Button("Save to notes") { saveToNotes() }.buttonStyle(PillButtonStyle(compact: true)).disabled(browser.url == nil)
             }
             if browser.isLoading {
                 ProgressView(value: browser.progress).tint(PB.cobalt).padding(.top, 8)
             }
         }
+    }
+
+    private var controlSize: CGFloat { max(40, PB.minTap) }
+
+    private var navigationButtons: some View {
+        HStack(spacing: 8) {
+            CircleIconButton(systemImage: "chevron.left", size: controlSize, label: "Back") { browser.webView.goBack() }
+                .disabled(!browser.canGoBack)
+            CircleIconButton(systemImage: "chevron.right", size: controlSize, label: "Forward") { browser.webView.goForward() }
+                .disabled(!browser.canGoForward)
+            CircleIconButton(systemImage: browser.isLoading ? "xmark" : "arrow.clockwise", size: controlSize, label: browser.isLoading ? "Stop loading" : "Reload page") {
+                if browser.isLoading { browser.webView.stopLoading() } else { _ = browser.webView.reload() }
+            }
+        }
+    }
+
+    private var addressField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: browser.url?.scheme == "https" ? "lock.fill" : "globe")
+                .font(.system(size: 12)).foregroundStyle(PB.muted)
+                .accessibilityHidden(true)
+            TextField("Search or enter website", text: $address)
+                .textFieldStyle(.plain)
+                .focused($addressFocused)
+                .accessibilityLabel("Search or enter website")
+                .onSubmit { browser.go(address); addressFocused = false }
+                #if os(iOS)
+                .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.webSearch)
+                .submitLabel(.go)
+                #endif
+        }
+        .padding(.horizontal, 16).frame(height: controlSize)
+        .background(RoundedRectangle(cornerRadius: PB.rMD).fill(PB.card))
+        .overlay(RoundedRectangle(cornerRadius: PB.rMD).strokeBorder(addressFocused ? PB.cobalt : PB.line))
+    }
+
+    private func openInBrowser() {
+        if let u = browser.url { openURL(u) }
     }
 
     private var startPage: some View {
@@ -151,8 +187,10 @@ struct BrowserView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Browse").pbLabelStyle()
                     Text("Research without leaving PrepBoard").font(.system(size: 28, weight: .bold)).kerning(-0.8)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text("Search above, or start from a favorite. Tap “Save to notes” to keep a page with your prep documents.")
                         .foregroundStyle(PB.muted)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 12)], spacing: 12) {
                     ForEach(quickLinks, id: \.0) { name, url, icon in
@@ -161,6 +199,7 @@ struct BrowserView: View {
                                 Image(systemName: icon).font(.system(size: 16)).foregroundStyle(PB.cobalt)
                                     .frame(width: 36, height: 36).background(Circle().fill(PB.cobaltSoft))
                                 Text(name).font(.system(size: 14, weight: .semibold))
+                                    .fixedSize(horizontal: false, vertical: true)
                                 Spacer(minLength: 0)
                             }
                             .padding(12)
@@ -172,7 +211,7 @@ struct BrowserView: View {
                     }
                 }
             }
-            .padding(32)
+            .padding(24)
         }
         .background(PB.surface)
     }

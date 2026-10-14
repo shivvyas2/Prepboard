@@ -42,6 +42,7 @@ struct SubmitResult: Codable {
 }
 
 #if os(macOS)
+import AppKit
 import Observation
 
 /// Which browser the heavy runs (Discover, Submit) use. Mac only, not synced; the LinkedIn sync always uses the built-in browser.
@@ -76,6 +77,8 @@ final class JobHunt {
     private(set) var variants: [ResumeVariant] = []
     /// The browser the current (or last) heavy run chose; `HuntRunCard` words its status with it.
     private(set) var usingChrome = false
+    private(set) var chromeStatus: String?
+    private(set) var isOpeningChrome = false
     var isRunning: Bool { phase != .idle }
     var tailoredToday: Int { Self.dailyCount("tailored") }
     var submittedToday: Int { Self.dailyCount("submitted") }
@@ -90,6 +93,73 @@ final class JobHunt {
     private var queueTimer: Timer?
     private var lastSubmit: Date? = UserDefaults.standard.object(forKey: "hunt.lastSubmit") as? Date {
         didSet { UserDefaults.standard.set(lastSubmit, forKey: "hunt.lastSubmit") }
+    }
+
+    /// Open the selected desktop browser explicitly: the default browser may be Safari, which cannot host this extension.
+    /// Launching Chrome does not prove that its extension is connected; the run checks that separately.
+    @discardableResult
+    func openChrome(_ link: String? = nil) async -> Bool {
+        guard !isOpeningChrome else { return false }
+        let page: URL?
+        if let link {
+            guard let valid = Self.webURL(link) else {
+                chromeStatus = "This posting needs a valid http or https link before it can be opened."
+                error = chromeStatus
+                return false
+            }
+            page = valid
+        } else { page = nil }
+        guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.google.Chrome") else {
+            chromeStatus = "Google Chrome is not installed. Install Chrome or choose the built-in browser."
+            error = chromeStatus
+            return false
+        }
+        isOpeningChrome = true
+        defer { isOpeningChrome = false }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        do {
+            if let page {
+                _ = try await NSWorkspace.shared.open([page], withApplicationAt: app, configuration: configuration)
+            } else {
+                _ = try await NSWorkspace.shared.openApplication(at: app, configuration: configuration)
+            }
+            chromeStatus = "Chrome is open. The Claude extension connection is checked when a run starts."
+            return true
+        } catch {
+            chromeStatus = "Couldn't open Chrome: \(error.localizedDescription)"
+            self.error = chromeStatus
+            return false
+        }
+    }
+
+    /// First-time consent, extension reconnection, and browser selection require Claude's interactive setup.
+    /// The script opens a session only; it never sends an application prompt.
+    func openChromeSetup() {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("prepboard-chrome-setup.command")
+        let script = """
+        #!/bin/zsh -l
+        export PATH='\(LatexBuild.quoted(ClaudeCode.searchPath))':"$PATH"
+        cd "$HOME"
+        printf '%s\\n' 'In Claude, use /login if needed, then /chrome to connect the extension and choose Google Chrome.'
+        exec claude --chrome
+        """
+        do {
+            try script.write(to: file, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: file.path)
+            guard NSWorkspace.shared.open(file) else { throw BrowserError.message("Terminal could not open the setup session.") }
+            chromeStatus = "Finish setup in Terminal: use /chrome to reconnect, choose Chrome, and review site permissions."
+        } catch {
+            chromeStatus = "Couldn't open Chrome setup: \(error.localizedDescription)"
+            self.error = chromeStatus
+        }
+    }
+
+    nonisolated static func webURL(_ link: String) -> URL? {
+        guard let url = URL(string: link.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme),
+              let host = url.host, !host.isEmpty else { return nil }
+        return url
     }
 
     /// Starts the schedule: a daily run checked every 5 minutes, the submit queue every minute. `browser` is the built-in
@@ -188,9 +258,9 @@ final class JobHunt {
         return ("", "needs_you", legal)
     }
 
-    /// True when the posting lives on LinkedIn (its host contains linkedin.com), so Submit needs the LinkedIn session first.
+    /// True when the posting lives on LinkedIn, so Submit needs the LinkedIn session first.
     static func isLinkedIn(_ link: String) -> Bool {
-        URL(string: link.trimmingCharacters(in: .whitespacesAndNewlines))?.host?.lowercased().contains("linkedin.com") ?? false
+        ATS.kind(link) == .linkedin
     }
 
     /// Adds a needs_you answer for each question the form asked that is not in the list yet, so `canSubmit` gates on it.
@@ -216,7 +286,7 @@ final class JobHunt {
     // MARK: schedule
 
     func runIfDue() {
-        guard phase == .idle, let container, let claude, claude.isReady, !claude.busy, let s = settings(in: container.mainContext), s.auto else { return }
+        guard phase == .idle, !isOpeningChrome, let container, let claude, claude.isReady, !claude.busy, let s = settings(in: container.mainContext), s.auto else { return }
         guard Calendar.current.component(.hour, from: .now) >= s.runHour else { return }
         if let lastRun, Calendar.current.isDateInToday(lastRun) { return }
         Task { await run() }
@@ -224,7 +294,7 @@ final class JobHunt {
 
     /// Submits the oldest queued lead, one at a time, at least 2 minutes apart and within the daily limit.
     func processSubmitQueue() {
-        guard phase == .idle, let container, let claude, claude.isReady, !claude.busy else { return }
+        guard phase == .idle, !isOpeningChrome, let container, let claude, claude.isReady, !claude.busy else { return }
         if let lastSubmit, Date.now.timeIntervalSince(lastSubmit) < Self.submitSpacing { return }
         let context = container.mainContext
         guard let s = settings(in: context), Self.dailyCount("submitted") < s.dailySubmitLimit else { return }
@@ -299,6 +369,7 @@ final class JobHunt {
         guard claude.isReady else { error = "Connect Claude Code in Profile to run the hunt."; return }
         guard !claude.busy else { error = "Another Claude run is using the browser; wait for it to finish."; return }
         let chrome = HuntBrowserChoice.current == .chrome   // read once; the built-in server guards apply only to that path
+        guard !chrome || !isOpeningChrome else { error = "Chrome is opening. Start the hunt once its window is ready."; return }
         guard chrome || browser?.isRunning == true else { error = "The built-in browser couldn't start"; return }
         let context = container.mainContext
         let settings = HuntSettings.current(context)
@@ -307,6 +378,7 @@ final class JobHunt {
         error = nil
         claude.busy = true
         defer { phase = .idle; claude.busy = false }
+        if chrome, !(await openChrome()) { return }
         if !chrome { browser?.reset() }
         // The built-in browser signs itself in from the Keychain when LinkedIn's session is gone; Chrome has its own.
         if !chrome, let huntBrowser, let stop = LinkedInSignIn.stopMessage(await LinkedInSignIn.ensure(huntBrowser)) {
@@ -346,6 +418,7 @@ final class JobHunt {
             try context.save()
             if result.notes.uppercased().hasPrefix("NO_CHROME") {
                 error = Self.noChromeMessage
+                chromeStatus = Self.noChromeMessage
                 lastRun = .now; lastSummary = "Stopped: Chrome isn't connected"
                 return
             }
@@ -393,6 +466,7 @@ final class JobHunt {
     func tailor(_ lead: Lead) async {
         guard phase == .idle, let container, let claude else { return }
         guard claude.isReady else { error = "Connect Claude Code in Profile to tailor a résumé."; return }
+        guard !claude.busy else { error = "Another Claude run is in progress; wait for it to finish."; return }
         let context = container.mainContext
         let settings = HuntSettings.current(context)
         guard Self.dailyCount("tailored") < settings.dailyTailorLimit else { error = "Daily tailoring limit reached (\(settings.dailyTailorLimit)). Try again tomorrow."; return }
@@ -543,6 +617,8 @@ final class JobHunt {
         guard claude.isReady else { error = "Connect Claude Code in Profile to submit applications."; return }
         guard !claude.busy else { error = "Another Claude run is using the browser; wait for it to finish."; return }
         let chrome = HuntBrowserChoice.current == .chrome
+        // Keep an approved lead queued if a manual Open Chrome action is still completing.
+        guard !chrome || !isOpeningChrome else { return }
         guard chrome || browser?.isRunning == true else { error = "The built-in browser couldn't start"; return }
         let context = container.mainContext
         let settings = HuntSettings.current(context)
@@ -553,6 +629,12 @@ final class JobHunt {
             return
         }
         guard lead.submitRequested else { return }
+        guard Self.webURL(lead.link) != nil else {
+            lead.submitRequested = false; lead.status = .needsYou; lead.reason = "Add a valid http or https posting link before submitting."
+            lead.updatedAt = .now
+            try? context.save()
+            return
+        }
         // Already applied through the hunt (same link or same company + posting id / title): record it, never submit twice.
         let hunt = "hunt"
         let applied = (try? context.fetch(FetchDescriptor<Role>(predicate: #Predicate { $0.source == hunt }))) ?? []
@@ -577,6 +659,8 @@ final class JobHunt {
         if !chrome { browser?.reset() }
         if pdfPath.isEmpty || !FileManager.default.fileExists(atPath: pdfPath) {
             lead.status = .failed; lead.reason = "The PDF is missing; regenerate the résumé first"
+        } else if chrome, !(await openChrome()) {
+            lead.status = .ready; lead.flagged = chromeStatus ?? Self.noChromeMessage
         } else if !chrome, let huntBrowser, Self.isLinkedIn(lead.link),
                   let stop = LinkedInSignIn.stopMessage(await LinkedInSignIn.ensure(huntBrowser)) {
             // A LinkedIn posting needs the session first (careers sites do not). Nothing was touched: the lead stays ready, and it
@@ -587,9 +671,9 @@ final class JobHunt {
             do {
                 let flags = chrome ? Self.chromeFlags(tools: Self.chromeSubmitTools) : browser?.claudeFlags(extraTools: "")
                 let result = try await Self.check(SubmitResult.self, prompt: Self.submitPrompt(lead: lead, pdfPath: pdfPath, bank: settings.answerBank, chrome: chrome),
-                                                  schema: Self.submitSchema, browserFlags: flags, tools: "", cwd: nil)
+                                                  schema: Self.submitSchema, browserFlags: flags, tools: "", cwd: settings.resumeFolder)
                 switch result.status {
-                case "submitted":
+                case "submitted" where !result.confirmation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
                     let role = Role(company: lead.company, title: lead.title.isEmpty ? "Role" : lead.title, location: lead.location,
                                     roleNumber: lead.roleNumber, link: lead.link, stage: .applied)
                     role.source = "hunt"; role.appliedAt = .now; role.resumeVariant = lead.variantName
@@ -597,9 +681,12 @@ final class JobHunt {
                     context.insert(role)
                     lead.roleId = role.id; lead.status = .submitted; lead.reason = result.confirmation
                     Self.bump("submitted")
+                case "submitted":
+                    lead.status = .needsYou; lead.reason = "No submission confirmation was returned. Check the open application before trying again."
                 case "needs_you" where result.reason.uppercased().hasPrefix("NO_CHROME"):
                     // Nothing was touched: the lead stays ready to queue again once Chrome is connected.
                     lead.status = .ready; lead.flagged = Self.noChromeMessage; error = Self.noChromeMessage
+                    chromeStatus = Self.noChromeMessage
                 case "needs_you":
                     lead.status = .needsYou; lead.flagged = result.unknown_questions.joined(separator: "\n")
                     lead.reason = result.reason.isEmpty ? "The form needs you" : result.reason
@@ -627,7 +714,7 @@ final class JobHunt {
         .map { "mcp__claude-in-chrome__" + $0 }.joined(separator: " ")
     /// Submit adds clicking, the form and upload tools.
     static let chromeSubmitTools = chromeDiscoverTools + " mcp__claude-in-chrome__computer mcp__claude-in-chrome__form_input mcp__claude-in-chrome__file_upload"
-    static let noChromeMessage = "Chrome with the Claude extension isn't connected. Open Chrome, or switch heavy runs to the built-in browser in Settings."
+    static let noChromeMessage = "Chrome's Claude extension isn't connected. Use Connect extension, then /chrome in Terminal to reconnect or select Chrome. Sign in to the same Claude account and allow access to the application site. You can also choose the built-in browser."
 
     /// The `claude -p` flags for a Chrome run: strict, so the Chrome tools are the only MCP tools loaded (the built-in tools go with `--tools ""`).
     static func chromeFlags(tools: String) -> String { "--chrome --strict-mcp-config --allowedTools \(tools)" }
@@ -637,7 +724,9 @@ final class JobHunt {
     static func browserGuide(upload: Bool, chrome: Bool) -> String {
         if chrome {
             return "Use my signed-in Chrome through the Claude in Chrome tools (mcp__claude-in-chrome__…): call tabs_context_mcp first, open "
-            + "your own tab with tabs_create_mcp and close it with tabs_close_mcp when done; navigate; get_page_text for the full text; "
+            + "your own tab with tabs_create_mcp; "
+            + (upload ? "leave the application tab open for me, including on success, needs_you, or any error; " : "close only tabs you created with tabs_close_mcp when done; ")
+            + "navigate; get_page_text for the full text; "
             + "read_page / find for elements"
             + (upload ? "; computer for clicks and scrolling; form_input for fields and file_upload for the résumé"
                       : "; there is no clicking or scrolling: open each posting by its URL and page through result lists by URL "
@@ -966,7 +1055,7 @@ final class JobHunt {
         let names = tools.split(separator: " ")
         return "cd '\(LatexBuild.quoted(cwd))' && claude -p \(browserFlags.map { $0 + " " } ?? "")--output-format json "
             + "--json-schema \"$(cat '\(LatexBuild.quoted(schemaPath))')\" --tools \"\(names.joined(separator: ","))\""
-            + (names.isEmpty ? "" : " --allowedTools " + names.joined(separator: " ")) + " 2>/dev/null"
+            + (names.isEmpty ? "" : " --allowedTools " + names.joined(separator: " "))
     }
 
     /// One headless `claude -p` call with a JSON schema; `browserFlags` (from `BrowserServer.claudeFlags` or `chromeFlags`, which already
@@ -978,20 +1067,37 @@ final class JobHunt {
         try schema.write(to: schemaFile, atomically: true, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: schemaFile) }
         let cmd = claudeCommand(browserFlags: browserFlags, tools: tools, schemaPath: schemaFile.path, cwd: cwd ?? dir.path)
-        let out = await ClaudeCode.shell(cmd, stdin: prompt)
-        guard let start = out.firstIndex(of: "{"),
-              let obj = try? JSONSerialization.jsonObject(with: Data(out[start...].utf8)) as? [String: Any] else {
-            throw Learning.Failure.message("Claude Code didn't respond. Check it works in Terminal.")
+        let output = await ClaudeCode.shellResult(cmd, stdin: prompt)
+        return try decodeResult(type, output: output)
+    }
+
+    /// A login profile may print a banner before Claude's JSON; stderr must never be mixed into the JSON document.
+    /// Preserve the actual CLI failure so browser setup, permissions, and outdated CLI flags can be fixed from the app.
+    nonisolated static func decodeResult<T: Decodable>(_ type: T.Type, output: ClaudeCode.ShellResult) throws -> T {
+        let stdout = output.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        let obj = ClaudeCode.jsonObject(stdout)
+        if output.exitCode != 0 || obj?["is_error"] as? Bool == true {
+            let errors = (obj?["errors"] as? [String])?.joined(separator: "\n") ?? ""
+            let reason = [obj?["result"] as? String ?? "", errors, output.stderr, obj == nil ? stdout : ""]
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty }
+            throw Learning.Failure.message(reason.map { String($0.suffix(1200)) } ?? "Claude Code exited with code \(output.exitCode).")
         }
-        if obj["is_error"] as? Bool == true {
-            throw Learning.Failure.message((obj["result"] as? String) ?? "Claude Code returned an error.")
+        guard let obj else {
+            let detail = output.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            throw Learning.Failure.message(detail.isEmpty ? "Claude Code returned no result. Open Claude Code in Terminal to check sign-in and browser permissions."
+                                          : String(detail.suffix(1200)))
         }
         let structured = obj["structured_output"].flatMap { try? JSONSerialization.data(withJSONObject: $0) }
             ?? (obj["result"] as? String).map { Data($0.utf8) }
         guard let structured, let value = try? JSONDecoder().decode(T.self, from: structured) else {
-            throw Learning.Failure.message("Couldn't read Claude's result.")
+            let denials = obj["permission_denials"] as? [[String: Any]] ?? []
+            if !denials.isEmpty {
+                throw Learning.Failure.message("Claude couldn't use a required tool. Open Connect extension and review the application's site and file permissions, then try again.")
+            }
+            throw Learning.Failure.message("Claude returned an incomplete result. \(String((obj["result"] as? String ?? "Try again after checking Claude Code in Terminal.").suffix(800)))")
         }
         return value
     }
+
 }
 #endif

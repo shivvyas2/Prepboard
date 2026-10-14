@@ -377,9 +377,9 @@ struct PracticeView: View {
 
     private func difficultyChip(_ d: String) -> some View {
         Text(d).font(.system(size: 11, weight: .bold)).fixedSize()
-            .foregroundStyle(d == "Easy" ? Color(hex: 0x2F7D4F) : d == "Hard" ? PB.red : PB.onSun)
+            .foregroundStyle(d == "Easy" ? PB.green : d == "Hard" ? PB.red : PB.sunInk)
             .padding(.horizontal, 8).padding(.vertical, 4)
-            .background(Capsule().fill(d == "Easy" ? Color(hex: 0xDDEEDF) : d == "Hard" ? Color(hex: 0xFBE4D8) : PB.sunSoft))
+            .background(Capsule().fill(d == "Easy" ? PB.greenSoft : d == "Hard" ? PB.redSoft : PB.sunSoft))
     }
 
     private func statement(_ p: Problem) -> some View {
@@ -388,7 +388,7 @@ struct PracticeView: View {
                 Text(p.title).font(.system(size: 22, weight: .bold)).kerning(-0.4)
                 if !p.topics.isEmpty {
                     FlowLayout(spacing: 8) {
-                        ForEach(p.topics, id: \.self) { Text($0).font(.system(size: 11, weight: .medium)).padding(.horizontal, 8).padding(.vertical, 4)
+                        ForEach(p.topics, id: \.self) { Text($0).font(.system(size: 11, weight: .medium)).lineLimit(1).padding(.horizontal, 8).padding(.vertical, 4)
                             .background(Capsule().fill(PB.surface)).overlay(Capsule().strokeBorder(PB.line)) }
                     }
                 }

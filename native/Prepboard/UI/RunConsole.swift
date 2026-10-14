@@ -11,18 +11,18 @@ struct RunConsole: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: PB.s3) {
+            VStack(alignment: .leading, spacing: PB.s2) {
                 verdictPill
-                Spacer(minLength: PB.s2)
                 if result != nil {
-                    Picker("", selection: $tab) {
+                    Picker("Console content", selection: $tab) {
                         Text(testsLabel).tag(Tab.tests)
                         Text("Output").tag(Tab.output)
                         Text(compilerLabel).tag(Tab.compiler)
                     }
-                    .pickerStyle(.segmented).labelsHidden().fixedSize()
+                    .pickerStyle(.segmented).labelsHidden()
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, PB.s4).padding(.vertical, PB.s2)
             Divider()
             ScrollView {
@@ -55,8 +55,8 @@ struct RunConsole: View {
     private var compilerLabel: String {
         let d = result?.diagnostics ?? []
         let errors = d.filter { $0.severity == .error }.count, warnings = d.filter { $0.severity == .warning }.count
-        if errors > 0 { return "Compiler · \(errors) error\(errors == 1 ? "" : "s")" }
-        if warnings > 0 { return "Compiler · \(warnings) warning\(warnings == 1 ? "" : "s")" }
+        if errors > 0 { return "Compiler (\(errors))" }
+        if warnings > 0 { return "Compiler (\(warnings))" }
         return "Compiler"
     }
 
@@ -64,12 +64,20 @@ struct RunConsole: View {
 
     @ViewBuilder private var verdictPill: some View {
         if running {
-            HStack(spacing: PB.s2) { ProgressView().controlSize(.small); Text("Compiling and running \(langLabel)…").foregroundStyle(PB.muted) }
+            HStack(spacing: PB.s2) {
+                ProgressView().controlSize(.small)
+                Text("Compiling and running \(langLabel)…").foregroundStyle(PB.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
                 .font(.system(size: 13, weight: .medium))
         } else if let r = result {
-            HStack(spacing: PB.s2) {
+            VStack(alignment: .leading, spacing: PB.s1) {
                 Text(title(r)).font(.system(size: 14, weight: .semibold)).foregroundStyle(color(r))
-                Text(timing(r)).font(.system(size: 12)).foregroundStyle(PB.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !timing(r).isEmpty {
+                    Text(timing(r)).font(.system(size: 12)).foregroundStyle(PB.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         } else {
             Text("Console").font(.system(size: 13, weight: .semibold)).foregroundStyle(PB.ink2)
@@ -129,8 +137,13 @@ struct RunConsole: View {
                     HStack(alignment: .firstTextBaseline, spacing: PB.s2) {
                         Image(systemName: t.passed ? "checkmark.circle.fill" : "xmark.circle.fill")
                             .foregroundStyle(t.passed ? PB.green : PB.red)
-                        Text("Test \(t.number)").fontWeight(.semibold)
-                        if !t.detail.isEmpty { Text(t.detail).foregroundStyle(PB.ink2) }
+                        VStack(alignment: .leading, spacing: PB.s1) {
+                            Text("Test \(t.number)").fontWeight(.semibold)
+                            if !t.detail.isEmpty {
+                                Text(t.detail).foregroundStyle(PB.ink2)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
                     }
                 }
             }
@@ -157,11 +170,14 @@ struct RunConsole: View {
                 if !r.diagnostics.isEmpty {
                     VStack(alignment: .leading, spacing: PB.s1) {
                         ForEach(Array(r.diagnostics.enumerated()), id: \.offset) { _, d in
-                            HStack(alignment: .firstTextBaseline, spacing: PB.s2) {
-                                Text(d.severity.rawValue).fontWeight(.semibold)
-                                    .foregroundStyle(d.severity == .error ? PB.red : d.severity == .warning ? PB.onSun : PB.muted)
-                                Text("line \(d.line)" + (d.column.map { ":\($0)" } ?? "")).foregroundStyle(PB.cobalt)
+                            VStack(alignment: .leading, spacing: PB.s1) {
+                                HStack(spacing: PB.s2) {
+                                    Text(d.severity.rawValue).fontWeight(.semibold)
+                                        .foregroundStyle(d.severity == .error ? PB.red : d.severity == .warning ? PB.sunInk : PB.muted)
+                                    Text("line \(d.line)" + (d.column.map { ":\($0)" } ?? "")).foregroundStyle(PB.cobalt)
+                                }
                                 Text(d.message).foregroundStyle(PB.ink)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                         }
                     }

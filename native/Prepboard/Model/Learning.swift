@@ -1,3 +1,4 @@
+import SwiftData
 import Foundation
 
 /// Quiz generation and YouTube video discovery.
@@ -112,6 +113,42 @@ enum Learning {
 }
 
 extension String { var nilIfEmpty: String? { isEmpty ? nil : self } }
+
+/// Writes a planner `Plan` into a role: placeholder study guides plus timeline sessions. Shared by the planner chat and AutoPrep.
+@MainActor
+enum PlanWriter {
+    /// Inserts the plan's new guides and its sessions. A ref's `doc_key` may also be "existing:<doc id>" to point at a guide the
+    /// role already has. Returns the new guides with their outlines, for the caller to write.
+    @discardableResult
+    static func insert(_ p: Plan, into role: Role, context: ModelContext, after: Date? = nil, orderFrom: Int = 0) -> [(Doc, Plan.Doc)] {
+        let roleId = role.id
+        let existing = Set(((try? context.fetch(FetchDescriptor<Doc>(predicate: #Predicate { $0.roleId == roleId }))) ?? []).map(\.id))
+        var docIds: [String: String] = [:]
+        var created: [(Doc, Plan.Doc)] = []
+        for (i, d) in p.docs.enumerated() {
+            let doc = Doc(roleId: role.id, title: d.title,
+                          body: "_Writing this guide…_\n\n" + d.headings.map { "## \($0)\n" }.joined(separator: "\n"),
+                          tags: ["guide"], order: orderFrom + i)
+            context.insert(doc)
+            docIds[d.key] = doc.id
+            created.append((doc, d))
+        }
+        func docId(_ key: String) -> String? {
+            if key.hasPrefix("existing:") { let id = String(key.dropFirst(9)); return existing.contains(id) ? id : nil }
+            return docIds[key]
+        }
+        for s in p.sessions {
+            guard let start = DateCoding.date(s.start), let end = DateCoding.date(s.end), end > start else { continue }
+            if let after, start < after { continue }
+            if let interview = role.interviewAt, start >= interview { continue }
+            context.insert(PrepTask(roleId: role.id, title: s.title, start: start, end: end,
+                                    kind: SessionKind(rawValue: s.kind) ?? .study,
+                                    refs: s.refs.compactMap { r in docId(r.doc_key).map { DocRef(docId: $0, heading: r.heading) } }))
+        }
+        try? context.save()
+        return created
+    }
+}
 
 /// The planner conversation when it runs on the user's own Claude Code (same rules as the server planner).
 enum PlannerPrompt {

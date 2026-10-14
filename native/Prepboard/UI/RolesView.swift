@@ -24,14 +24,18 @@ struct RolesView: View {
                     #if os(macOS)
                     JobSyncCard()
                     #endif
-                    let needPlan = roles.filter { r in (r.interviewAt ?? .distantPast) > .now && !tasks.contains { $0.roleId == r.id } }
+                    let needPlan = roles.filter { r in (r.interviewAt ?? .distantPast) > .now && !tasks.contains { $0.roleId == r.id && $0.end > .now } }
                     if !needPlan.isEmpty {
                         VStack(alignment: .leading, spacing: 0) {
                             CardHeader(title: "Interviews without a plan", count: "\(needPlan.count)")
                             ForEach(needPlan) { r in
                                 HStack(spacing: 12) {
                                     VStack(alignment: .leading, spacing: 4) {
-                                        Text("\(r.company) — \(r.title)").font(.system(size: 14, weight: .medium)).lineLimit(2)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(r.company).font(.system(size: 14, weight: .semibold))
+                                            Text(r.title).font(.system(size: 13)).foregroundStyle(PB.ink2).lineLimit(2)
+                                                .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+                                        }
                                         Text(r.interviewAt?.pbFull ?? "").font(.system(size: 12)).foregroundStyle(PB.muted)
                                     }
                                     Spacer(minLength: 8)
@@ -40,10 +44,9 @@ struct RolesView: View {
                                 .padding(.vertical, 8)
                             }
                         }
-                        .pbCard(fill: PB.sun.opacity(0.18))
+                        .pbCard(fill: PB.sunSoft)
                     }
-                    PipelineView(roles: roles, tasks: tasks, showAdd: true)
-                        .pbCard(padding: 16, fill: PB.surface.opacity(0.7))
+                    PipelineSummary(roles: roles)
                     VStack(alignment: .leading, spacing: 0) {
                         CardHeader(title: "All roles")
                         if roles.isEmpty { Text("No roles yet.").foregroundStyle(PB.muted).frame(maxWidth: .infinity).padding(32) }
@@ -56,8 +59,11 @@ struct RolesView: View {
                                         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(PB.line))
                                     // Title, details and progress stack, so nothing is cut off on a phone.
                                     VStack(alignment: .leading, spacing: 8) {
-                                        Text("\(r.company) — \(r.title)").font(.system(size: 14, weight: .medium)).lineLimit(2)
-                                            .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(r.company).font(.system(size: 14, weight: .semibold))
+                                            Text(r.title).font(.system(size: 13)).foregroundStyle(PB.ink2).lineLimit(2)
+                                                .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
+                                        }
                                         Text([r.stage.rawValue, r.interviewAt?.pbFull].compactMap { $0 }.joined(separator: " · "))
                                             .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
                                         ProgressBar(value: tasks.progress(for: r.id)).frame(maxWidth: 240)
@@ -164,6 +170,7 @@ struct RoleDetailView: View {
                                     .foregroundStyle(current ? .white : past ? PB.cobalt : PB.muted)
                                 Text(s.rawValue).font(.system(size: 13, weight: .medium))
                             }
+                            .lineLimit(1).fixedSize()
                             .padding(.horizontal, 16).frame(height: 36)
                             .foregroundStyle(current ? Color.white : past ? PB.cobalt : PB.ink2)
                             .background(Capsule().fill(current ? PB.cobalt : past ? PB.cobaltSoft : PB.card))
@@ -279,18 +286,25 @@ struct RoleDetailView: View {
 /// Gmail & LinkedIn sync status, "Sync now", and the automatic schedule.
 struct JobSyncCard: View {
     @Environment(JobSync.self) private var sync
+    @Environment(AutoPrep.self) private var autoPrep
     @Environment(ClaudeCode.self) private var claude
 
     var body: some View {
         @Bindable var sync = sync
-        HStack(alignment: .center, spacing: 12) {
+        @Bindable var autoPrep = autoPrep
+        return HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Gmail & LinkedIn").font(.system(size: 14, weight: .semibold))
                 Text(status).font(.system(size: 12)).foregroundStyle(sync.error == nil ? PB.muted : PB.red)
                     .fixedSize(horizontal: false, vertical: true)
+                if let prep = prepStatus {
+                    Text(prep).font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 8)
             Toggle("Check every 3 hours", isOn: $sync.auto).toggleStyle(.checkbox).font(.system(size: 12))
+            Toggle("Build prep plans", isOn: $autoPrep.enabled).toggleStyle(.checkbox).font(.system(size: 12))
+                .help("When an interview is found, research it and add prep sessions until the interview")
             if sync.isRunning {
                 ProgressView().controlSize(.small)
             } else {
@@ -300,6 +314,11 @@ struct JobSyncCard: View {
             }
         }
         .pbCard(padding: 16)
+    }
+
+    private var prepStatus: String? {
+        if let company = autoPrep.working { return "Building a prep plan for \(company)…" }
+        return autoPrep.enabled ? autoPrep.lastResult : nil
     }
 
     private var status: String {

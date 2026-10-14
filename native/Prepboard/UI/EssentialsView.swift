@@ -95,10 +95,10 @@ struct EssentialsView: View {
     private var rolePicker: some View {
                 Menu {
                     Button("General (no role)") { app.timelineRoleID = nil }
-                    ForEach(roles) { r in Button("\(r.company) — \(r.title)") { app.timelineRoleID = r.id } }
+                    ForEach(roles) { r in Button("\(r.company) · \(r.title)") { app.timelineRoleID = r.id } }
                 } label: {
                     HStack(spacing: 8) {
-                        Text(role.map { "\($0.company) — \($0.title)" } ?? "General").font(.system(size: 13, weight: .medium)).lineLimit(1)
+                        Text(role.map { "\($0.company) · \($0.title)" } ?? "General").font(.system(size: 13, weight: .medium)).lineLimit(1)
                         Image(systemName: "chevron.up.chevron.down").font(.system(size: 10))
                     }
                     .padding(.horizontal, 16).frame(height: 36).overlay(Capsule().strokeBorder(PB.line2))

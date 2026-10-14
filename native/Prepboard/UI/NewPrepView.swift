@@ -160,7 +160,7 @@ struct NewPrepView: View {
             .padding(.leading, 8).padding(.trailing, 8).padding(.vertical, 8)
             .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(PB.card))
             .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(PB.line2))
-            .shadow(color: Color(hex: 0x3C2D14).opacity(0.07), radius: 14, y: 8)
+            .shadow(color: PB.shadow.opacity(0.06), radius: 14, y: 6)
             .frame(maxWidth: 760)
             .padding(.horizontal, 16).padding(.bottom, 24)
         }
@@ -174,7 +174,7 @@ struct NewPrepView: View {
             attachments += urls.compactMap(PlannerAttachment.init(url:))
         }
         #if os(macOS)
-        .frame(minWidth: 720, minHeight: 640)
+        .pbSheetFrame(minWidth: 560, idealWidth: 820, minHeight: 480, idealHeight: 760)
         #endif
     }
 
@@ -250,7 +250,8 @@ struct NewPrepView: View {
         let days = Set(p.sessions.compactMap { DateCoding.date($0.start).map { Calendar.current.startOfDay(for: $0) } }).count
         return VStack(alignment: .leading, spacing: 16) {
             Text("Your plan").pbLabelStyle()
-            Text("\(p.role.company) — \(p.role.title)").font(.system(size: 20, weight: .bold)).kerning(-0.4)
+            Text(p.role.company).font(.system(size: 20, weight: .bold)).kerning(-0.4)
+            Text(p.role.title).font(.system(size: 14)).foregroundStyle(PB.ink2)
             if let at = DateCoding.date(p.role.interview_at) {
                 Text("\(at.pbFull) · \(p.role.interview_note)").font(.system(size: 13)).foregroundStyle(PB.muted)
             }
@@ -350,23 +351,7 @@ struct NewPrepView: View {
                         interviewAt: interviewAt, interviewNote: p.role.interview_note, notes: p.role.notes)
             context.insert(role)
         }
-        var docIds: [String: String] = [:]
-        var created: [(Doc, Plan.Doc)] = []
-        for (i, d) in p.docs.enumerated() {
-            let doc = Doc(roleId: role.id, title: d.title,
-                          body: "_Writing this guide…_\n\n" + d.headings.map { "## \($0)\n" }.joined(separator: "\n"),
-                          tags: ["guide"], order: i)
-            context.insert(doc)
-            docIds[d.key] = doc.id
-            created.append((doc, d))
-        }
-        for s in p.sessions {
-            guard let start = DateCoding.date(s.start), let end = DateCoding.date(s.end), end > start else { continue }
-            context.insert(PrepTask(roleId: role.id, title: s.title, start: start, end: end,
-                                    kind: SessionKind(rawValue: s.kind) ?? .study,
-                                    refs: s.refs.compactMap { r in docIds[r.doc_key].map { DocRef(docId: $0, heading: r.heading) } }))
-        }
-        try? context.save()
+        let created = PlanWriter.insert(p, into: role, context: context)
         app.timelineRoleID = role.id
         app.section = .dashboard
         dismiss()
