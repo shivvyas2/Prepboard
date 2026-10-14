@@ -104,8 +104,29 @@ final class JobHunt {
         queueTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.processSubmitQueue() }
         }
+        recoverInterrupted(container.mainContext)
         rescan()
         runIfDue()
+    }
+
+    /// Leads the last launch left mid-run (the app quit while tailoring or submitting) would otherwise sit in that state for ever:
+    /// nothing picks a `.submitting` lead up again. They become needs-you with a note, so the user checks the posting before retrying.
+    func recoverInterrupted(_ context: ModelContext) {
+        let leads = (try? context.fetch(FetchDescriptor<Lead>())) ?? []
+        var changed = false
+        for lead in leads {
+            switch lead.status {
+            case .submitting:
+                lead.status = .needsYou; lead.submitRequested = false
+                lead.flagged = "PrepBoard quit while this was being submitted; check the posting for a sent application before pressing Submit again"
+            case .tailoring:
+                lead.status = .failed; lead.reason = "PrepBoard quit while the résumé was being written; press Regenerate"
+            default:
+                continue
+            }
+            lead.updatedAt = .now; changed = true
+        }
+        if changed { try? context.save() }
     }
 
     // MARK: counters and helpers
@@ -558,8 +579,9 @@ final class JobHunt {
             lead.status = .failed; lead.reason = "The PDF is missing; regenerate the résumé first"
         } else if !chrome, let huntBrowser, Self.isLinkedIn(lead.link),
                   let stop = LinkedInSignIn.stopMessage(await LinkedInSignIn.ensure(huntBrowser)) {
-            // A LinkedIn posting needs the session first (careers sites do not). Nothing was touched: the lead stays ready.
-            lead.status = .ready; lead.flagged = stop; error = stop
+            // A LinkedIn posting needs the session first (careers sites do not). Nothing was touched: the lead stays ready, and it
+            // leaves the queue, or the minute timer would keep sending the browser back to LinkedIn while the user signs in.
+            lead.status = .ready; lead.flagged = stop + " Then press Submit again."; lead.submitRequested = false; error = stop
         } else {
             lastSubmit = .now   // every real attempt counts toward the spacing, even one that throws
             do {

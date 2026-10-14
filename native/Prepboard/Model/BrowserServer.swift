@@ -211,7 +211,10 @@ final class BrowserServer {
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let file = dir.appendingPathComponent("mcp-\(ProcessInfo.processInfo.processIdentifier).json")
         // Configs left by earlier launches (the app rarely gets to `stop()`) hold dead tokens; sweep them.
+        // Only configs whose process is gone: a second running copy of the app (a test launch) must not lose its own.
         for stale in (try? fm.contentsOfDirectory(atPath: dir.path)) ?? [] where stale.hasPrefix("mcp-") && stale != file.lastPathComponent {
+            let pid = Int32((stale as NSString).deletingPathExtension.dropFirst("mcp-".count)) ?? 0
+            if pid > 0, kill(pid, 0) == 0 { continue }   // alive
             try? fm.removeItem(at: dir.appendingPathComponent(stale))
         }
         // Created 0600 in one step: the token must never sit in a world-readable file, however briefly.

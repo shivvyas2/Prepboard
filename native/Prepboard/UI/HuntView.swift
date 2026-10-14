@@ -580,8 +580,9 @@ struct HuntBrowserCard: View {
         }
         .pbCard(padding: PB.s4)
         .onAppear { if !chosen { expanded = hunt.isRunning && !hunt.usingChrome }; address = browser.url?.absoluteString ?? "" }
-        // A run in Chrome has nothing to show here, so it does not pull the card open.
-        .onChange(of: hunt.isRunning) { if hunt.isRunning { if !hunt.usingChrome { expanded = true } } else if !chosen { expanded = false } }
+        // A run in Chrome has nothing to show here, so it does not pull the card open. The card stays open after a run ends, so
+        // the page it stopped on (a LinkedIn sign-in, a form that needs you) is still there; Hide is the user's call.
+        .onChange(of: hunt.isRunning) { if hunt.isRunning, !hunt.usingChrome { expanded = true } }
         .onChange(of: browser.url) { address = browser.url?.absoluteString ?? "" }
     }
 
