@@ -1,9 +1,11 @@
 #if os(macOS)
 import AppKit
+import PDFKit
 import SwiftUI
 
-/// Last-minute edits to a tailored .tex: save and rebuild the PDF, re-check the claims, or hand the file to Finder or an editor.
-/// Save is the explicit step; Close never asks about unsaved changes.
+/// Last-minute edits to a tailored .tex: the source on the left, a live PDF preview on the right (rebuilt in a scratch folder as
+/// you type), an "Ask Claude" box that rewrites the file under the honesty rules, then Save and Re-check as the explicit steps.
+/// Close never asks about unsaved changes.
 struct ResumeEditorSheet: View {
     let lead: Lead
     @Environment(\.dismiss) private var dismiss
@@ -16,10 +18,16 @@ struct ResumeEditorSheet: View {
     @State private var working = false
     @State private var buildLog = ""
     @State private var footer = ""
+    @State private var preview: Data?
+    @State private var previewState = "" // "Building preview…", "Preview up to date", or the failure
+    @State private var previewTask: Task<Void, Never>?
+    @State private var instruction = ""
+    @State private var asking = false
+    @State private var beforeClaude: String?   // the text before the last Claude edit, for Undo
 
     private var path: String? { hunt.texPath(for: lead) }
     private var dirty: Bool { loaded && text != saved }
-    private var canAct: Bool { loaded && !working && !hunt.isRunning }
+    private var canAct: Bool { loaded && !working && !asking && !hunt.isRunning }
 
     var body: some View {
         VStack(alignment: .leading, spacing: PB.s4) {
@@ -29,21 +37,43 @@ struct ResumeEditorSheet: View {
                 Spacer()
                 CircleIconButton(systemImage: "xmark", size: 32, label: "Close") { dismiss() }.keyboardShortcut(.cancelAction)
             }
-            TextEditor(text: $text)
-                .font(.system(size: 12, design: .monospaced))
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 420)
-                .padding(PB.s2)
-                .background(RoundedRectangle(cornerRadius: PB.rMD, style: .continuous).fill(PB.surface))
-                .overlay(RoundedRectangle(cornerRadius: PB.rMD, style: .continuous).strokeBorder(PB.line))
-            Text("Claims you add here are only re-checked when you press Re-check claims.")
-                .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .top, spacing: PB.s4) {
+                VStack(alignment: .leading, spacing: PB.s2) {
+                    Text("LaTeX").font(.system(size: 12, weight: .semibold)).foregroundStyle(PB.muted)
+                    TextEditor(text: $text)
+                        .font(.system(size: 12, design: .monospaced))
+                        .scrollContentBackground(.hidden)
+                        .padding(PB.s2)
+                        .background(RoundedRectangle(cornerRadius: PB.rMD, style: .continuous).fill(PB.surface))
+                        .overlay(RoundedRectangle(cornerRadius: PB.rMD, style: .continuous).strokeBorder(PB.line))
+                }
+                VStack(alignment: .leading, spacing: PB.s2) {
+                    HStack(spacing: PB.s2) {
+                        Text("PDF preview").font(.system(size: 12, weight: .semibold)).foregroundStyle(PB.muted)
+                        Spacer(minLength: 0)
+                        if previewState.hasPrefix("Building") { ProgressView().controlSize(.mini) }
+                        Text(previewState).font(.system(size: 11)).foregroundStyle(PB.muted).lineLimit(1)
+                    }
+                    ZStack {
+                        RoundedRectangle(cornerRadius: PB.rMD, style: .continuous).fill(PB.surface)
+                        if let preview {
+                            PDFPreview(data: preview).clipShape(RoundedRectangle(cornerRadius: PB.rMD, style: .continuous))
+                        } else {
+                            Text(buildLog.isEmpty ? "The preview appears here once the file builds." : "The build failed; see the log below.")
+                                .font(.system(size: 12)).foregroundStyle(PB.muted).padding(PB.s4)
+                        }
+                    }
+                    .overlay(RoundedRectangle(cornerRadius: PB.rMD, style: .continuous).strokeBorder(PB.line))
+                }
+            }
+            .frame(minHeight: 460)
+            askClaude
             if !buildLog.isEmpty {
                 ScrollView {
                     Text(buildLog).font(.pbMono).foregroundStyle(PB.red).textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxHeight: 160)
+                .frame(maxHeight: 120)
                 .padding(PB.s3)
                 .background(RoundedRectangle(cornerRadius: PB.rMD, style: .continuous).fill(PB.red.opacity(0.06)))
                 .overlay(RoundedRectangle(cornerRadius: PB.rMD, style: .continuous).strokeBorder(PB.red.opacity(0.3)))
@@ -60,11 +90,46 @@ struct ResumeEditorSheet: View {
                 Spacer(minLength: PB.s2)
                 Text(footer).font(.system(size: 12)).foregroundStyle(buildLog.isEmpty ? PB.muted : PB.red).lineLimit(2).truncationMode(.tail)
             }
+            Text("The preview rebuilds as you type and changes nothing on disk. Save & rebuild PDF writes the file and replaces the synced PDF; "
+                 + "claims you add are only re-checked when you press Re-check claims.")
+                .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
         }
         .padding(PB.s6)
         .background(PB.card)
-        .frame(minWidth: 760, idealWidth: 840, minHeight: 640, idealHeight: 820)
+        .frame(minWidth: 1180, idealWidth: 1280, minHeight: 760, idealHeight: 900)
         .onAppear(perform: load)
+        .onChange(of: text) { schedulePreview() }
+        .onDisappear { previewTask?.cancel() }
+    }
+
+    /// One instruction to Claude; the reply replaces the editor text (Undo brings the previous text back).
+    private var askClaude: some View {
+        VStack(alignment: .leading, spacing: PB.s2) {
+            Text("Ask Claude").font(.system(size: 12, weight: .semibold)).foregroundStyle(PB.muted)
+            HStack(spacing: PB.s2) {
+                TextField("e.g. Shorten the summary to two lines and lead with the Swift concurrency bullet", text: $instruction, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .lineLimit(1...3)
+                    .padding(.horizontal, PB.s3).padding(.vertical, PB.s2)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(PB.surface))
+                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(PB.line))
+                    .onSubmit(ask)
+                Button(asking ? "Working…" : "Apply", action: ask).buttonStyle(PillButtonStyle(compact: true))
+                    .disabled(!canAct || !claude.isReady || claude.busy || instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                if let beforeClaude {
+                    Button("Undo Claude edit") { text = beforeClaude; self.beforeClaude = nil; footer = "Claude's edit undone" }
+                        .buttonStyle(PillButtonStyle(filled: false, compact: true)).disabled(asking)
+                }
+                if asking { ProgressView().controlSize(.small) }
+            }
+            if !claude.isReady {
+                Text("Connect Claude Code in Profile to edit with Claude.").font(.system(size: 11)).foregroundStyle(PB.muted)
+            } else {
+                Text("Claude reads your other variants as evidence and keeps to the honesty rules: nothing is added that your material does not back.")
+                    .font(.system(size: 11)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     private func load() {
@@ -72,6 +137,50 @@ struct ResumeEditorSheet: View {
             footer = "Couldn't read \(lead.variantName).tex"; return
         }
         text = file; saved = file; loaded = true
+        schedulePreview(delay: 0)
+    }
+
+    /// Rebuilds the preview in a scratch folder once typing pauses; a failed build keeps the last good preview and shows the log.
+    private func schedulePreview(delay: Double = 1.2) {
+        guard loaded else { return }
+        previewTask?.cancel()
+        let tex = text, name = lead.variantName
+        previewState = "Building preview…"
+        previewTask = Task {
+            if delay > 0 { try? await Task.sleep(for: .seconds(delay)) }
+            guard !Task.isCancelled else { return }
+            do {
+                let data = try await LatexBuild.preview(tex: tex, name: name)
+                guard !Task.isCancelled else { return }
+                preview = data; buildLog = ""; previewState = "Preview up to date"
+                if footer.hasPrefix("The build failed") { footer = "" }
+            } catch let failure as LatexBuild.Failure {
+                guard !Task.isCancelled else { return }
+                buildLog = failure.log; previewState = "Build failed"
+            } catch {
+                guard !Task.isCancelled else { return }
+                previewState = error.localizedDescription
+            }
+        }
+    }
+
+    private func ask() {
+        let what = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard canAct, claude.isReady, !what.isEmpty else { return }
+        asking = true; footer = "Claude is editing the résumé…"
+        let before = text
+        Task {
+            defer { asking = false }
+            do {
+                let result = try await hunt.edit(lead, tex: before, instruction: what)
+                beforeClaude = before
+                text = result.tex
+                instruction = ""
+                footer = result.notes.isEmpty ? "Claude's edit is in the editor; Save when it looks right" : result.notes
+            } catch {
+                footer = error.localizedDescription
+            }
+        }
     }
 
     /// Writes the editor to the .tex; false with the error in the footer when it could not.
@@ -119,6 +228,27 @@ struct ResumeEditorSheet: View {
             else if lead.status == .ready { footer = "Every claim traces to your material" }
             else { footer = "Some claims need you; they are listed on the card" }
         }
+    }
+}
+
+/// PDFKit view for the preview; keeps the scroll position when the document is replaced after a rebuild.
+private struct PDFPreview: NSViewRepresentable {
+    let data: Data
+
+    func makeNSView(context: Context) -> PDFView {
+        let v = PDFView()
+        v.autoScales = true
+        v.displayMode = .singlePageContinuous
+        v.backgroundColor = NSColor(PB.surface)
+        v.document = PDFDocument(data: data)
+        return v
+    }
+
+    func updateNSView(_ v: PDFView, context: Context) {
+        guard v.document?.dataRepresentation() != data else { return }
+        let point = v.currentDestination
+        v.document = PDFDocument(data: data)
+        if let point { v.go(to: point) }
     }
 }
 #endif

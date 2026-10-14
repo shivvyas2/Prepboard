@@ -23,5 +23,15 @@ enum LatexBuild {
         }
         return pdf
     }
+
+    /// Builds `tex` in a scratch folder (nothing in the résumé folder changes) and returns the PDF bytes; for the live preview.
+    static func preview(tex: String, name: String) async throws -> Data {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("prepboard-hunt/preview/\(name)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let texPath = dir.appendingPathComponent(name + ".tex").path
+        try tex.write(toFile: texPath, atomically: true, encoding: .utf8)
+        let pdf = try await build(texPath: texPath)
+        return try Data(contentsOf: URL(fileURLWithPath: pdf))
+    }
 }
 #endif

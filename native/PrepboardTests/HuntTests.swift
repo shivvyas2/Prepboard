@@ -601,4 +601,19 @@ final class HuntTests: XCTestCase {
         XCTAssertEqual(JobHunt.dailyCount("tailored", on: day), 3)
         UserDefaults.standard.removeObject(forKey: "hunt.tailored.\(DateCoding.dayString(day))")
     }
+
+    func testEditPromptCarriesInstructionAndHonestyRules() throws {
+        let lead = Lead(company: "Mirage", title: "Founding Engineer", jd: "Swift and Rust")
+        lead.variantName = "Shiv-Vyas-Mirage-FoundingEngineer"
+        let p = JobHunt.editPrompt(instruction: "Shorten the summary to two lines", tex: "\\documentclass{article}", lead: lead,
+                                   sources: ["Shiv-Vyas-Apple-SDE"], github: "", folder: "/tmp/r")
+        XCTAssertTrue(p.contains("MY INSTRUCTION:\nShorten the summary to two lines"))
+        XCTAssertTrue(p.contains("HONESTY, the rule that matters most"))
+        XCTAssertTrue(p.contains("Never invent numbers"))
+        XCTAssertTrue(p.contains("Shiv-Vyas-Apple-SDE.tex"))
+        XCTAssertTrue(p.contains("<tex>\n\\documentclass{article}\n</tex>"))
+        XCTAssertTrue(p.contains("must not write files"))
+        let r = try JSONDecoder().decode(EditResult.self, from: Data(#"{"tex":"\\documentclass{article}","notes":"Shortened."}"#.utf8))
+        XCTAssertEqual(r.notes, "Shortened.")
+    }
 }

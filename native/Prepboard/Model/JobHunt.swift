@@ -21,6 +21,12 @@ struct TailorResult: Codable {
     var notes: String
 }
 
+/// What an "Ask Claude" edit in the résumé editor returns (matches `JobHunt.editSchema`).
+struct EditResult: Codable {
+    var tex: String
+    var notes: String
+}
+
 /// What the honesty check returns (matches `JobHunt.honestySchema`).
 struct HonestyResult: Codable {
     var ok: Bool
@@ -222,6 +228,25 @@ final class JobHunt {
     static func plainName(_ name: String) -> String? {
         guard !name.isEmpty, !name.hasPrefix("."), name != "..", (name as NSString).lastPathComponent == name, !name.contains("\0") else { return nil }
         return name
+    }
+
+    /// One "Ask Claude" edit of the editor's text: Claude reads the other variants as evidence and returns the whole file.
+    /// Throws when Claude Code is away or another run has it; nothing is written.
+    func edit(_ lead: Lead, tex: String, instruction: String) async throws -> EditResult {
+        guard let claude, claude.isReady else { throw BrowserError.message("Connect Claude Code in Profile to edit with Claude.") }
+        guard !claude.busy else { throw BrowserError.message("Another Claude run is going; wait for it to finish.") }
+        let folder = resumeFolder
+        let sources = variants.map(\.name).filter { $0 != lead.variantName }
+        let prompt = Self.editPrompt(instruction: instruction, tex: tex, lead: lead, sources: sources, github: github?.context ?? "", folder: folder)
+        claude.busy = true
+        defer { claude.busy = false }
+        let result = try await whileEditing(lead) {
+            try await Self.check(EditResult.self, prompt: prompt, schema: Self.editSchema, browserFlags: nil, tools: Self.fileTools, cwd: folder)
+        }
+        guard let result, !result.tex.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw BrowserError.message(error ?? "Claude returned an empty file")
+        }
+        return result
     }
 
     /// Runs `work` with the hunt held in `.editing`, so the timers start no run or submit while a hand-edited PDF is rebuilt.
@@ -626,6 +651,53 @@ final class JobHunt {
       "ledger":{"type":"array","items":{"type":"string"}},
       "notes":{"type":"string"}}}
     """#
+
+    static let editSchema = #"""
+    {"type":"object","required":["tex","notes"],"properties":{"tex":{"type":"string"},"notes":{"type":"string"}}}
+    """#
+
+    /// One edit of a tailored .tex on the user's instruction, under the tailor prompt's honesty and format rules.
+    static func editPrompt(instruction: String, tex: String, lead: Lead, sources: [String], github: String, folder: String) -> String {
+        """
+        You edit my LaTeX résumé for one job posting on my instruction below. Return the complete edited .tex file as `tex`; I save \
+        it myself. You cannot and must not write files. The other variants in the current folder (\(folder)) are my evidence: Read, Grep \
+        and Glob them freely.
+
+        MY INSTRUCTION:
+        \(instruction)
+
+        HONESTY, the rule that matters most:
+        - Every claim on the page (every bullet, number, tool, language, framework, date, title, employer) must already appear in the \
+        current file, in one of my existing variants in this folder or in my GitHub material below. Do not invent, round up, extrapolate \
+        or "reasonably infer" anything. Never invent numbers. If my instruction asks for a claim with no evidence, do not add it: say so \
+        in `notes` and record it in the HONESTY LEDGER block as not claimed.
+        - Rewording must not change meaning or strength ("contributed to" never becomes "led"; a tool used once is not "expert").
+
+        FORMAT:
+        - Change only what the instruction needs. Keep the preamble, packages, macros, section commands and layout exactly as they are \
+        unless the instruction is about them. The result must stay one page (cut bullets rather than shrink fonts or margins).
+        - Keep the comment header at the top (VARIANT, JD MAP, HONESTY LEDGER) and update it when the content you changed makes it stale.
+        - No emoji anywhere. Plain ASCII in comments. LaTeX that compiles with tectonic without extra packages.
+
+        OUTPUT:
+        - tex: the complete file.
+        - notes: one or two sentences: what you changed, and anything you could not do honestly.
+
+        THE JOB: \(lead.company), \(lead.title)\(lead.location.isEmpty ? "" : ", \(lead.location)")
+        <job_description>
+        \(lead.jd)
+        </job_description>
+
+        CURRENT FILE (\(lead.variantName).tex):
+        <tex>
+        \(tex)
+        </tex>
+
+        SOURCE VARIANTS in this folder: \(sources.isEmpty ? "(none)" : sources.map { $0 + ".tex" }.joined(separator: ", "))
+
+        \(github.isEmpty ? "(No GitHub material loaded; the file and the variants are the only evidence.)" : github)
+        """
+    }
 
     static let honestySchema = #"""
     {"type":"object","required":["ok","untraceable"],"properties":{
