@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Applications / Hunt: every job the Mac found, grouped by what happens next.
 struct HuntView: View {
@@ -173,6 +174,7 @@ struct LeadCard: View {
     @Environment(JobHunt.self) private var hunt
     @Environment(ClaudeCode.self) private var claude
     @AppStorage("hunt.browser") private var browserChoice: HuntBrowserChoice = .builtin
+    @AppStorage(HuntPrefs.resumePDFKey) private var resumePDF = ""
     #endif
     @State private var showPDF = false
     @State private var showEditor = false
@@ -299,7 +301,7 @@ struct LeadCard: View {
             }
             #if os(macOS)
             if ![.submitted, .submitting, .tailoring].contains(lead.status) {
-                Button(lead.variantName.isEmpty ? "Prepare application" : "Regenerate") {
+                Button(lead.variantName.isEmpty ? (resumePDF.isEmpty ? "Prepare application" : "Tailor résumé") : "Regenerate") {
                     lead.submitRequested = false; lead.updatedAt = .now
                     Task { await hunt.tailor(lead) }
                 }
@@ -428,6 +430,9 @@ struct HuntSettingsSheet: View {
     @State private var linkedInSaved = LinkedInSignIn.hasCredentials
     @State private var linkedInOutcome = ""
     @State private var signingIn = false
+    @AppStorage(HuntPrefs.keepApplyingKey) private var keepApplying = false
+    @AppStorage(HuntPrefs.resumePDFKey) private var resumePDF = ""
+    @State private var fillOutcome = ""
     #endif
     @State private var regions: String
     @State private var companies: String
@@ -475,6 +480,7 @@ struct HuntSettingsSheet: View {
                     }
                 }
                 #if os(macOS)
+                applyingSection
                 section("Application browser") {
                     Picker("Browser", selection: $browserChoice) {
                         Text("Built-in browser").tag(HuntBrowserChoice.builtin)
@@ -495,9 +501,23 @@ struct HuntSettingsSheet: View {
                     }
                 }
                 #endif
-                section("Answer Bank") {
+                section("Answer Bank", trailing: {
+                    #if os(macOS)
+                    Button("Fill from résumé", action: fillFromResume).buttonStyle(PillButtonStyle(filled: false, compact: true))
+                    #endif
+                }) {
                     Text("Legal answers are filled only from here, never drafted. Leave a field empty to decline.")
                         .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
+                    #if os(macOS)
+                    if !fillOutcome.isEmpty {
+                        Text(fillOutcome).font(.system(size: 12)).foregroundStyle(PB.ink2).fixedSize(horizontal: false, vertical: true)
+                    }
+                    #endif
+                    if !settings.answerBank.isComplete {
+                        Label("Applications can't go out until name, email, phone, work authorization and sponsorship are filled in.",
+                              systemImage: "exclamationmark.circle")
+                            .font(.system(size: 12)).foregroundStyle(PB.sunInk).fixedSize(horizontal: false, vertical: true)
+                    }
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: PB.s3)], alignment: .leading, spacing: PB.s3) {
                         PBTextField(label: "Full name", text: bank(\.fullName))
                         PBTextField(label: "Email", text: bank(\.email))
@@ -567,6 +587,77 @@ struct HuntSettingsSheet: View {
     }
 
     #if os(macOS)
+    /// Which résumé goes out and whether the Mac submits on its own.
+    private var applyingSection: some View {
+        section("Applying") {
+            Picker("Résumé to send", selection: Binding(get: { resumePDF.isEmpty ? 0 : 1 },
+                                                         set: { $0 == 0 ? (resumePDF = "") : chooseResume() })) {
+                Text("A tailored résumé for each job").tag(0)
+                Text("My résumé for every job").tag(1)
+            }
+            .pickerStyle(.menu).tint(PB.cobalt).fixedSize()
+            if !resumePDF.isEmpty {
+                HStack(spacing: PB.s2) {
+                    Image(systemName: HuntPrefs.usablePDF(resumePDF) ? "doc.richtext" : "exclamationmark.triangle")
+                        .foregroundStyle(HuntPrefs.usablePDF(resumePDF) ? PB.cobalt : PB.red)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text((resumePDF as NSString).lastPathComponent).font(.system(size: 13, weight: .medium))
+                            .lineLimit(1).truncationMode(.middle)
+                        Text(resumeDetail).font(.system(size: 11)).foregroundStyle(HuntPrefs.usablePDF(resumePDF) ? PB.muted : PB.red)
+                    }
+                    Spacer(minLength: PB.s2)
+                    Button("Choose…") { chooseResume() }.buttonStyle(PillButtonStyle(filled: false, compact: true))
+                }
+                .padding(PB.s3)
+                .background(RoundedRectangle(cornerRadius: PB.rMD).fill(PB.surface))
+            }
+            Toggle("Keep applying", isOn: $keepApplying).toggleStyle(CheckboxToggleStyle(labeled: true))
+                .onChange(of: keepApplying) { hunt.keepApplyingChanged() }
+            Text("Submits every ready application whose answers are complete, up to \(settings.dailySubmitLimit) a day, and searches again every few hours until then. A question your Answer Bank can't answer comes back to you instead.")
+                .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var resumeDetail: String {
+        guard HuntPrefs.usablePDF(resumePDF) else { return "Not found. Choose the PDF again." }
+        let modified = (try? FileManager.default.attributesOfItem(atPath: resumePDF)[.modificationDate]) as? Date
+        return "Updated " + (modified?.formatted(date: .abbreviated, time: .omitted) ?? "unknown") + ". Replace the file to send a newer version."
+    }
+
+    /// Picks the PDF sent to every job. Files outside the home folder are copied into the résumé folder, the only place uploads come from.
+    private func chooseResume() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = URL(fileURLWithPath: resumePDF.isEmpty ? settings.resumeFolder : (resumePDF as NSString).deletingLastPathComponent)
+        panel.message = "Choose the résumé PrepBoard sends with every application"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        var path = url.path
+        if !BrowserServer.uploadAllowed(path) {
+            let copy = settings.resumeFolder + "/" + url.lastPathComponent
+            try? FileManager.default.removeItem(atPath: copy)
+            guard (try? FileManager.default.copyItem(atPath: path, toPath: copy)) != nil else { return }
+            path = copy
+        }
+        resumePDF = path
+    }
+
+    /// Fills the empty contact fields from the résumé: the .tex beside the chosen PDF, else the newest variant.
+    private func fillFromResume() {
+        hunt.rescan()
+        let sibling = resumePDF.isEmpty ? nil : (resumePDF as NSString).deletingPathExtension + ".tex"
+        let path = sibling.flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }
+            ?? hunt.variants.max { $0.modified < $1.modified }?.path
+        guard let path, let tex = try? String(contentsOfFile: path, encoding: .utf8) else {
+            fillOutcome = "No .tex résumé found in the résumé folder."; return
+        }
+        let (bank, filled) = ResumeLibrary.filling(settings.answerBank, from: ResumeLibrary.contact(fromTex: tex))
+        settings.answerBank = bank
+        let file = (path as NSString).lastPathComponent
+        fillOutcome = filled.isEmpty ? "Nothing new in \(file); your answers already cover it."
+            : "Filled \(ListFormatter.localizedString(byJoining: filled)) from \(file)."
+    }
+
     /// The stored LinkedIn sign-in: Keychain only, typed into LinkedIn's page by PrepBoard itself, never shown to Claude.
     private var linkedInSection: some View {
         section("LinkedIn sign-in") {
@@ -852,6 +943,7 @@ struct HuntRunCard: View {
     @Bindable var settings: HuntSettings
     @Environment(JobHunt.self) private var hunt
     @Environment(ClaudeCode.self) private var claude
+    @AppStorage(HuntPrefs.keepApplyingKey) private var keepApplying = false
 
     @Environment(AppState.self) private var app
 
@@ -859,7 +951,7 @@ struct HuntRunCard: View {
         VStack(alignment: .leading, spacing: PB.s4) {
             HStack(alignment: .top, spacing: PB.s3) {
                 VStack(alignment: .leading, spacing: PB.s1) {
-                    Text("Daily hunt")
+                    Text(keepApplying ? "Applying for you" : "Daily hunt")
                         .font(.system(size: 16, weight: .semibold))
                     Text(status).font(.system(size: 13)).foregroundStyle(hunt.error == nil || hunt.isRunning ? PB.ink2 : PB.red)
                         .fixedSize(horizontal: false, vertical: true)
@@ -888,6 +980,8 @@ struct HuntRunCard: View {
                     }
                     .labelsHidden().pickerStyle(.menu).fixedSize()
                 }
+                Toggle("Keep applying", isOn: $keepApplying).toggleStyle(CheckboxToggleStyle(labeled: true))
+                    .onChange(of: keepApplying) { hunt.keepApplyingChanged() }
                 Text("\(hunt.tailoredToday) / \(settings.dailyTailorLimit) prepared today")
                     .font(.system(size: 12)).foregroundStyle(PB.muted)
                 Text("\(hunt.submittedToday) / \(settings.dailySubmitLimit) submitted today")

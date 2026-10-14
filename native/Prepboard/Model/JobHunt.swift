@@ -43,6 +43,7 @@ struct SubmitResult: Codable {
 
 #if os(macOS)
 import AppKit
+import UserNotifications
 import Observation
 
 /// Which browser the heavy runs (Discover, Submit) use. Mac only, not synced; the LinkedIn sync always uses the built-in browser.
@@ -53,6 +54,23 @@ enum HuntBrowserChoice: String {
     static var current: HuntBrowserChoice {
         get { UserDefaults.standard.string(forKey: "hunt.browser").flatMap(HuntBrowserChoice.init) ?? .builtin }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: "hunt.browser") }
+    }
+}
+
+/// How this Mac applies. Not synced: only the Mac submits, and the résumé path is a Mac path.
+enum HuntPrefs {
+    static let keepApplyingKey = "hunt.keepApplying", resumePDFKey = "hunt.resumePDF"
+    /// Every ready lead with complete answers is queued without waiting for Submit, and the search repeats during the day.
+    static var keepApplying: Bool { UserDefaults.standard.bool(forKey: keepApplyingKey) }
+    /// "" tailors a résumé for each job; otherwise this PDF is sent to every application.
+    static var resumePDF: String { UserDefaults.standard.string(forKey: resumePDFKey) ?? "" }
+    /// While keep applying is on, the search runs again this long after the last one if the queue has emptied.
+    static let rerunGap: TimeInterval = 3 * 3600
+
+    /// True when `path` is a PDF the built-in browser may upload (inside the home folder) and it exists.
+    static func usablePDF(_ path: String) -> Bool {
+        !path.isEmpty && BrowserServer.uploadAllowed(path) && (path as NSString).pathExtension.lowercased() == "pdf"
+            && FileManager.default.fileExists(atPath: path)
     }
 }
 
@@ -286,10 +304,50 @@ final class JobHunt {
     // MARK: schedule
 
     func runIfDue() {
-        guard phase == .idle, !isOpeningChrome, let container, let claude, claude.isReady, !claude.busy, let s = settings(in: container.mainContext), s.auto else { return }
+        let keepApplying = HuntPrefs.keepApplying
+        guard phase == .idle, !isOpeningChrome, let container, let claude, claude.isReady, !claude.busy,
+              let s = settings(in: container.mainContext), s.auto || keepApplying else { return }
         guard Calendar.current.component(.hour, from: .now) >= s.runHour else { return }
-        if let lastRun, Calendar.current.isDateInToday(lastRun) { return }
+        if let lastRun, Calendar.current.isDateInToday(lastRun) {
+            // Keep applying searches again every few hours, once the queue is empty and today's submits have room.
+            guard keepApplying, Date.now.timeIntervalSince(lastRun) >= HuntPrefs.rerunGap,
+                  Self.dailyCount("submitted") < s.dailySubmitLimit, queuedLeads(container.mainContext).isEmpty else { return }
+        }
         Task { await run() }
+    }
+
+    private func queuedLeads(_ context: ModelContext) -> [Lead] {
+        let ready = LeadStatus.ready.rawValue
+        return (try? context.fetch(FetchDescriptor<Lead>(predicate: #Predicate { $0.submitRequested && $0.statusRaw == ready }))) ?? []
+    }
+
+    /// True when Submit has a PDF to send for `lead`: its tailored one, or the résumé chosen for every job.
+    func hasResume(_ lead: Lead) -> Bool {
+        if let name = Self.plainName(lead.variantName) { return FileManager.default.fileExists(atPath: resumeFolder + "/" + name + ".pdf") }
+        return HuntPrefs.usablePDF(HuntPrefs.resumePDF)
+    }
+
+    /// Keep applying queues a ready lead only when nothing is left for the user: answers complete, no flag, a résumé to send.
+    func autoQueue(_ leads: [Lead]) -> Int {
+        guard HuntPrefs.keepApplying else { return 0 }
+        var queued = 0
+        for lead in leads where lead.status == .ready && !lead.submitRequested && lead.canSubmit && lead.flagged.isEmpty && hasResume(lead) {
+            lead.submitRequested = true; lead.updatedAt = .now; queued += 1
+        }
+        return queued
+    }
+
+    /// Turning keep applying on queues what is already ready; turning it off empties the queue so nothing more goes out.
+    func keepApplyingChanged() {
+        guard let container else { return }
+        let context = container.mainContext
+        let ready = LeadStatus.ready.rawValue
+        let leads = (try? context.fetch(FetchDescriptor<Lead>(predicate: #Predicate { $0.statusRaw == ready }))) ?? []
+        if HuntPrefs.keepApplying { _ = autoQueue(leads) }
+        else { for lead in leads where lead.submitRequested { lead.submitRequested = false; lead.updatedAt = .now } }
+        try? context.save()
+        processSubmitQueue()
+        runIfDue()
     }
 
     /// Submits the oldest queued lead, one at a time, at least 2 minutes apart and within the daily limit.
@@ -298,9 +356,7 @@ final class JobHunt {
         if let lastSubmit, Date.now.timeIntervalSince(lastSubmit) < Self.submitSpacing { return }
         let context = container.mainContext
         guard let s = settings(in: context), Self.dailyCount("submitted") < s.dailySubmitLimit else { return }
-        let ready = LeadStatus.ready.rawValue
-        let queued = (try? context.fetch(FetchDescriptor<Lead>(predicate: #Predicate { $0.submitRequested && $0.statusRaw == ready }))) ?? []
-        guard let lead = queued.min(by: { $0.updatedAt < $1.updatedAt }) else { return }
+        guard let lead = queuedLeads(context).min(by: { $0.updatedAt < $1.updatedAt }) else { return }
         Task { await submit(lead) }
     }
 
@@ -440,22 +496,35 @@ final class JobHunt {
             } else { pending.append(lead) }
         }
         try? context.save()
-        let room = max(0, settings.dailyTailorLimit - Self.dailyCount("tailored"))
-        let batch = Array(pending.sorted { $0.score > $1.score }.prefix(room))
+        let oneResume = HuntPrefs.resumePDF
+        let batch: [Lead]
         var ready = 0, needsYou = 0, failed = 0
-        for (i, lead) in batch.enumerated() {
-            phase = .tailoring(done: i, total: batch.count)
-            await tailorLead(lead, settings: settings, roles: roles, context: context)
-            switch lead.status {
-            case .ready: ready += 1
-            case .needsYou: needsYou += 1
-            case .failed: failed += 1
-            default: break
+        if !oneResume.isEmpty {
+            // One résumé for every job: nothing to tailor, the lead is ready as soon as it is found.
+            batch = pending.sorted { $0.score > $1.score }
+            for lead in batch {
+                lead.status = .ready; lead.reason = "Sends \((oneResume as NSString).lastPathComponent)"; lead.updatedAt = .now
+                ready += 1
+            }
+        } else {
+            let room = max(0, settings.dailyTailorLimit - Self.dailyCount("tailored"))
+            batch = Array(pending.sorted { $0.score > $1.score }.prefix(room))
+            for (i, lead) in batch.enumerated() {
+                phase = .tailoring(done: i, total: batch.count)
+                await tailorLead(lead, settings: settings, roles: roles, context: context)
+                switch lead.status {
+                case .ready: ready += 1
+                case .needsYou: needsYou += 1
+                case .failed: failed += 1
+                default: break
+                }
             }
         }
+        let queued = autoQueue(batch)
+        try? context.save()
         lastRun = .now
         lastSummary = found == 0 && batch.isEmpty ? "Nothing new" : [
-            "\(found) found", "\(batch.count) tailored", ready > 0 ? "\(ready) ready" : nil, needsYou > 0 ? "\(needsYou) need you" : nil,
+            "\(found) found", oneResume.isEmpty ? "\(batch.count) tailored" : nil, queued > 0 ? "\(queued) queued to apply" : nil, ready > 0 ? "\(ready) ready" : nil, needsYou > 0 ? "\(needsYou) need you" : nil,
             failed > 0 ? "\(failed) failed" : nil, skipped > 0 ? "\(skipped) skipped" : nil, pending.count > batch.count ? "\(pending.count - batch.count) waiting for tomorrow" : nil,
         ].compactMap { $0 }.joined(separator: " · ")
     }
@@ -655,10 +724,12 @@ final class JobHunt {
         // A stop text left in `flagged` by an earlier attempt (Chrome or LinkedIn not ready) must not outlive this one.
         lead.status = .submitting; lead.flagged = ""; lead.updatedAt = .now
         try? context.save()
-        let pdfPath = Self.plainName(lead.variantName).map { settings.resumeFolder + "/" + $0 + ".pdf" } ?? ""
+        let pdfPath = Self.plainName(lead.variantName).map { settings.resumeFolder + "/" + $0 + ".pdf" } ?? HuntPrefs.resumePDF
         if !chrome { browser?.reset() }
         if pdfPath.isEmpty || !FileManager.default.fileExists(atPath: pdfPath) {
-            lead.status = .failed; lead.reason = "The PDF is missing; regenerate the résumé first"
+            lead.status = .failed
+            lead.reason = lead.variantName.isEmpty ? "No résumé to send: choose one in Hunt settings or prepare this application"
+                : "The PDF is missing; regenerate the résumé first"
         } else if chrome, !(await openChrome()) {
             lead.status = .ready; lead.flagged = chromeStatus ?? Self.noChromeMessage
         } else if !chrome, let huntBrowser, Self.isLinkedIn(lead.link),
@@ -676,11 +747,13 @@ final class JobHunt {
                 case "submitted" where !result.confirmation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
                     let role = Role(company: lead.company, title: lead.title.isEmpty ? "Role" : lead.title, location: lead.location,
                                     roleNumber: lead.roleNumber, link: lead.link, stage: .applied)
-                    role.source = "hunt"; role.appliedAt = .now; role.resumeVariant = lead.variantName
-                    role.activity = "- \(DateCoding.dayString(.now)) · Hunt · Applied with \(lead.variantName)"
+                    let sent = lead.variantName.isEmpty ? ((pdfPath as NSString).lastPathComponent as NSString).deletingPathExtension : lead.variantName
+                    role.source = "hunt"; role.appliedAt = .now; role.resumeVariant = sent
+                    role.activity = "- \(DateCoding.dayString(.now)) · Hunt · Applied with \(sent)"
                     context.insert(role)
                     lead.roleId = role.id; lead.status = .submitted; lead.reason = result.confirmation
                     Self.bump("submitted")
+                    Self.notifySubmitted(lead)
                 case "submitted":
                     lead.status = .needsYou; lead.reason = "No submission confirmation was returned. Check the open application before trying again."
                 case "needs_you" where result.reason.uppercased().hasPrefix("NO_CHROME"):
@@ -702,6 +775,13 @@ final class JobHunt {
         }
         lead.submitRequested = false; lead.updatedAt = .now
         try? context.save()
+    }
+
+    private static func notifySubmitted(_ lead: Lead) {
+        let content = UNMutableNotificationContent()
+        content.title = "Applied: \(lead.company)"
+        content.body = lead.title
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "applied-\(lead.id)", content: content, trigger: nil))
     }
 
     // MARK: Claude

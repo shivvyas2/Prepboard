@@ -163,6 +163,66 @@ enum ResumeLibrary {
         return name
     }
 
+    // MARK: contact details
+
+    /// The contact block at the top of a résumé: the name in `\LARGE{…}` (or `\Huge`), then the `$|$`-separated line with the city,
+    /// phone, email and links. Only what is found is set; everything else stays empty.
+    static func contact(fromTex tex: String) -> AnswerBank {
+        var bank = AnswerBank()
+        let body = tex.components(separatedBy: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("%") }.joined(separator: "\n")
+        func first(_ pattern: String, in text: String) -> String? {
+            guard let re = try? NSRegularExpression(pattern: pattern),
+                  let m = re.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)), m.numberOfRanges > 1,
+                  let r = Range(m.range(at: 1), in: text) else { return nil }
+            return String(text[r]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let namePattern = #"\\(?:LARGE|Huge|huge|Large)\s*\{(?:\\textbf\{)?([^{}\\]+)"#
+        guard let nameRange = body.range(of: namePattern, options: .regularExpression) else { return bank }
+        bank.fullName = first(namePattern, in: body) ?? ""
+        // The header ends at the first section; contact lines sit between the name and there.
+        var rest = body[nameRange.upperBound...]
+        if let close = rest.firstIndex(of: "}"), !rest[..<close].contains("\n") { rest = rest[rest.index(after: close)...] }   // the name's own brace
+        let end = [rest.range(of: "\\section"), rest.range(of: "\\end{tabularx}"), rest.range(of: "\\end{center}")]
+            .compactMap { $0?.lowerBound }.min() ?? rest.endIndex
+        let header = String(rest[..<end])
+        bank.email = first(#"mailto:([^}\s]+)"#, in: header) ?? first(#"([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})"#, in: header) ?? ""
+        let links = (try? NSRegularExpression(pattern: #"\\href\{(https?://[^}]+)\}"#))?
+            .matches(in: header, range: NSRange(header.startIndex..., in: header))
+            .compactMap { Range($0.range(at: 1), in: header).map { String(header[$0]) } } ?? []
+        bank.linkedin = links.first { $0.contains("linkedin.com/") } ?? ""
+        bank.github = links.first { $0.contains("github.com/") } ?? ""
+        bank.portfolio = links.first { !$0.contains("linkedin.com/") && !$0.contains("github.com/") } ?? ""
+        let lines = header.components(separatedBy: "\n").filter { line in
+            !["\\normalsize", "\\small{", "\\large", "\\textit"].contains { line.contains($0) }   // the headline under the name
+        }
+        let segments = lines.joined(separator: " ").components(separatedBy: "$|$").map { seg -> String in
+            var s = seg.replacingOccurrences(of: #"\\\\(\[[^\]]*\])?"#, with: " ", options: .regularExpression)
+            s = s.replacingOccurrences(of: "\\ ", with: " ").replacingOccurrences(of: "~", with: " ")
+            return s.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        for seg in segments where bank.phone.isEmpty {
+            let digits = seg.filter(\.isNumber)
+            if !seg.contains("\\"), !seg.contains("@"), (10...13).contains(digits.count),
+               seg.allSatisfy({ $0.isNumber || " +-().".contains($0) }) { bank.phone = seg }
+        }
+        bank.city = segments.first { seg in
+            !seg.isEmpty && seg.count <= 40 && !seg.contains("\\") && !seg.contains("@") && !seg.contains(where: \.isNumber)
+                && !seg.contains("{") && !seg.contains("}") && !seg.lowercased().contains(".com") && seg.contains(where: \.isLetter)
+        } ?? ""
+        return bank
+    }
+
+    /// `bank` with its empty contact fields taken from `found`; never overwrites an answer. Returns the labels it filled.
+    static func filling(_ bank: AnswerBank, from found: AnswerBank) -> (bank: AnswerBank, filled: [String]) {
+        var result = bank, filled: [String] = []
+        let fields: [(String, WritableKeyPath<AnswerBank, String>)] = [("name", \.fullName), ("email", \.email), ("phone", \.phone),
+            ("city", \.city), ("LinkedIn", \.linkedin), ("GitHub", \.github), ("portfolio", \.portfolio)]
+        for (label, kp) in fields where result[keyPath: kp].trimmingCharacters(in: .whitespaces).isEmpty && !found[keyPath: kp].isEmpty {
+            result[keyPath: kp] = found[keyPath: kp]; filled.append(label)
+        }
+        return (result, filled)
+    }
+
     #if os(macOS)
     /// Reads every *.tex in the folder (not subfolders) and parses its header; sorted by name.
     /// Cover letters and short-answer files are left out: no VARIANT line and no JD MAP / HONESTY LEDGER block, or "coverletter" in the name.

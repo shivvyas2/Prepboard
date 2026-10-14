@@ -103,6 +103,7 @@
 		D2530C4765BECF97608E75D9 /* PracticeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C570E7B529A79775F8DB3F03 /* PracticeView.swift */; };
 		D603F61B60BDA4622982A67E /* RolesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E02443C80B213288CCA76C4 /* RolesView.swift */; };
 		D8BC01DD6F66C2135E9C5EFA /* DocumentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38795E006267302A5600E7F9 /* DocumentsView.swift */; };
+		D8E907FFC77279DA0A3DE74E /* ResumeContactTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13F8D3419986E7E7C6D0F437 /* ResumeContactTests.swift */; };
 		D9208C24612868E1BC17D711 /* PrepboardApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 351E33EDB990739C7D995D23 /* PrepboardApp.swift */; };
 		DCDA9A4BB6FAAA8D4DC26E03 /* RolesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E02443C80B213288CCA76C4 /* RolesView.swift */; };
 		DEBD1E3C976DBE22CD848892 /* JobSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7371BC26EA3E464EB3EA140A /* JobSync.swift */; };
@@ -136,6 +137,7 @@
 		06163BFD206746C41E205251 /* ATS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ATS.swift; sourceTree = "<group>"; };
 		086CF94B83674AF95AC590A7 /* Brand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Brand.swift; sourceTree = "<group>"; };
 		0EC03837C9B766275F4AE786 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		13F8D3419986E7E7C6D0F437 /* ResumeContactTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResumeContactTests.swift; sourceTree = "<group>"; };
 		1B209C3AE9C59D4538BB7F70 /* Practice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Practice.swift; sourceTree = "<group>"; };
 		20BA65949AA0507C7D123CFA /* JobHunt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobHunt.swift; sourceTree = "<group>"; };
 		22401A38A881162C1A4CBA48 /* CodeRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeRunnerTests.swift; sourceTree = "<group>"; };
@@ -191,7 +193,7 @@
 		F1011E204D4362832B715B72 /* NewPrepView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewPrepView.swift; sourceTree = "<group>"; };
 		FA38C9ECC0EA87B9053226FD /* WorkspaceViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceViews.swift; sourceTree = "<group>"; };
 		FAC34C8528365ECCD58D9852 /* MacBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacBridge.swift; sourceTree = "<group>"; };
-		"TEMP_87BF4448-1FED-40F7-A4FF-BBB2131B5429" /* Prepboard.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Prepboard.xcconfig; sourceTree = "<group>"; };
+		"TEMP_B794345F-B365-4E44-8C93-DDEB6DF1245B" /* Prepboard.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Prepboard.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -286,6 +288,7 @@
 				B775CA86BBD798B97BB27256 /* BrowserServerTests.swift */,
 				22401A38A881162C1A4CBA48 /* CodeRunnerTests.swift */,
 				6E6DDEB89BA448D6429889B5 /* HuntTests.swift */,
+				13F8D3419986E7E7C6D0F437 /* ResumeContactTests.swift */,
 				C17B3B3595BEDAAFB0AE256F /* RunResultTests.swift */,
 				004EB371DE9FEE99A8D3D69A /* WorkspaceTests.swift */,
 			);
@@ -321,10 +324,10 @@
 			path = Model;
 			sourceTree = "<group>";
 		};
-		"TEMP_9466D04E-DC0A-4BF4-9ADF-D6CE8FC88827" /* native */ = {
+		"TEMP_667B0222-B15F-4DB0-B86F-91DC2607D46C" /* native */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_87BF4448-1FED-40F7-A4FF-BBB2131B5429" /* Prepboard.xcconfig */,
+				"TEMP_B794345F-B365-4E44-8C93-DDEB6DF1245B" /* Prepboard.xcconfig */,
 			);
 			path = native;
 			sourceTree = "<group>";
@@ -581,6 +584,7 @@
 				6805324D698F598011F3E875 /* BrowserServerTests.swift in Sources */,
 				FD84D652173075FCCB5F790C /* CodeRunnerTests.swift in Sources */,
 				6B395D4E9352328238162C76 /* HuntTests.swift in Sources */,
+				D8E907FFC77279DA0A3DE74E /* ResumeContactTests.swift in Sources */,
 				C98654A8D565DC7AF0ED768D /* RunResultTests.swift in Sources */,
 				ED37902032EF29A9F25604AD /* WorkspaceTests.swift in Sources */,
 			);
@@ -599,7 +603,7 @@
 /* Begin XCBuildConfiguration section */
 		10744D7376C93E547E6FC5D0 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_87BF4448-1FED-40F7-A4FF-BBB2131B5429" /* Prepboard.xcconfig */;
+			baseConfigurationReference = "TEMP_B794345F-B365-4E44-8C93-DDEB6DF1245B" /* Prepboard.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -634,7 +638,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 11;
+				CURRENT_PROJECT_VERSION = 12;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -651,7 +655,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = PrepBoard;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.9;
+				MARKETING_VERSION = 1.9.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -781,7 +785,7 @@
 		};
 		DFD456A3EE378308373DEC56 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_87BF4448-1FED-40F7-A4FF-BBB2131B5429" /* Prepboard.xcconfig */;
+			baseConfigurationReference = "TEMP_B794345F-B365-4E44-8C93-DDEB6DF1245B" /* Prepboard.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -816,7 +820,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 11;
+				CURRENT_PROJECT_VERSION = 12;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -839,7 +843,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = PrepBoard;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.9;
+				MARKETING_VERSION = 1.9.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
