@@ -184,6 +184,7 @@ struct LeadCard: View {
     #if os(macOS)
     @Environment(JobHunt.self) private var hunt
     @Environment(ClaudeCode.self) private var claude
+    @Environment(HuntBrowser.self) private var huntBrowser
     @AppStorage("hunt.browser") private var browserChoice: HuntBrowserChoice = .builtin
     @AppStorage(HuntPrefs.resumePDFKey) private var resumePDF = ""
     #endif
@@ -288,7 +289,9 @@ struct LeadCard: View {
         if !list.isEmpty {
             VStack(alignment: .leading, spacing: PB.s2) {
                 Text("Application answers").font(.system(size: 13, weight: .semibold)).padding(.top, PB.s1)
-                ForEach(list, id: \.self) { i in AnswerField(answer: lead.answers[i], text: answer(i)) }
+                ForEach(list, id: \.self) { i in
+                    AnswerField(answer: lead.answers[i], text: answer(i)) { approve(i) }
+                }
             }
         }
     }
@@ -301,16 +304,42 @@ struct LeadCard: View {
                     var all = lead.answers
                     guard all.indices.contains(i) else { return }
                     all[i].answer = value
-                    if all[i].kind == "needs_you", !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { all[i].kind = "yours" }
+                    if ["needs_you", "suggested"].contains(all[i].kind), !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { all[i].kind = "yours" }
                     lead.answers = all
                     lead.updatedAt = .now
                 })
     }
 
+    /// Approves one suggestion as the user's own answer.
+    private func approve(_ i: Int) {
+        var all = lead.answers
+        guard all.indices.contains(i), all[i].kind == "suggested" else { return }
+        all[i].kind = "yours"
+        lead.answers = all
+        lead.updatedAt = .now
+    }
+
+    /// True when Submit picks up a form an earlier attempt stopped on (Mac only; other devices just queue it).
+    private var resumes: Bool {
+        #if os(macOS)
+        hunt.canResume(lead)
+        #else
+        false
+        #endif
+    }
+
     private var actions: some View {
         FlowLayout(spacing: PB.s2) {
+            let suggested = lead.suggestedCount
+            if suggested > 0, [.ready, .needsYou].contains(lead.status), !lead.submitRequested {
+                Button(suggested == 1 ? "Approve and continue" : "Approve \(suggested) and continue") {
+                    lead.approveSuggestions()
+                    if lead.canSubmit { submit() }
+                }
+                .buttonStyle(PillButtonStyle(compact: true))
+            }
             if lead.status == .ready || lead.status == .needsYou {
-                Button(lead.submitRequested ? "Queued for your Mac" : "Submit application", action: submit)
+                Button(lead.submitRequested ? "Queued for your Mac" : resumes ? "Continue application" : "Submit application", action: submit)
                     .buttonStyle(PillButtonStyle(compact: true))
                     .disabled(!lead.canSubmit || lead.submitRequested)
                     #if os(macOS)
@@ -322,6 +351,12 @@ struct LeadCard: View {
                 }
             }
             #if os(macOS)
+            // The stopped form, exactly as it was left, in the Browser card above.
+            if browserChoice == .builtin, huntBrowser.hasForm(lead.id), [.ready, .needsYou].contains(lead.status) {
+                Button("Show form") { if !hunt.showForm(lead) { app.message = "Claude is using the browser; try again when it finishes." } }
+                    .buttonStyle(PillButtonStyle(filled: false, compact: true))
+                    .disabled(claude.busy)
+            }
             if lead.answers.contains(where: { $0.kind == "needs_you" }), ![.submitted, .submitting, .tailoring].contains(lead.status) {
                 Button("Draft answers with Claude") {
                     if lead.submitRequested { lead.submitRequested = false; lead.updatedAt = .now }
@@ -376,6 +411,9 @@ struct LeadCard: View {
             #endif
             if ![.submitted, .submitting, .skipped].contains(lead.status) {
                 Button("Skip") {
+                    #if os(macOS)
+                    hunt.forgetForm(lead)
+                    #endif
                     lead.status = .skipped; lead.reason = "Skipped by you"; lead.submitRequested = false; lead.updatedAt = .now
                 }
                 .buttonStyle(PillButtonStyle(filled: false, compact: true))
@@ -387,7 +425,13 @@ struct LeadCard: View {
     private var reviewHint: String? {
         guard [.ready, .needsYou].contains(lead.status) else { return nil }
         if lead.submitRequested { return "Your Mac will submit this when Claude is available. You can cancel while it’s queued." }
+        let suggested = lead.suggestedCount
+        if suggested > 0 {
+            return "Claude suggested \(suggested == 1 ? "an answer" : "\(suggested) answers") for the questions the form stopped on. Approve or edit "
+                + (suggested == 1 ? "it" : "them") + "; the application then continues where it stopped, with everything else still filled in."
+        }
         if !lead.canSubmit { return "Complete the highlighted answers before submitting." }
+        if resumes { return "This application stopped part-way. Continue picks it up where it stopped, keeping what is already filled in." }
         return nil
     }
 
@@ -441,20 +485,29 @@ struct LeadCard: View {
 private struct AnswerField: View {
     let answer: FormAnswer
     @Binding var text: String
+    var onApprove: () -> Void = {}
 
     var body: some View {
-        let needsYou = answer.kind == "needs_you" || (answer.required && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        let suggested = answer.kind == "suggested"
+        let needsYou = !suggested && (answer.kind == "needs_you" || (answer.required && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
         VStack(alignment: .leading, spacing: PB.s1) {
-            Text(answer.question + (answer.required ? " (required)" : ""))
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(needsYou ? PB.red : PB.muted)
-                .fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .firstTextBaseline, spacing: PB.s2) {
+                Text(answer.question + (answer.required ? " (required)" : ""))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(needsYou ? PB.red : suggested ? PB.cobalt : PB.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                if suggested {
+                    Spacer(minLength: 0)
+                    Text("Suggested").font(.system(size: 11, weight: .semibold)).foregroundStyle(PB.cobalt)
+                    Button("Approve", action: onApprove).buttonStyle(PillButtonStyle(filled: false, compact: true))
+                }
+            }
             TextField(answer.question, text: $text, axis: .vertical)
                 .textFieldStyle(.plain)
                 .lineLimit(1...6)
                 .padding(.horizontal, PB.s3).padding(.vertical, PB.s3)
                 .background(RoundedRectangle(cornerRadius: 12).fill(PB.card))
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(needsYou ? PB.red.opacity(0.5) : PB.line))
+                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(needsYou ? PB.red.opacity(0.5) : suggested ? PB.cobalt.opacity(0.6) : PB.line))
         }
     }
 }
@@ -989,6 +1042,8 @@ struct HuntBrowserCard: View {
         // Leave a stopped application visible so the user can resolve a question or sign-in.
         .onChange(of: hunt.isRunning) { if hunt.isRunning, !hunt.usingChrome { expanded = true } }
         .onChange(of: browser.url) { address = browser.url?.absoluteString ?? "" }
+        // A stopped application brought back with Show form.
+        .onChange(of: browser.activeForm) { if browser.activeForm != nil, !hunt.usingChrome { expanded = true } }
     }
 
     private var browserHeading: some View {
@@ -1038,13 +1093,13 @@ struct HuntBrowserCard: View {
 private struct HuntWebViewHost: NSViewRepresentable {
     let webView: WKWebView
     func makeNSView(context: Context) -> HuntWebViewContainer { HuntWebViewContainer(webView: webView) }
-    func updateNSView(_ v: HuntWebViewContainer, context: Context) { v.adoptIfFree() }
+    func updateNSView(_ v: HuntWebViewContainer, context: Context) { v.follow(webView); v.adoptIfFree() }
 }
 
 /// Hosts the one shared web view. When Hunt is open in two windows the view follows the window that showed it last,
 /// and comes back to the surviving card when that window closes, instead of leaving a blank card behind.
 final class HuntWebViewContainer: NSView {
-    let webView: WKWebView
+    private(set) var webView: WKWebView
     private var observer: NSObjectProtocol?
 
     init(webView: WKWebView) {
@@ -1070,6 +1125,15 @@ final class HuntWebViewContainer: NSView {
     override func layout() {
         super.layout()
         if webView.superview === self { webView.frame = bounds }
+    }
+
+    /// The browser switched pages (a stopped application was set aside or brought back): show the new one in its place.
+    func follow(_ view: WKWebView) {
+        guard view !== webView else { return }
+        let showing = webView.superview === self
+        if showing { webView.removeFromSuperview() }
+        webView = view
+        if showing { adopt() }
     }
 
     /// Takes the web view when nobody on screen is showing it.

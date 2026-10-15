@@ -20,7 +20,16 @@ enum BrowserError: LocalizedError {
 @MainActor
 @Observable
 final class HuntBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
-    let webView: WKWebView
+    /// The page runs and the Browser card use. It is replaced when a stopped application form is set aside (`holdForm`/`parkForm`).
+    private(set) var webView: WKWebView
+    /// The lead whose stopped application form the current page holds; nil for an ordinary page.
+    private(set) var activeForm: String?
+    /// Leads with a stopped form set aside in its own web view, waiting to be resumed.
+    private(set) var parkedForms: Set<String> = []
+    @ObservationIgnored private var parked: [String: WKWebView] = [:]
+    @ObservationIgnored private var parkOrder: [String] = []
+    /// Stopped forms kept at once; the oldest is dropped (its lead starts over) past this.
+    static let maxParked = 6
     private(set) var url: URL?
     private(set) var title = ""
     private(set) var isLoading = false
@@ -41,12 +50,21 @@ final class HuntBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
     @ObservationIgnored private var stale: Set<ObjectIdentifier> = []
 
     override init() {
+        webView = Self.makeWebView()
+        super.init()
+        bind()
+    }
+
+    /// Every page shares WKWebsiteDataStore.default(), so a fresh one keeps the LinkedIn and careers-site sign-ins.
+    private static func makeWebView() -> WKWebView {
         let cfg = WKWebViewConfiguration()
         cfg.websiteDataStore = .default()
         cfg.mediaTypesRequiringUserActionForPlayback = .all
         // A real size so pages lay out (and getBoundingClientRect works) before the view is on screen.
-        webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 1280, height: 900), configuration: cfg)
-        super.init()
+        return WKWebView(frame: CGRect(x: 0, y: 0, width: 1280, height: 900), configuration: cfg)
+    }
+
+    private func bind() {
         webView.navigationDelegate = self
         webView.uiDelegate = self
         observers = [
@@ -54,6 +72,65 @@ final class HuntBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
             webView.observe(\.url) { [weak self] v, _ in Task { @MainActor in self?.url = v.url } },
             webView.observe(\.isLoading) { [weak self] v, _ in Task { @MainActor in self?.isLoading = v.isLoading } },
         ]
+        title = webView.title ?? ""; url = webView.url; isLoading = webView.isLoading
+    }
+
+    /// Makes `view` the current page. Only between runs: a load still waiting on the old page fails.
+    private func swap(to view: WKWebView) {
+        guard view !== webView else { return }
+        finishLoad(.failure(BrowserError.message("The page was switched")))
+        observers = []
+        inFlight = []; stale = []
+        webView = view
+        bind()
+    }
+
+    // MARK: Stopped application forms
+
+    /// The current page is `leadId`'s stopped application: it stays as it is, and the next navigation sets it aside first.
+    func holdForm(_ leadId: String) {
+        activeForm = leadId
+    }
+
+    /// Sets the held form aside (if any) and continues on a fresh page, so other runs never touch it.
+    func parkForm() {
+        guard let id = activeForm else { return }
+        activeForm = nil
+        parked[id] = webView
+        parkOrder.removeAll { $0 == id }; parkOrder.append(id)
+        while parkOrder.count > Self.maxParked { parked.removeValue(forKey: parkOrder.removeFirst()) }
+        parkedForms = Set(parkOrder)
+        swap(to: Self.makeWebView())
+    }
+
+    /// True when `leadId` has a stopped form, held or set aside.
+    func hasForm(_ leadId: String) -> Bool { activeForm == leadId || parked[leadId] != nil }
+
+    /// Brings `leadId`'s stopped form back as the current page, still held. False when there is none.
+    @discardableResult
+    func showForm(_ leadId: String) -> Bool {
+        if activeForm == leadId { return true }
+        guard let view = parked.removeValue(forKey: leadId) else { return false }
+        parkForm()
+        parkOrder.removeAll { $0 == leadId }; parkedForms = Set(parkOrder)
+        swap(to: view)
+        activeForm = leadId
+        return true
+    }
+
+    /// Makes `leadId`'s stopped form the working page for a resumed submit (no longer held: the run may navigate within it).
+    /// Any other held form is set aside first. False, on the current page, when there is no form to resume.
+    func resumeForm(_ leadId: String) -> Bool {
+        if activeForm != leadId { parkForm() }
+        let found = showForm(leadId)
+        activeForm = nil
+        return found
+    }
+
+    /// Forgets `leadId`'s form (submitted, skipped, or starting over). A held one stays on screen as an ordinary page.
+    func dropForm(_ leadId: String) {
+        if activeForm == leadId { activeForm = nil }
+        if parked.removeValue(forKey: leadId) != nil { parkOrder.removeAll { $0 == leadId }; parkedForms = Set(parkOrder) }
     }
 
     // MARK: Navigation
@@ -63,6 +140,7 @@ final class HuntBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
         guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme) else {
             throw BrowserError.blocked("Only http and https pages can be opened (got \(url.absoluteString))")
         }
+        parkForm()   // a stopped application is never navigated away from; it waits on its own page
         log("Opening \(url.host ?? url.absoluteString)")
         try await awaitLoad { webView.load(URLRequest(url: url)) }
     }
@@ -243,8 +321,9 @@ final class HuntBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
         return png
     }
 
-    /// Clears the action log; cookies and the current page stay.
+    /// Clears the action log and sets a held application form aside; cookies and any other page stay.
     func reset() {
+        parkForm()
         actionLog = []
         lastAction = ""
     }

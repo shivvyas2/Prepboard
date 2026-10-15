@@ -40,6 +40,19 @@ struct SubmitResult: Codable {
     var unknown_questions: [String]
     var confirmation: String
     var questions_only: Bool?   // true when unanswered questions were the only thing that stopped it
+    var page_url: String?       // where the run ended (the form, when it stopped)
+    var suggestions: [Suggestion]?
+
+    /// Claude's suggested answer for one question it stopped on; only shown to the user for approval, never typed into the form.
+    struct Suggestion: Codable { var question, answer: String }
+}
+
+/// How a submit starts: fresh, or continuing an application an earlier attempt stopped on.
+enum SubmitResume: Equatable {
+    case none
+    case page               // the built-in browser's page is that stopped form, as it was left
+    case tab(String)        // Chrome: the stopped form's tab is probably still open (its URL, or "")
+    case fresh(String)      // the stopped page is gone (PrepBoard restarted): start over, keeping any draft the site saved
 }
 
 /// Answers Claude drafted for open-ended form questions (matches `JobHunt.draftSchema`).
@@ -126,6 +139,26 @@ final class JobHunt {
     private var queueTimer: Timer?
     private var lastSubmit: Date? = UserDefaults.standard.object(forKey: "hunt.lastSubmit") as? Date {
         didSet { UserDefaults.standard.set(lastSubmit, forKey: "hunt.lastSubmit") }
+    }
+    /// Leads whose last submit stopped part-way, with the page it stopped on (may be ""): the next submit continues there.
+    private(set) var stoppedPages: [String: String] = UserDefaults.standard.dictionary(forKey: "hunt.stoppedPages") as? [String: String] ?? [:] {
+        didSet { UserDefaults.standard.set(stoppedPages, forKey: "hunt.stoppedPages") }
+    }
+
+    /// True when Submit on `lead` continues a stopped application instead of starting over.
+    func canResume(_ lead: Lead) -> Bool { stoppedPages[lead.id] != nil || huntBrowser?.hasForm(lead.id) == true }
+
+    /// Brings `lead`'s stopped form up in the Browser card. False when the page is gone or Claude is using the browser.
+    @discardableResult
+    func showForm(_ lead: Lead) -> Bool {
+        guard claude?.busy != true, let huntBrowser else { return false }
+        return huntBrowser.showForm(lead.id)
+    }
+
+    /// The application starts over next time (skipped, regenerated, sent, or failed for good).
+    func forgetForm(_ lead: Lead) {
+        stoppedPages[lead.id] = nil
+        huntBrowser?.dropForm(lead.id)
     }
 
     /// Open the selected desktop browser explicitly: the default browser may be Safari, which cannot host this extension.
@@ -275,6 +308,20 @@ final class JobHunt {
             result.append(FormAnswer(question: q, answer: "", kind: "needs_you", required: true))
         }
         return result
+    }
+
+    /// Puts Submit's suggestions on the questions still waiting for the user, as "suggested" (approval needed). Never on a legal
+    /// question: those come only from the Answer Bank. Returns the answers and how many got a suggestion.
+    static func applySuggestions(_ suggestions: [SubmitResult.Suggestion], to answers: [FormAnswer]) -> ([FormAnswer], Int) {
+        var result = answers, n = 0
+        for s in suggestions {
+            let text = s.answer.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty, AnswerBank.rule(for: s.question)?.legal != true,
+                  let i = result.firstIndex(where: { $0.kind == "needs_you" && AnswerBank.normalized($0.question) == AnswerBank.normalized(s.question) })
+            else { continue }
+            result[i].answer = text; result[i].kind = "suggested"; n += 1
+        }
+        return (result, n)
     }
 
     /// Fills Tailor's answers from the Answer Bank: legal questions always, the rest when the bank has a value.
@@ -432,7 +479,8 @@ final class JobHunt {
 
     /// Drafts the lead's needs_you questions that the Answer Bank does not cover (never legal ones), from my résumés, GitHub,
     /// education and work history, and what Claude can read about the company on the web. Call with `claude.busy` already held.
-    private func draftOpenQuestions(_ lead: Lead, settings: HuntSettings) async -> Int {
+    /// `kind` is what a drafted answer becomes: "drafted", or "suggested" when the user must approve it first.
+    private func draftOpenQuestions(_ lead: Lead, settings: HuntSettings, kind: String = "drafted") async -> Int {
         let bank = lead.bank(settings.answerBank)
         let open = lead.answers.filter { $0.kind == "needs_you" && AnswerBank.rule(for: $0.question) == nil }.map(\.question)
         guard !open.isEmpty else { return 0 }
@@ -447,7 +495,7 @@ final class JobHunt {
                 let text = d.answer.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !text.isEmpty, let i = all.firstIndex(where: { $0.kind == "needs_you" && AnswerBank.normalized($0.question) == AnswerBank.normalized(d.question) })
                 else { continue }
-                all[i].answer = text; all[i].kind = "drafted"; n += 1
+                all[i].answer = text; all[i].kind = kind; n += 1
             }
             lead.answers = all; lead.updatedAt = .now
             return n
@@ -474,6 +522,7 @@ final class JobHunt {
     }
 
     func skip(_ lead: Lead) {
+        forgetForm(lead)
         lead.status = .skipped; lead.submitRequested = false; lead.reason = "Skipped by you"; lead.updatedAt = .now
         try? container?.mainContext.save()
     }
@@ -623,6 +672,7 @@ final class JobHunt {
 
     private func tailorLead(_ lead: Lead, settings: HuntSettings, roles: [Role], context: ModelContext) async {
         let folder = settings.resumeFolder
+        forgetForm(lead)   // a new résumé: a stopped form holds the old PDF, so the next submit starts over
         lead.status = .tailoring; lead.submitRequested = false; lead.reason = ""; lead.flagged = ""; lead.updatedAt = .now
         try? context.save()
         func fail(_ reason: String) { lead.status = .failed; lead.reason = reason; lead.updatedAt = .now; try? context.save() }
@@ -779,6 +829,7 @@ final class JobHunt {
         if let dup = applied.first(where: { (!lead.link.isEmpty && $0.link == lead.link)
                                             || ResumeLibrary.dedupeKey(company: $0.company, title: $0.title, roleNumber: $0.roleNumber) == key }) {
             lead.status = .submitted; lead.roleId = dup.id; lead.reason = "Already applied"; lead.submitRequested = false; lead.updatedAt = .now
+            forgetForm(lead)
             try? context.save()
             return
         }
@@ -807,9 +858,20 @@ final class JobHunt {
             lead.status = .ready; lead.flagged = stop + " Then press Submit again."; lead.submitRequested = false; error = stop
         } else {
             lastSubmit = .now   // every real attempt counts toward the spacing, even one that throws
+            // A form an earlier attempt stopped on is picked up where it was left, with everything already filled in kept.
+            let stopped = stoppedPages[lead.id]
+            let resume: SubmitResume = chrome ? stopped.map { .tab($0) } ?? .none
+                : huntBrowser?.resumeForm(lead.id) == true ? .page : stopped.map { .fresh($0) } ?? .none
+            /// Keeps the page as it is for the next attempt (built-in: held in its own web view, so other applications go on).
+            func holdStopped(_ page: String?) {
+                if !chrome { huntBrowser?.holdForm(lead.id) }
+                let here = page?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                stoppedPages[lead.id] = here.isEmpty ? (chrome ? "" : huntBrowser?.url?.absoluteString ?? "") : here
+            }
             do {
                 let flags = chrome ? Self.chromeFlags(tools: Self.chromeSubmitTools) : browser?.claudeFlags(extraTools: "")
-                let result = try await Self.check(SubmitResult.self, prompt: Self.submitPrompt(lead: lead, pdfPath: pdfPath, bank: settings.answerBank, chrome: chrome),
+                let result = try await Self.check(SubmitResult.self, prompt: Self.submitPrompt(lead: lead, pdfPath: pdfPath, bank: settings.answerBank, chrome: chrome,
+                                                                                              resume: resume),
                                                   schema: Self.submitSchema, browserFlags: flags, tools: "", cwd: settings.resumeFolder)
                 switch result.status {
                 case "submitted" where !result.confirmation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
@@ -820,35 +882,39 @@ final class JobHunt {
                     role.activity = "- \(DateCoding.dayString(.now)) · Hunt · Applied with \(sent)"
                     context.insert(role)
                     lead.roleId = role.id; lead.status = .submitted; lead.reason = result.confirmation
+                    forgetForm(lead)
                     Self.bump("submitted")
                     Self.notifySubmitted(lead)
                 case "submitted":
+                    holdStopped(result.page_url)
                     lead.status = .needsYou; lead.reason = "No submission confirmation was returned. Check the open application before trying again."
                 case "needs_you" where result.reason.uppercased().hasPrefix("NO_CHROME"):
                     // Nothing was touched: the lead stays ready to queue again once Chrome is connected.
                     lead.status = .ready; lead.flagged = Self.noChromeMessage; error = Self.noChromeMessage
                     chromeStatus = Self.noChromeMessage
                 case "needs_you":
+                    // The form stays as it was left (the next queued application gets its own page) and the next submit continues it.
+                    holdStopped(result.page_url)
                     lead.status = .needsYou; lead.flagged = result.unknown_questions.joined(separator: "\n")
                     lead.reason = result.reason.isEmpty ? "The form needs you" : result.reason
-                    // Questions the lead already had an answer for stopped the form anyway: never loop on those.
-                    let known = Set(lead.answers.filter { $0.kind != "needs_you" }.map { AnswerBank.normalized($0.question) })
-                    let repeated = result.unknown_questions.contains { known.contains(AnswerBank.normalized($0)) }
                     lead.answers = lead.bank(settings.answerBank).merge(Self.addingUnknown(result.unknown_questions, to: lead.answers))
-                    // Open-ended questions ("What are you proud of?") get drafted for this role; legal ones stay with the user.
-                    let drafted = await draftOpenQuestions(lead, settings: settings)
-                    if result.questions_only == true, !repeated, drafted > 0, lead.canSubmit {
-                        lead.status = .ready; lead.flagged = ""
-                        lead.reason = "Claude drafted \(drafted) answer\(drafted == 1 ? "" : "s") for this role; review them before it goes out."
-                        if HuntPrefs.keepApplying { lead.submitRequested = true; lead.reason = "Claude drafted \(drafted) answer\(drafted == 1 ? "" : "s") for this role and queued it again." }
-                        lead.updatedAt = .now; try? context.save()
-                        return
+                    // Every question it stopped on gets a suggestion for the user to approve: drafted for this role when open-ended
+                    // ("What are you proud of?"), otherwise what the form's options and my facts point to. Legal ones stay with the user.
+                    let drafted = await draftOpenQuestions(lead, settings: settings, kind: "suggested")
+                    let (withSuggestions, picked) = Self.applySuggestions(result.suggestions ?? [], to: lead.answers)
+                    lead.answers = withSuggestions
+                    if drafted + picked > 0 {
+                        let n = drafted + picked
+                        lead.reason = "Claude suggested \(n) answer\(n == 1 ? "" : "s"). Approve them and the application continues where it stopped, "
+                            + "with everything else still filled in." + (result.questions_only == false && !result.reason.isEmpty ? " Also: " + result.reason : "")
                     }
                     Self.notifyNeedsYou(lead)
                 default:
+                    forgetForm(lead)
                     lead.status = .failed; lead.reason = result.reason.isEmpty ? "Submit failed" : result.reason
                 }
             } catch {
+                holdStopped(nil)
                 lead.status = .needsYou
                 lead.flagged = "Submit ended without a result; check \(chrome ? "the open Chrome tab" : "the Browser card") before trying again"
                 lead.reason = error.localizedDescription
@@ -985,9 +1051,12 @@ final class JobHunt {
     """#
 
     static let submitSchema = #"""
-    {"type":"object","required":["status","reason","unknown_questions","confirmation","questions_only"],"properties":{
+    {"type":"object","required":["status","reason","unknown_questions","confirmation","questions_only","page_url","suggestions"],"properties":{
       "status":{"type":"string","enum":["submitted","needs_you","failed"]},"reason":{"type":"string"},
-      "unknown_questions":{"type":"array","items":{"type":"string"}},"confirmation":{"type":"string"},"questions_only":{"type":"boolean"}}}
+      "unknown_questions":{"type":"array","items":{"type":"string"}},"confirmation":{"type":"string"},"questions_only":{"type":"boolean"},
+      "page_url":{"type":"string"},
+      "suggestions":{"type":"array","items":{"type":"object","required":["question","answer"],
+        "properties":{"question":{"type":"string"},"answer":{"type":"string"}}}}}}
     """#
 
     private static func bullets(_ items: [String], empty: String = "(none)") -> String {
@@ -1240,7 +1309,28 @@ final class JobHunt {
         """
     }
 
-    static func submitPrompt(lead: Lead, pdfPath: String, bank base: AnswerBank, chrome: Bool = false) -> String {
+    /// What the submit prompt says when it continues a stopped application.
+    static func resumeGuide(_ resume: SubmitResume) -> String? {
+        let keep = "Keep every field that is already filled in unless it contradicts the answers below; fill only what is empty or was waiting "
+            + "for me (the questions I have answered since are in APPROVED ANSWERS); attach the résumé only if the form does not already show it "
+            + "attached; then go on to Submit under the same rules."
+        switch resume {
+        case .none: return nil
+        case .page:
+            return "CONTINUE WHERE YOU STOPPED: an earlier attempt stopped on this application waiting for my answers, and its page is still open "
+                + "in the browser exactly as you left it. Do not open the Start URL and do not reload: call read_page first and continue on this page. "
+                + keep + " Only if the page no longer shows this application (expired, signed out, a different page) start again from the Start URL."
+        case .tab(let url):
+            return "CONTINUE WHERE YOU STOPPED: an earlier attempt stopped on this application waiting for my answers, and its Chrome tab is "
+                + "probably still open\(url.isEmpty ? "" : " at \(url)"). Call tabs_context_mcp and, if a tab shows this application, continue in "
+                + "that tab instead of creating one; do not reload it. " + keep + " If no tab shows it, start from the Start URL as usual."
+        case .fresh(let url):
+            return "CONTINUE WHERE YOU STOPPED: an earlier attempt stopped on this application\(url.isEmpty ? "" : " at \(url)") waiting for my "
+                + "answers; that page has been closed since. Start from the Start URL as usual. Some sites keep a saved draft: " + keep
+        }
+    }
+
+    static func submitPrompt(lead: Lead, pdfPath: String, bank base: AnswerBank, chrome: Bool = false, resume: SubmitResume = .none) -> String {
         let bank = lead.bank(base)
         var notes = ATS.formNotes(ATS.kind(lead.link))
         if chrome { notes = notes.replacingOccurrences(of: "upload_file", with: "file_upload") }   // the Chrome tool's name
@@ -1282,9 +1372,9 @@ final class JobHunt {
         THE BROWSER: \(browserGuide(upload: true, chrome: chrome)) I am already signed in to LinkedIn there.
 
         \(target)
-
+        \(resumeGuide(resume).map { "\n" + $0 + "\n" } ?? "")
         RULES:
-        - Start at the "Start here" URL and reach the application form from there. On LinkedIn, use Easy Apply when it is offered; \
+        - Start at the "Start here" URL\(resume == .none ? "" : " (unless CONTINUE WHERE YOU STOPPED above says otherwise)") and reach the application form from there. On LinkedIn, use Easy Apply when it is offered; \
         otherwise press Apply, and the company's own application page (Ashby, Greenhouse, Lever, Workable or a company form) opens in \
         \(chrome ? "Chrome, sometimes in a new tab" : "this same browser"): continue there with these same rules.
         - Fill every field from the APPROVED ANSWERS and STANDARD FACTS below. Never make up an answer, never guess, never reuse text from \
@@ -1303,6 +1393,11 @@ final class JobHunt {
         so; never submit twice.
         - questions_only: true when the only thing that stopped you is questions in `unknown_questions` (the form was otherwise ready \
         and nothing else, such as a sign-in, CAPTCHA, upload or error, blocked you); false otherwise, and false when you submitted.
+        - suggestions: one entry per question in `unknown_questions` (the same text), with your best suggested answer for me to review: \
+        from my facts, answers and history below, and for a choice one of the options exactly as the form shows it. Answer "" when nothing \
+        below honestly supports one, and always "" for legal questions (work authorization, sponsorship, citizenship, EEO, salary). \
+        Suggestions are only for me: never enter them in the form. An empty array when you submitted.
+        - page_url: the URL of the page you ended on (the application form, when you stopped).
         - Do nothing else in the browser: no other applications, no profile edits, no messages, no saving jobs.
 
         \(choices.isEmpty ? "" : "MY CHOICES FOR THIS ROLE (these override any answer or fact below on the same subject):\n" + choices.joined(separator: "\n") + "\n")

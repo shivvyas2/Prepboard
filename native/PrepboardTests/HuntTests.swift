@@ -769,4 +769,51 @@ final class HuntTests: XCTestCase {
         let r = try JSONDecoder().decode(EditResult.self, from: Data(#"{"tex":"\\documentclass{article}","notes":"Shortened."}"#.utf8))
         XCTAssertEqual(r.notes, "Shortened.")
     }
+
+    // MARK: stopped applications: suggestions to approve, continuing where it stopped
+
+    func testSuggestionsWaitForApproval() {
+        let lead = Lead(company: "Apple")
+        lead.answers = [FormAnswer(question: "Are you 18 or older?", answer: "", kind: "needs_you", required: true),
+                        FormAnswer(question: "Do you need visa sponsorship?", answer: "", kind: "needs_you", required: true),
+                        FormAnswer(question: "Email", answer: "a@b.c", kind: "bank", required: true)]
+        let (answers, n) = JobHunt.applySuggestions([.init(question: "are you 18 or older", answer: "Yes"),
+                                                     .init(question: "Do you need visa sponsorship?", answer: "No"),
+                                                     .init(question: "Unasked", answer: "x")], to: lead.answers)
+        XCTAssertEqual(n, 1)   // never a legal question, never one the form did not stop on
+        XCTAssertEqual(answers.map(\.kind), ["suggested", "needs_you", "bank"])
+        lead.answers = answers
+        lead.answers.removeAll { $0.question.contains("sponsorship") }
+        XCTAssertEqual(lead.suggestedCount, 1)
+        XCTAssertFalse(lead.canSubmit)   // nothing goes out until the user approves
+        lead.approveSuggestions()
+        XCTAssertEqual(lead.answers.map(\.kind), ["yours", "bank"])
+        XCTAssertTrue(lead.canSubmit)
+    }
+
+    func testBankMergeKeepsSuggestionWhenBankIsEmpty() {
+        var bank = AnswerBank()
+        let suggested = [FormAnswer(question: "What city are you based in?", answer: "New York", kind: "suggested", required: true)]
+        XCTAssertEqual(bank.merge(suggested), suggested)
+        bank.city = "Boston"
+        XCTAssertEqual(bank.merge(suggested).map(\.kind), ["bank"])   // the bank's own answer needs no approval
+    }
+
+    func testSubmitPromptContinuesStoppedForm() {
+        let lead = Lead(company: "Apple", title: "iOS Engineer", link: "https://jobs.apple.com/x")
+        XCTAssertFalse(JobHunt.submitPrompt(lead: lead, pdfPath: "/tmp/r.pdf", bank: AnswerBank()).contains("CONTINUE WHERE YOU STOPPED"))
+        let page = JobHunt.submitPrompt(lead: lead, pdfPath: "/tmp/r.pdf", bank: AnswerBank(), resume: .page)
+        XCTAssertTrue(page.contains("CONTINUE WHERE YOU STOPPED"))
+        XCTAssertTrue(page.contains("Do not open the Start URL and do not reload"))
+        XCTAssertTrue(page.contains("Keep every field that is already filled in"))
+        let tab = JobHunt.submitPrompt(lead: lead, pdfPath: "/tmp/r.pdf", bank: AnswerBank(), chrome: true, resume: .tab("https://jobs.apple.com/x/apply"))
+        XCTAssertTrue(tab.contains("tabs_context_mcp") && tab.contains("https://jobs.apple.com/x/apply"))
+        XCTAssertTrue(JobHunt.submitSchema.contains("\"suggestions\"") && JobHunt.submitSchema.contains("\"page_url\""))
+    }
+
+    func testSubmitResultDecodesSuggestions() throws {
+        let r = try JSONDecoder().decode(SubmitResult.self, from: Data(#"{"status":"needs_you","reason":"","unknown_questions":["Are you 18?"],"confirmation":"","questions_only":true,"page_url":"https://x.com/apply","suggestions":[{"question":"Are you 18?","answer":"Yes"}]}"#.utf8))
+        XCTAssertEqual(r.suggestions?.first?.answer, "Yes")
+        XCTAssertEqual(r.page_url, "https://x.com/apply")
+    }
 }

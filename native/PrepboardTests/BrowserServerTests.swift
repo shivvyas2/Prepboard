@@ -644,4 +644,28 @@ final class BrowserServerTests: XCTestCase {
         XCTAssertEqual(outcome, "Replaced by a newer navigation")
         b.webView.stopLoading()
     }
+
+    // MARK: stopped application forms
+
+    /// A stopped form is set aside on its own page: other runs navigate a fresh one, and resuming brings the same page back filled in.
+    func testStoppedFormIsKeptWhileOtherRunsNavigate() async throws {
+        let b = HuntBrowser()
+        try await b.loadHTML("<html><body><input id=f></body></html>")
+        _ = try await b.run("function(){ document.getElementById('f').value = 'kept'; return JSON.stringify(true) }")
+        let form = b.webView
+        b.holdForm("lead-1")
+        XCTAssertTrue(b.hasForm("lead-1"))
+        b.reset()   // the next run starts: the form is set aside
+        XCTAssertFalse(b.webView === form)
+        XCTAssertEqual(b.parkedForms, ["lead-1"])
+        try await b.loadHTML("<html><body><h1>Other</h1></body></html>")
+        XCTAssertTrue(b.resumeForm("lead-1"))
+        XCTAssertTrue(b.webView === form)
+        XCTAssertNil(b.activeForm)   // the resumed run may navigate within it
+        let value = try await b.run("function(){ return JSON.stringify(document.getElementById('f').value) }") as? String
+        XCTAssertEqual(value, "kept")
+        XCTAssertFalse(b.resumeForm("lead-2"))
+        b.dropForm("lead-1")
+        XCTAssertFalse(b.hasForm("lead-1"))
+    }
 }

@@ -233,6 +233,7 @@ struct FormAnswer: Codable, Hashable {
     var answer: String
     var kind: String        // "bank" (from the Answer Bank) | "drafted" (job-specific, Claude wrote it) | "yours" (typed by the user)
                             // | "choice" (the user's per-role choice, see `Lead.Choice`) | "needs_you"
+                            // | "suggested" (Claude's suggestion for a question a stopped form asked; waits for the user's approval)
     var required: Bool
 }
 
@@ -285,9 +286,19 @@ final class Lead {
         get { (try? JSONDecoder().decode([FormAnswer].self, from: answersJSON)) ?? [] }
         set { answersJSON = (try? JSONEncoder().encode(newValue)) ?? Data() }
     }
-    /// Every required answer is filled in and nothing is left for the user.
+    /// Every required answer is filled in and nothing is left for the user (no question unanswered, no suggestion unapproved).
     var canSubmit: Bool {
-        answers.allSatisfy { $0.kind != "needs_you" && (!$0.required || !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
+        answers.allSatisfy { !["needs_you", "suggested"].contains($0.kind) && (!$0.required || !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
+    }
+    /// Suggestions waiting for the user's approval.
+    var suggestedCount: Int { answers.filter { $0.kind == "suggested" }.count }
+    /// Approves every suggestion as the user's own answer (what Submit then sends, and what the Answer Bank may remember).
+    func approveSuggestions() {
+        answers = answers.map { a in
+            guard a.kind == "suggested" else { return a }
+            var m = a; m.kind = "yours"; return m
+        }
+        updatedAt = .now
     }
 }
 
@@ -418,7 +429,7 @@ struct AnswerBank: Codable, Equatable {
         answers.map { a in
             if a.kind == "yours" || a.kind == "choice" { return a }   // the user's own, for this posting
             guard let b = answer(for: a.question) else { return a }
-            if !b.legal, b.answer.isEmpty, a.kind == "drafted", !a.answer.isEmpty { return a }
+            if !b.legal, b.answer.isEmpty, ["drafted", "suggested"].contains(a.kind), !a.answer.isEmpty { return a }
             var m = a; m.answer = b.answer; m.kind = b.kind
             return m
         }

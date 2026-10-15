@@ -1,8 +1,9 @@
 import SwiftData
 import SwiftUI
 
-/// Home: everything at a glance — time left, what's on now, today's hour strip, priorities,
-/// today's checklist, the day-by-day countdown plan, pipeline and recent docs.
+/// Home, kept quiet: what needs you, time left and what's on now, today's hour strip (with a one-line progress summary),
+/// today's checklist, the countdown plan on wide windows, and the pipeline. Priorities, stat tiles and recent docs live
+/// in Timeline and Documents instead.
 struct DashboardView: View {
     @Environment(AppState.self) private var app
     @Environment(Profile.self) private var profile
@@ -39,32 +40,18 @@ struct DashboardView: View {
                 NeedsYouCard()
                 HStack(alignment: .top, spacing: 16) { hero(now).frame(maxHeight: .infinity); upNext(sess, now: now).frame(width: 380) }
                     .fixedSize(horizontal: false, vertical: true)
-                stats(sess, now: now)
                 todayStrip(sess, now: now)
-                if width > 1260 {
-                    HStack(alignment: .top, spacing: 16) {
-                        priorities(sess, now: now)
-                        todaysTasks(sess, now: now)
-                        countdownPlan(sess, now: now).frame(width: 300)
-                    }
-                } else {
-                    HStack(alignment: .top, spacing: 16) { priorities(sess, now: now); todaysTasks(sess, now: now) }
-                    countdownPlan(sess, now: now)
-                }
-                HStack(alignment: .top, spacing: 16) { pipeline; recent.frame(width: 380) }
+                HStack(alignment: .top, spacing: 16) { todaysTasks(sess, now: now); countdownPlan(sess, now: now).frame(width: 300) }
+                pipeline
             }
         } else {
             VStack(spacing: 16) {
                 NeedsYouCard()
                 hero(now)
                 upNext(sess, now: now)
-                stats(sess, now: now)
                 todayStrip(sess, now: now)
-                priorities(sess, now: now)
                 todaysTasks(sess, now: now)
-                countdownPlan(sess, now: now)
                 pipeline
-                recent
             }
         }
     }
@@ -194,52 +181,18 @@ struct DashboardView: View {
         }
     }
 
-    // MARK: stats
+    // MARK: progress summary
 
-    private func stats(_ sess: [PrepTask], now: Date) -> some View {
+    /// One quiet line instead of four stat tiles: sessions left, prep hours left, what to catch up on, overall progress.
+    private func summary(_ sess: [PrepTask], now: Date) -> String? {
         let work = sess.filter { !$0.isBreak }
+        guard !work.isEmpty else { return nil }
         let remaining = work.filter { !$0.done && $0.end > now }
-        let hoursLeft = remaining.reduce(0) { $0 + $1.end.timeIntervalSince(max($1.start, now)) } / 3600
+        let hours = remaining.reduce(0) { $0 + $1.end.timeIntervalSince(max($1.start, now)) } / 3600
         let missed = work.filter { !$0.done && $0.end <= now }.count
-        let progress = tasks.progress(for: activeRole?.id ?? "")
-        return ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) { statCells(remaining: remaining, work: work, hoursLeft: hoursLeft, missed: missed, progress: progress) }
-                .frame(minWidth: 700)
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-                statCells(remaining: remaining, work: work, hoursLeft: hoursLeft, missed: missed, progress: progress)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func statCells(remaining: [PrepTask], work: [PrepTask], hoursLeft: Double, missed: Int, progress: Double) -> some View {
-            stat("Prep hours left", value: hoursLeft < 10 ? String(format: "%.1f", hoursLeft) : "\(Int(hoursLeft))", suffix: "h")
-            stat("Sessions left", value: "\(remaining.count)", suffix: "/\(work.count)")
-            stat("To catch up", value: "\(missed)", highlight: missed > 0)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Prep progress").pbLabelStyle()
-                HStack(alignment: .center, spacing: 12) {
-                    Text("\(Int(progress * 100))%").font(.system(size: 26, weight: .bold)).kerning(-0.6)
-                    ProgressBar(value: progress)
-                }
-            }
-            .pbCard(padding: 16, fill: PB.surface, radius: PB.rLG)
-    }
-
-    private func stat(_ label: String, value: String, suffix: String? = nil, highlight: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if highlight {
-                Text(label).font(.pbLabel).kerning(0.9).textCase(.uppercase).foregroundStyle(PB.onSun.opacity(0.9))
-            } else {
-                Text(label).pbLabelStyle()
-            }
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
-                Text(value).font(.system(size: 26, weight: .bold)).kerning(-0.6)
-                if let suffix { Text(suffix).font(.system(size: 15, weight: .semibold)).foregroundStyle(highlight ? PB.onSun : PB.muted) }
-            }
-            .foregroundStyle(highlight ? PB.onSun : PB.ink)
-        }
-        .pbCard(padding: 16, fill: highlight ? PB.sun : PB.surface, radius: PB.rLG)
+        let progress = Int(tasks.progress(for: activeRole?.id ?? "") * 100)
+        return ["\(remaining.count) of \(work.count) sessions left", hours > 0 ? (hours < 10 ? String(format: "%.1fh", hours) : "\(Int(hours))h") + " to go" : nil,
+                missed > 0 ? "\(missed) to catch up" : nil, "\(progress)% done"].compactMap { $0 }.joined(separator: " · ")
     }
 
     // MARK: today's hour strip
@@ -256,7 +209,8 @@ struct DashboardView: View {
         return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text("Today").font(.system(size: 15, weight: .semibold))
-                Text(now.formatted(.dateTime.weekday(.wide).month(.wide).day())).font(.system(size: 13)).foregroundStyle(PB.muted)
+                Text(([now.formatted(.dateTime.weekday(.wide).month(.wide).day())] + [summary(sess, now: now)].compactMap { $0 }).joined(separator: " · "))
+                    .font(.system(size: 13)).foregroundStyle(PB.muted).lineLimit(1).truncationMode(.tail)
                 Spacer(minLength: 8)
                 Button("Full timeline →") { app.section = .timeline; app.scrollTarget = "now" }
                     .buttonStyle(PillButtonStyle(filled: false, compact: true))
@@ -327,48 +281,6 @@ struct DashboardView: View {
         .help("\(TimeFmt.hm(t.start))–\(TimeFmt.hm(t.end)) · \(t.title)")
     }
 
-    // MARK: priorities
-
-    private func priorities(_ sess: [PrepTask], now: Date) -> some View {
-        let work = sess.filter { !$0.isBreak && !$0.done }
-        let cal = Calendar.current
-        let items: [(PrepTask, String, Color, Color)] =
-            work.filter { $0.status(at: now) == .current }.map { ($0, "Now", PB.sun, PB.onSun) }
-            + work.filter { $0.end <= now }.map { ($0, "Catch up", PB.sun, PB.onSun) }
-            + work.filter { $0.start > now }.prefix(4).map {
-                ($0, cal.isDateInToday($0.start) ? "Today" : $0.start.formatted(.dateTime.weekday(.abbreviated)), PB.cobaltSoft, PB.cobalt)
-            }
-        let docsById = Dictionary(uniqueKeysWithValues: docs.map { ($0.id, $0) })
-        return VStack(alignment: .leading, spacing: 0) {
-            CardHeader(title: "Priorities", count: "\(min(items.count, 6))")
-            if items.isEmpty { Text("Nothing pending. Nice.").foregroundStyle(PB.muted).frame(maxWidth: .infinity).padding(24) }
-            ForEach(Array(items.prefix(6).enumerated()), id: \.offset) { idx, item in
-                let (t, label, bg, fg) = item
-                Button { app.gotoSession(t) } label: {
-                    HStack(alignment: .top, spacing: 12) {
-                        Text(label).font(.system(size: 11, weight: .bold)).foregroundStyle(fg)
-                            .frame(width: 74).padding(.vertical, 4)
-                            .background(RoundedRectangle(cornerRadius: 8).fill(bg))
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(t.title).font(.system(size: 14, weight: .semibold)).multilineTextAlignment(.leading)
-                                .fixedSize(horizontal: false, vertical: true)
-                            Text(["\(TimeFmt.hm(t.start))–\(TimeFmt.hm(t.end))", t.kind.label,
-                                  t.refs.first.flatMap { r in docsById[r.docId].map { _ in TimeFmt.cleanHeading(r.heading) } }]
-                                .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
-                                .font(.system(size: 12)).foregroundStyle(PB.muted).lineLimit(1)
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.vertical, 12)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .overlay(alignment: .bottom) { if idx < min(items.count, 6) - 1 { Rectangle().fill(PB.line).frame(height: 1) } }
-            }
-        }
-        .pbCard()
-    }
-
     // MARK: today's tasks
 
     private func todaysTasks(_ sess: [PrepTask], now: Date) -> some View {
@@ -432,24 +344,10 @@ struct DashboardView: View {
         .pbCard()
     }
 
-    // MARK: pipeline & recent
+    // MARK: pipeline
 
     private var pipeline: some View {
         PipelineSummary(roles: roles)
-    }
-
-    private var recent: some View {
-        let roleNames = Dictionary(uniqueKeysWithValues: roles.map { ($0.id, $0.company) })
-        return VStack(alignment: .leading, spacing: 0) {
-            CardHeader(title: "Recently edited") {
-                CircleIconButton(systemImage: "plus", size: 32, label: "New document") { app.newDoc(context) }
-            }
-            if docs.isEmpty { Text("No documents yet.").foregroundStyle(PB.muted).frame(maxWidth: .infinity).padding(32) }
-            ForEach(docs.prefix(5)) { d in
-                DocRow(doc: d, roleName: roleNames[d.roleId] ?? "General") { app.openDoc(d.id) }
-            }
-        }
-        .pbCard()
     }
 }
 
@@ -477,14 +375,21 @@ private struct NeedsYouCard: View {
                               action: "Open Hunt", urgent: true) { app.section = .hunt })
         }
         #endif
-        let waiting = leads.filter { $0.status == .needsYou || $0.status == .failed || ($0.status == .ready && !$0.flagged.isEmpty && !$0.submitRequested) }
+        let waiting = leads.filter { $0.status == .needsYou || ($0.status == .ready && !$0.flagged.isEmpty && !$0.submitRequested) }
         for lead in waiting {
-            let open = lead.answers.filter { $0.kind == "needs_you" }.map(\.question)
-            let detail = !open.isEmpty ? "Answer: " + open.prefix(3).joined(separator: " · ") + (open.count > 3 ? " +\(open.count - 3) more" : "")
-                : [lead.reason, lead.flagged.split(separator: "\n").first.map(String.init) ?? ""].first { !$0.isEmpty } ?? "Needs your review"
-            list.append(Item(id: lead.id, icon: lead.status == .failed ? "exclamationmark.triangle" : "hand.raised",
-                              title: "\(lead.company) · \(lead.title)", detail: detail, action: lead.status == .failed ? "Retry" : "Review",
-                              urgent: lead.status != .failed) { app.huntShowNeedsYou = true; app.section = .hunt })
+            let open = lead.answers.filter { $0.kind == "needs_you" }.count, suggested = lead.suggestedCount
+            let detail = suggested > 0 ? "Approve \(suggested) suggested answer\(suggested == 1 ? "" : "s") to continue"
+                : open > 0 ? "\(open) question\(open == 1 ? "" : "s") to answer"
+                : lead.flagged.split(separator: "\n").first.map(String.init) ?? (lead.reason.isEmpty ? "Needs your review" : lead.reason)
+            list.append(Item(id: lead.id, icon: "hand.raised", title: lead.company, detail: detail,
+                              action: suggested > 0 ? "Approve" : "Review", urgent: true) { app.huntShowNeedsYou = true; app.section = .hunt })
+        }
+        // Failed applications are one line, not one row each.
+        let failed = leads.filter { $0.status == .failed }
+        if !failed.isEmpty {
+            list.append(Item(id: "failed", icon: "exclamationmark.triangle", title: "\(failed.count) application\(failed.count == 1 ? "" : "s") failed",
+                              detail: ListFormatter.localizedString(byJoining: failed.prefix(3).map(\.company)) + (failed.count > 3 ? " and more" : ""),
+                              action: "Review", urgent: false) { app.huntShowNeedsYou = true; app.section = .hunt })
         }
         if let bank = settingsRows.first?.answerBank, !leads.isEmpty || settingsRows.first?.auto == true {
             let missing = bank.missingStopping
@@ -506,9 +411,9 @@ private struct NeedsYouCard: View {
                         .buttonStyle(PillButtonStyle(filled: false, compact: true))
                 }
                 VStack(spacing: 8) {
-                    ForEach(list.prefix(6)) { a in row(a) }
-                    if list.count > 6 {
-                        Text("\(list.count - 6) more in Hunt").font(.system(size: 12)).foregroundStyle(PB.muted)
+                    ForEach(list.prefix(3)) { a in row(a) }
+                    if list.count > 3 {
+                        Text("\(list.count - 3) more in Hunt").font(.system(size: 12)).foregroundStyle(PB.muted)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
@@ -526,8 +431,7 @@ private struct NeedsYouCard: View {
                 .background(Circle().fill(a.urgent ? PB.sunSoft : PB.redSoft))
             VStack(alignment: .leading, spacing: 2) {
                 Text(a.title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
-                Text(a.detail).font(.system(size: 12)).foregroundStyle(PB.muted).lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(a.detail).font(.system(size: 12)).foregroundStyle(PB.muted).lineLimit(1)
             }
             Spacer(minLength: 8)
             Button(a.action, action: a.open).buttonStyle(PillButtonStyle(filled: false, compact: true))
