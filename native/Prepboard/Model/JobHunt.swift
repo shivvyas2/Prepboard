@@ -351,7 +351,7 @@ final class JobHunt {
 
     /// True when Submit has a PDF to send for `lead`: its tailored one, or the résumé chosen for every job.
     func hasResume(_ lead: Lead) -> Bool {
-        if let name = Self.plainName(lead.variantName) { return FileManager.default.fileExists(atPath: resumeFolder + "/" + name + ".pdf") }
+        if let name = Self.plainName(lead.variantName) { return ResumeFolders.find(name, ext: "pdf", in: resumeFolder) != nil }
         return HuntPrefs.usablePDF(HuntPrefs.resumePDF)
     }
 
@@ -393,9 +393,26 @@ final class JobHunt {
         container.flatMap { settings(in: $0.mainContext)?.resumeFolder } ?? HuntSettings.defaultResumeFolder
     }
 
-    /// The lead's tailored .tex in the résumé folder; nil until a variant has been generated (or when the synced name is not a plain file name).
+    /// The lead's tailored .tex in the résumé folder (under TeX/, in its company folder once there is one); nil until a variant has
+    /// been generated (or when the synced name is not a plain file name).
     func texPath(for lead: Lead) -> String? {
-        Self.plainName(lead.variantName).map { resumeFolder + "/" + $0 + ".tex" }
+        Self.plainName(lead.variantName).map { ResumeFolders.texPath(for: $0, in: resumeFolder) }
+    }
+
+    /// The first name résumé files start with ("Shiv" in Shiv-Vyas-Apple-…), which ResumeFolders needs to find the company.
+    private func fileFirstName(_ settings: HuntSettings?) -> String {
+        let name = settings?.answerBank.fullName ?? ""
+        return String((name.isEmpty ? "Shiv Vyas" : name).split(separator: " ").first ?? "")
+    }
+
+    /// Sorts the résumé folder into TeX/ and PDF/ with company folders (ResumeFolders.organize) and points the every-job PDF at
+    /// its new place if it moved. Returns the moves.
+    @discardableResult
+    func organizeResumes() -> [String: String] {
+        guard let container else { return [:] }
+        let moves = ResumeFolders.organize(root: resumeFolder, firstName: fileFirstName(settings(in: container.mainContext)))
+        if let moved = moves[HuntPrefs.resumePDF] { UserDefaults.standard.set(moved, forKey: HuntPrefs.resumePDFKey) }
+        return moves
     }
 
     /// `name` when it is one plain, visible path component; nil otherwise. `variantName` syncs from Supabase, so a tampered or
@@ -518,6 +535,7 @@ final class JobHunt {
     func rescan() {
         guard container != nil else { return }
         let folder = resumeFolder
+        organizeResumes()   // files dropped in by hand or by another tool get sorted too
         do { variants = try ResumeLibrary.scan(folder: folder) } catch { variants = []; self.error = "Couldn't read \(folder): \(error.localizedDescription)" }
     }
 
@@ -690,7 +708,8 @@ final class JobHunt {
             lead.variantName = ResumeLibrary.variantName(userName: userName, company: lead.company, title: lead.title, existing: existing)
         }
         let name = lead.variantName
-        let texPath = folder + "/" + name + ".tex"
+        let texPath = ResumeFolders.texPath(for: name, in: folder)
+        try? FileManager.default.createDirectory(atPath: (texPath as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
         let githubContext = github?.context ?? ""
         do {
             let prompt = Self.tailorPrompt(lead: lead, base: base, baseTex: baseTex, variants: evidence, github: githubContext, bank: bank, name: name, folder: folder)
@@ -706,6 +725,7 @@ final class JobHunt {
                 pdfPath = try await LatexBuild.build(texPath: texPath)
             }
             lead.coverage = result.coverage
+            pdfPath = organizeResumes()[pdfPath] ?? pdfPath   // a second variant for the company moves both into its folder
             let uploadNote = await attachPDF(lead, pdfPath: pdfPath, context: context)   // a failed upload never fails a built variant
             Self.bump("tailored")
             rescan()
@@ -718,7 +738,7 @@ final class JobHunt {
             try context.save()
         } catch let build as LatexBuild.Failure {
             try? FileManager.default.removeItem(atPath: texPath)
-            try? FileManager.default.removeItem(atPath: (texPath as NSString).deletingPathExtension + ".pdf")
+            try? FileManager.default.removeItem(atPath: ResumeFolders.pdfFolder(forTex: texPath) + "/" + name + ".pdf")
             fail("PDF build failed twice. " + build.log)
         } catch {
             fail(error.localizedDescription)
@@ -843,7 +863,7 @@ final class JobHunt {
         // A stop text left in `flagged` by an earlier attempt (Chrome or LinkedIn not ready) must not outlive this one.
         lead.status = .submitting; lead.flagged = ""; lead.updatedAt = .now
         try? context.save()
-        let pdfPath = Self.plainName(lead.variantName).map { settings.resumeFolder + "/" + $0 + ".pdf" } ?? HuntPrefs.resumePDF
+        let pdfPath = Self.plainName(lead.variantName).map { ResumeFolders.find($0, ext: "pdf", in: settings.resumeFolder) ?? "" } ?? HuntPrefs.resumePDF
         if !chrome { browser?.reset() }
         if pdfPath.isEmpty || !FileManager.default.fileExists(atPath: pdfPath) {
             lead.status = .failed
@@ -1039,7 +1059,7 @@ final class JobHunt {
         \(tex)
         </tex>
 
-        SOURCE VARIANTS in this folder: \(sources.isEmpty ? "(none)" : sources.map { $0 + ".tex" }.joined(separator: ", "))
+        SOURCE VARIANTS in this folder: \(sources.isEmpty ? "(none)" : sources.map { ResumeFolders.relativeTex($0, in: folder) }.joined(separator: ", "))
 
         \(github.isEmpty ? "(No GitHub material loaded; the file and the variants are the only evidence.)" : github)
         """
@@ -1136,7 +1156,7 @@ final class JobHunt {
     static func tailorPrompt(lead: Lead, base: ResumeVariant, baseTex: String, variants: [ResumeVariant], github: String, bank: AnswerBank, name: String, folder: String) -> String {
         let others = variants.filter { $0.name != base.name && $0.name != name }.map { v in
             let tag = [v.company, v.roleTag].filter { !$0.isEmpty }.joined(separator: ": ")
-            return "\(v.name).tex" + (tag.isEmpty ? "" : " (\(tag))")
+            return ResumeFolders.relative(v.path, to: folder) + (tag.isEmpty ? "" : " (\(tag))")
         }
         let facts = [("Name", bank.fullName), ("City", bank.city), ("Email", bank.email), ("Phone", bank.phone),
                      ("LinkedIn", bank.linkedin), ("GitHub", bank.github), ("Portfolio", bank.portfolio)]
@@ -1299,7 +1319,7 @@ final class JobHunt {
         "\\"Led a team of 4 engineers\\": sources say \\"worked with 4 engineers\\"". No emoji.
 
         SOURCE VARIANTS:
-        \(bullets(sources.map { $0 + ".tex" }))
+        \(bullets(sources.map { ResumeFolders.relativeTex($0, in: folder) }))
 
         <new_tex>
         \(tex)

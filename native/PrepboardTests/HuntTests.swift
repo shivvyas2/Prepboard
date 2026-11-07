@@ -671,14 +671,14 @@ final class HuntTests: XCTestCase {
         }
     }
 
-    /// The .tex an edit opens: nil until a variant exists, else the résumé folder plus the variant name (the default folder
-    /// before a settings record is attached).
+    /// The .tex an edit opens: nil until a variant exists, else the variant's file under TeX/ in the résumé folder (the default
+    /// folder before a settings record is attached; a company folder once it has two variants).
     func testTexPathForLead() {
         let hunt = JobHunt()
         let lead = Lead(company: "Apple", title: "iOS Engineer")
         XCTAssertNil(hunt.texPath(for: lead))
         lead.variantName = "Shiv-Vyas-Apple-iOSEngineer"
-        XCTAssertEqual(hunt.texPath(for: lead), HuntSettings.defaultResumeFolder + "/Shiv-Vyas-Apple-iOSEngineer.tex")
+        XCTAssertEqual(hunt.texPath(for: lead), HuntSettings.defaultResumeFolder + "/TeX/Shiv-Vyas-Apple-iOSEngineer.tex")
         XCTAssertTrue(hunt.texPath(for: lead)!.hasSuffix(".tex"))
     }
 

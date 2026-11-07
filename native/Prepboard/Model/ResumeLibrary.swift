@@ -224,15 +224,14 @@ enum ResumeLibrary {
     }
 
     #if os(macOS)
-    /// Reads every *.tex in the folder (not subfolders) and parses its header; sorted by name.
+    /// Reads every *.tex under the folder's TeX/ tree (and any still loose at its top) and parses its header; sorted by name.
     /// Cover letters and short-answer files are left out: no VARIANT line and no JD MAP / HONESTY LEDGER block, or "coverletter" in the name.
     static func scan(folder: String) throws -> [ResumeVariant] {
         let fm = FileManager.default
-        let files = try fm.contentsOfDirectory(atPath: folder).filter {
-            $0.lowercased().hasSuffix(".tex") && !$0.hasPrefix(".") && !$0.lowercased().contains("coverletter")
-        }
-        return files.compactMap { file -> ResumeVariant? in
-            let path = folder + "/" + file
+        _ = try fm.contentsOfDirectory(atPath: folder)   // a missing or unreadable folder throws, as before
+        let paths = ResumeFolders.texFiles(in: folder).filter { !($0 as NSString).lastPathComponent.lowercased().contains("coverletter") }
+        return paths.compactMap { path -> ResumeVariant? in
+            let file = (path as NSString).lastPathComponent
             guard let data = fm.contents(atPath: path) else { return nil }
             let header = String(decoding: data, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: false)
                 .prefix { $0.hasPrefix("%") }.joined(separator: "\n")

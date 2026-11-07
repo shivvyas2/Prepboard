@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// The PrepBoard mark: a soft-black timeline spine and a burnt-orange bowl forming a "P",
-/// a checked box as the counter, and a sun "now" dot. Same geometry as brand/render_icon.swift.
+/// The PrepBoard mark: a soft-black timeline spine and a cobalt bowl forming a "P",
+/// a checked box as the counter, and a deep-orange "now" dot. Same geometry as brand/render_icon.swift.
 struct PrepBoardMark: View {
-    static let ink = Color(hex: 0x1E1B18)
-    static let orange = Color(hex: 0xC4561C)
-    static let ivory = Color(hex: 0xFBF6EC)
+    static let ink = Color(hex: 0x15171C)
+    static let cobalt = Color(hex: 0x1E4FE0)
+    static let ivory = Color(hex: 0xFFFFFF)
 
     var body: some View {
         Canvas { ctx, size in
@@ -24,7 +24,7 @@ struct PrepBoardMark: View {
             bowl.addArc(center: CGPoint(x: bx1 - br, y: top + br), radius: br, startAngle: .degrees(-90), endAngle: .degrees(90), clockwise: false)
             bowl.addLine(to: CGPoint(x: sx + sw / 2, y: top + bh))
             bowl.closeSubpath()
-            ctx.fill(bowl, with: .color(Self.orange))
+            ctx.fill(bowl, with: .color(Self.cobalt))
             ctx.fill(Path(roundedRect: CGRect(x: sx, y: top, width: sw, height: bottom - top), cornerRadius: sw / 2), with: .color(Self.ink))
 
             let cb: CGFloat = 132, ccx: CGFloat = 560, ccy = top + br
@@ -54,7 +54,7 @@ struct PrepBoardLogo: View {
             .frame(width: size, height: size)
             .background(
                 RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
-                    .fill(LinearGradient(colors: [Color(hex: 0xFBF6EC), Color(hex: 0xEFE6D6)], startPoint: .top, endPoint: .bottom))
+                    .fill(LinearGradient(colors: [Color(hex: 0xFFFFFF), Color(hex: 0xEFF1F4)], startPoint: .top, endPoint: .bottom))
             )
             .overlay(RoundedRectangle(cornerRadius: size * 0.26, style: .continuous).strokeBorder(PB.line2))
     }

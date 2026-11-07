@@ -824,7 +824,9 @@ struct HuntSettingsSheet: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         var path = url.path
         if !BrowserServer.uploadAllowed(path) {
-            let copy = settings.resumeFolder + "/" + url.lastPathComponent
+            let dir = settings.resumeFolder + "/" + ResumeFolders.pdfDir
+            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+            let copy = dir + "/" + url.lastPathComponent
             try? FileManager.default.removeItem(atPath: copy)
             guard (try? FileManager.default.copyItem(atPath: path, toPath: copy)) != nil else { return }
             path = copy
@@ -835,7 +837,7 @@ struct HuntSettingsSheet: View {
     /// Fills the empty contact fields from the résumé: the .tex beside the chosen PDF, else the newest variant.
     private func fillFromResume() {
         hunt.rescan()
-        let sibling = resumePDF.isEmpty ? nil : (resumePDF as NSString).deletingPathExtension + ".tex"
+        let sibling = resumePDF.isEmpty ? nil : ResumeFolders.texSibling(ofPDF: resumePDF)
         let path = sibling.flatMap { FileManager.default.fileExists(atPath: $0) ? $0 : nil }
             ?? hunt.variants.max { $0.modified < $1.modified }?.path
         guard let path, let tex = try? String(contentsOfFile: path, encoding: .utf8) else {
