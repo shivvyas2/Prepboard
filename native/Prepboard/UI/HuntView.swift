@@ -638,7 +638,7 @@ struct HuntSettingsSheet: View {
                     }
                     #endif
                     if !settings.answerBank.isComplete {
-                        Label("Applications can't go out until name, email, phone, work authorization and sponsorship are filled in.",
+                        Label("Applications can't go out until name, email, phone and your US work status are filled in.",
                               systemImage: "exclamationmark.circle")
                             .font(.system(size: 12)).foregroundStyle(PB.sunInk).fixedSize(horizontal: false, vertical: true)
                     }
@@ -652,8 +652,14 @@ struct HuntSettingsSheet: View {
                         PBTextField(label: "GitHub", text: bank(\.github))
                         PBTextField(label: "Portfolio", text: bank(\.portfolio))
                         PBTextField(label: "Résumé link (blank = portfolio)", text: bank(\.resumeLink))
-                        PBTextField(label: "Work authorization", text: bank(\.workAuthorization))
-                        PBTextField(label: "Citizenship / immigration status", text: bank(\.citizenship))
+                        if settings.answerBank.status == nil || settings.answerBank.status == .other {
+                            PBTextField(label: "Work authorization", text: bank(\.workAuthorization))
+                            PBTextField(label: "Citizenship / immigration status", text: bank(\.citizenship))
+                        }
+                        if settings.answerBank.status != nil && settings.answerBank.status != .citizen {
+                            PBTextField(label: "Country of citizenship", text: bank(\.citizenshipCountry))
+                            PBTextField(label: "Work authorization valid until (EAD end)", text: bank(\.eadExpiry))
+                        }
                         PBTextField(label: "Start date", text: bank(\.startDate))
                         PBTextField(label: "Relocation (Yes / No / Open to it)", text: bank(\.relocation))
                         PBTextField(label: "Salary expectation", text: bank(\.salary))
@@ -727,6 +733,35 @@ struct HuntSettingsSheet: View {
     /// One switch for sponsorship: it answers every sponsorship question and decides which fetched roles are worth applying to.
     private var sponsorshipRow: some View {
         VStack(alignment: .leading, spacing: PB.s1) {
+            HStack(spacing: PB.s2) {
+                Text("US work status").font(.system(size: 13, weight: .semibold))
+                Picker("US work status", selection: Binding(
+                    get: { settings.answerBank.visaStatus },
+                    set: { raw in
+                        var b = settings.answerBank; b.visaStatus = raw
+                        if let status = b.status, status != .other {
+                            // The status settles every immigration answer, sponsorship included.
+                            let on = status.needsSponsorship
+                            b.needsSponsorship = on ? "Yes" : "No"
+                            b.workAuthorization = status.formText
+                            b.citizenship = status == .citizen ? "US citizen" : [b.citizenshipCountry.isEmpty ? nil : b.citizenshipCountry + " citizen", status.formText]
+                                .compactMap { $0 }.joined(separator: ", ")
+                            _ = Lead.applySponsorship(on, to: (try? context.fetch(FetchDescriptor<Lead>())) ?? [])
+                        }
+                        settings.answerBank = b; settings.updatedAt = .now
+                        Lead.applyBank(b, to: (try? context.fetch(FetchDescriptor<Lead>())) ?? [])
+                    })) {
+                    Text("Choose…").tag("")
+                    ForEach(AnswerBank.VisaStatus.allCases) { Text($0.label).tag($0.rawValue) }
+                }
+                .labelsHidden().pickerStyle(.menu).fixedSize()
+            }
+            Text(settings.answerBank.status.map { $0 == .other ? "Type your work authorization and status below; forms get them as written."
+                    : "Every work authorization, visa, sponsorship and citizenship question is answered from this, however the form words it." }
+                 ?? "Choose your status so forms stop asking you about it.")
+                .font(.system(size: 12)).foregroundStyle(settings.answerBank.status == nil ? PB.sunInk : PB.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            if settings.answerBank.status == nil || settings.answerBank.status == .other {
             Toggle("I need visa sponsorship, now or in the future", isOn: Binding(
                 get: { settings.answerBank.needsSponsorship == "Yes" },
                 set: { on in
@@ -744,6 +779,7 @@ struct HuntSettingsSheet: View {
             if settings.answerBank.needsSponsorship.isEmpty {
                 Button("I don't need sponsorship") { var b = settings.answerBank; b.needsSponsorship = "No"; settings.answerBank = b }
                     .buttonStyle(PillButtonStyle(filled: false, compact: true))
+            }
             }
             if !sponsorshipOutcome.isEmpty {
                 Text(sponsorshipOutcome).font(.system(size: 12)).foregroundStyle(PB.ink2)
@@ -1216,6 +1252,9 @@ struct HuntRunCard: View {
         case .readingProfile: return "Reading your education and work history…"
         case .drafting(let name): return "Drafting answers for \(name)…"
         case .idle: break
+        }
+        if keepApplying, hunt.isPaused, let until = hunt.pausedUntil {
+            return "Paused until \(until.formatted(date: .omitted, time: .shortened)): Claude's usage limit. Everything waiting picks up after that."
         }
         if let e = hunt.error { return e }
         if !claude.isReady { return "Connect Claude Code to discover roles and prepare applications on this Mac." }

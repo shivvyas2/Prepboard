@@ -8,12 +8,23 @@ enum LatexBuild {
         var errorDescription: String? { "PDF build failed: " + log }
     }
 
+    /// US applications get US Letter: `a4paper` in the \\documentclass or geometry options becomes `letterpaper`. Older variants
+    /// were A4 and every tailored copy kept their preamble, so recruiters' printers and ATS previews got an A4 page.
+    static func usLetter(_ tex: String) -> String {
+        let pattern = #"(\\(?:documentclass|usepackage)\[[^\]]*?)\ba4paper\b"#
+        guard let re = try? NSRegularExpression(pattern: pattern) else { return tex }
+        return re.stringByReplacingMatches(in: tex, range: NSRange(tex.startIndex..., in: tex), withTemplate: "$1letterpaper")
+    }
+
     /// Single-quotes a path for the shell.
     static func quoted(_ s: String) -> String { s.replacingOccurrences(of: "'", with: "'\\''") }
 
     /// Runs `tectonic <file>` in the file's folder, writing the PDF to the mirrored PDF/ folder (ResumeFolders.pdfFolder);
     /// returns the PDF path or throws Failure with the tail of the log.
     static func build(texPath: String) async throws -> String {
+        if let tex = try? String(contentsOfFile: texPath, encoding: .utf8), case let letter = usLetter(tex), letter != tex {
+            try? letter.write(toFile: texPath, atomically: true, encoding: .utf8)
+        }
         let folder = (texPath as NSString).deletingLastPathComponent, file = (texPath as NSString).lastPathComponent
         let out = ResumeFolders.pdfFolder(forTex: texPath)
         try? FileManager.default.createDirectory(atPath: out, withIntermediateDirectories: true)

@@ -19,6 +19,8 @@ struct TailorResult: Codable {
     var answers: [FormAnswer]
     var ledger: [String]
     var notes: String
+    /// The posting's important terms, spelled as the posting spells them (skills, tools, domain phrases), for the keyword check.
+    var keywords: [String]?
 }
 
 /// What an "Ask Claude" edit in the résumé editor returns (matches `JobHunt.editSchema`).
@@ -42,6 +44,8 @@ struct SubmitResult: Codable {
     var questions_only: Bool?   // true when unanswered questions were the only thing that stopped it
     var page_url: String?       // where the run ended (the form, when it stopped)
     var suggestions: [Suggestion]?
+    /// Required questions Claude answered itself in autonomous mode because my facts clearly supported one answer.
+    var self_answered: [Suggestion]?
 
     /// Claude's suggested answer for one question it stopped on; only shown to the user for approval, never typed into the form.
     struct Suggestion: Codable { var question, answer: String }
@@ -143,6 +147,16 @@ final class JobHunt {
     /// Leads whose last submit stopped part-way, with the page it stopped on (may be ""): the next submit continues there.
     private(set) var stoppedPages: [String: String] = UserDefaults.standard.dictionary(forKey: "hunt.stoppedPages") as? [String: String] ?? [:] {
         didSet { UserDefaults.standard.set(stoppedPages, forKey: "hunt.stoppedPages") }
+    }
+
+    /// Keep applying waits until this time (Claude's usage limit resets) before it starts another run or submit.
+    private(set) var pausedUntil: Date? = UserDefaults.standard.object(forKey: "hunt.pausedUntil") as? Date {
+        didSet { UserDefaults.standard.set(pausedUntil, forKey: "hunt.pausedUntil") }
+    }
+    var isPaused: Bool { pausedUntil.map { $0 > .now } ?? false }
+    /// Automatic retries each lead has had (by lead id), so a stop that keeps coming back is left for the user.
+    private var attempts: [String: Int] = UserDefaults.standard.dictionary(forKey: "hunt.attempts") as? [String: Int] ?? [:] {
+        didSet { UserDefaults.standard.set(attempts, forKey: "hunt.attempts") }
     }
 
     /// True when Submit on `lead` continues a stopped application instead of starting over.
@@ -252,9 +266,16 @@ final class JobHunt {
         var changed = false
         for lead in leads {
             switch lead.status {
+            case .submitting where HuntPrefs.keepApplying:
+                // Continue it: the submit prompt checks the posting for a sent application before it touches the form.
+                lead.status = .ready; lead.submitRequested = true; lead.flagged = ""
+                lead.reason = "PrepBoard quit mid-application; continuing it"
+                if stoppedPages[lead.id] == nil { stoppedPages[lead.id] = "" }
             case .submitting:
                 lead.status = .needsYou; lead.submitRequested = false
                 lead.flagged = "PrepBoard quit while this was being submitted; check the posting for a sent application before pressing Submit again"
+            case .tailoring where HuntPrefs.keepApplying:
+                lead.status = .new; lead.reason = "PrepBoard quit while the résumé was being written; writing it again"
             case .tailoring:
                 lead.status = .failed; lead.reason = "PrepBoard quit while the résumé was being written; press Regenerate"
             default:
@@ -263,6 +284,73 @@ final class JobHunt {
             lead.updatedAt = .now; changed = true
         }
         if changed { try? context.save() }
+    }
+
+    // MARK: autopilot
+
+    /// Keep applying: puts a lead that stopped for a passing reason back in line (or pauses everything until Claude's usage limit
+    /// resets) instead of leaving it for the user. True when it took the lead back. Does not save.
+    @discardableResult
+    private func recover(_ lead: Lead, from message: String) -> Bool {
+        guard HuntPrefs.keepApplying else { return false }
+        let recovery = HuntAutopilot.classify(message)
+        var resumeAt: Date?
+        switch recovery {
+        case .none: return false
+        case .waitUntil(let date):
+            // Waiting out a usage limit is not the lead's fault: it costs no attempt.
+            pausedUntil = max(pausedUntil ?? date, date); resumeAt = date
+        case .retry, .retailor:
+            let n = attempts[lead.id, default: 0]
+            guard n < HuntAutopilot.maxAttempts else { return false }
+            attempts[lead.id] = n + 1
+        }
+        let first = message.split(separator: "\n").first.map(String.init) ?? message
+        let why = String(first.prefix(140))
+        if recovery == .retailor || !(hasResume(lead) && lead.canSubmit) {
+            lead.status = .new; lead.submitRequested = false; lead.flagged = ""
+            lead.reason = resumeAt.map { "Claude's limit resets at \(Self.clock($0)); the résumé is written then" } ?? "Writing the résumé again (\(why))"
+        } else {
+            lead.status = .ready; lead.submitRequested = true; lead.flagged = ""
+            if stoppedPages[lead.id] == nil, lead.status == .ready { stoppedPages[lead.id] = "" }   // continue, checking for a sent application
+            lead.reason = resumeAt.map { "Claude's limit resets at \(Self.clock($0)); applies then" } ?? "Trying again (\(why))"
+        }
+        lead.updatedAt = .now
+        return true
+    }
+
+    private static func clock(_ date: Date) -> String { date.formatted(date: Calendar.current.isDateInToday(date) ? .omitted : .abbreviated, time: .shortened) }
+
+    /// Keep applying, every few minutes: takes back every lead that stopped for a reason PrepBoard can fix itself (timeouts, the
+    /// usage limit, a résumé that went missing or was never written) so nothing waits on the user that does not have to.
+    func autoHeal() {
+        guard HuntPrefs.keepApplying, let container else { return }
+        let context = container.mainContext
+        let leads = (try? context.fetch(FetchDescriptor<Lead>())) ?? []
+        var changed = false
+        for lead in leads {
+            switch lead.status {
+            case .failed:
+                changed = recover(lead, from: lead.reason) || changed
+            case .needsYou where !lead.answers.contains(where: { $0.kind == "needs_you" || $0.kind == "suggested" }):
+                // Only stops PrepBoard wrote itself; claims the honesty check flagged and forms that stopped for a reason stay with the user.
+                let own = ["Submit ended without a result", "PrepBoard quit", "Honesty check could not run"]
+                guard lead.flagged.isEmpty || own.contains(where: lead.flagged.hasPrefix), !lead.reason.hasPrefix("Check these claims") else { continue }
+                changed = recover(lead, from: [lead.flagged, lead.reason].joined(separator: "\n")) || changed
+            case .ready where !lead.submitRequested && !lead.flagged.isEmpty:
+                changed = recover(lead, from: lead.flagged) || changed
+            default:
+                continue
+            }
+        }
+        if changed { try? context.save() }
+    }
+
+    /// New leads waiting for a résumé (retried ones included) while today's tailoring has room.
+    private func hasPendingTailoring(_ context: ModelContext, settings: HuntSettings) -> Bool {
+        guard HuntPrefs.resumePDF.isEmpty, Self.dailyCount("tailored") < settings.dailyTailorLimit else { return false }
+        let new = LeadStatus.new.rawValue, min = settings.minScore
+        return ((try? context.fetchCount(FetchDescriptor<Lead>(predicate: #Predicate { $0.statusRaw == new && $0.score >= min }))) ?? 0) > 0
     }
 
     // MARK: counters and helpers
@@ -312,14 +400,14 @@ final class JobHunt {
 
     /// Puts Submit's suggestions on the questions still waiting for the user, as "suggested" (approval needed). Never on a legal
     /// question: those come only from the Answer Bank. Returns the answers and how many got a suggestion.
-    static func applySuggestions(_ suggestions: [SubmitResult.Suggestion], to answers: [FormAnswer]) -> ([FormAnswer], Int) {
+    static func applySuggestions(_ suggestions: [SubmitResult.Suggestion], to answers: [FormAnswer], kind: String = "suggested") -> ([FormAnswer], Int) {
         var result = answers, n = 0
         for s in suggestions {
             let text = s.answer.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty, AnswerBank.rule(for: s.question)?.legal != true,
                   let i = result.firstIndex(where: { $0.kind == "needs_you" && AnswerBank.normalized($0.question) == AnswerBank.normalized(s.question) })
             else { continue }
-            result[i].answer = text; result[i].kind = "suggested"; n += 1
+            result[i].answer = text; result[i].kind = kind; n += 1
         }
         return (result, n)
     }
@@ -333,13 +421,22 @@ final class JobHunt {
 
     func runIfDue() {
         let keepApplying = HuntPrefs.keepApplying
+        if let pausedUntil, pausedUntil <= .now { self.pausedUntil = nil }
+        guard !isPaused else { return }
+        autoHeal()
         guard phase == .idle, !isOpeningChrome, let container, let claude, claude.isReady, !claude.busy,
               let s = settings(in: container.mainContext), s.auto || keepApplying else { return }
         guard Calendar.current.component(.hour, from: .now) >= s.runHour else { return }
         if let lastRun, Calendar.current.isDateInToday(lastRun) {
-            // Keep applying searches again every few hours, once the queue is empty and today's submits have room.
-            guard keepApplying, Date.now.timeIntervalSince(lastRun) >= HuntPrefs.rerunGap,
-                  Self.dailyCount("submitted") < s.dailySubmitLimit, queuedLeads(container.mainContext).isEmpty else { return }
+            guard keepApplying, Self.dailyCount("submitted") < s.dailySubmitLimit else { return }
+            // Keep applying searches again every few hours once the queue is empty; in between it writes résumés for leads
+            // that are still waiting for one (new ones over today's limit, retried ones), without searching again.
+            if Date.now.timeIntervalSince(lastRun) >= HuntPrefs.rerunGap, queuedLeads(container.mainContext).isEmpty {
+                Task { await run() }
+            } else if hasPendingTailoring(container.mainContext, settings: s) {
+                Task { await run(discover: false) }
+            }
+            return
         }
         Task { await run() }
     }
@@ -380,7 +477,7 @@ final class JobHunt {
 
     /// Submits the oldest queued lead, one at a time, at least 2 minutes apart and within the daily limit.
     func processSubmitQueue() {
-        guard phase == .idle, !isOpeningChrome, let container, let claude, claude.isReady, !claude.busy else { return }
+        guard !isPaused, phase == .idle, !isOpeningChrome, let container, let claude, claude.isReady, !claude.busy else { return }
         if let lastSubmit, Date.now.timeIntervalSince(lastSubmit) < Self.submitSpacing { return }
         let context = container.mainContext
         guard let s = settings(in: context), Self.dailyCount("submitted") < s.dailySubmitLimit else { return }
@@ -548,7 +645,8 @@ final class JobHunt {
     // MARK: run
 
     /// Discover → tailor each new lead at or above the minimum score (within the daily limit) → ready / needs you / failed.
-    func run() async {
+    /// `discover: false` skips the search and only writes résumés for leads already waiting (keep applying between searches).
+    func run(discover: Bool = true) async {
         guard phase == .idle, let container, let claude else { return }
         guard claude.isReady else { error = "Connect Claude Code in Profile to run the hunt."; return }
         guard !claude.busy else { error = "Another Claude run is using the browser; wait for it to finish."; return }
@@ -562,10 +660,10 @@ final class JobHunt {
         error = nil
         claude.busy = true
         defer { phase = .idle; claude.busy = false }
-        if chrome, !(await openChrome()) { return }
-        if !chrome { browser?.reset() }
+        if discover, chrome, !(await openChrome()) { return }
+        if discover, !chrome { browser?.reset() }
         // The built-in browser signs itself in from the Keychain when LinkedIn's session is gone; Chrome has its own.
-        if !chrome, let huntBrowser, let stop = LinkedInSignIn.stopMessage(await LinkedInSignIn.ensure(huntBrowser)) {
+        if discover, !chrome, let huntBrowser, let stop = LinkedInSignIn.stopMessage(await LinkedInSignIn.ensure(huntBrowser)) {
             error = stop
             lastRun = .now; lastSummary = LinkedInSignIn.stoppedSummary
             return
@@ -583,7 +681,7 @@ final class JobHunt {
             + roles.map { "\($0.company) | \($0.roleNumber.isEmpty ? "-" : $0.roleNumber) | \($0.title)" }
         var fresh: [Lead] = []
         var found = 0, skipped = 0
-        do {
+        if discover { do {
             let prompt = Self.discoverPrompt(settings: settings, variants: variants, known: knownLines, chrome: chrome)
             // Discover never fills a form: read-only tools on both paths.
             let flags = chrome ? Self.chromeFlags(tools: Self.chromeDiscoverTools) : browser?.claudeFlags(extraTools: "", readOnly: true)
@@ -620,9 +718,13 @@ final class JobHunt {
             }
         } catch {
             self.error = error.localizedDescription
-            lastRun = .now; lastSummary = "Failed: " + error.localizedDescription
+            lastSummary = "Failed: " + error.localizedDescription
+            if case .waitUntil(let date) = HuntAutopilot.classify(error.localizedDescription), HuntPrefs.keepApplying {
+                pausedUntil = date; lastSummary = "Paused until \(Self.clock(date)): Claude's usage limit"
+            }
+            lastRun = .now
             return
-        }
+        } }
         var pending = fresh
         for lead in leads where lead.status == .new && lead.score >= settings.minScore {
             if Self.cooldownBlocks(lead: lead, roles: roles, now: .now) {
@@ -646,6 +748,11 @@ final class JobHunt {
             for (i, lead) in batch.enumerated() {
                 phase = .tailoring(done: i, total: batch.count)
                 await tailorLead(lead, settings: settings, roles: roles, context: context)
+                if lead.status == .failed, case .waitUntil = HuntAutopilot.classify(lead.reason) {
+                    // Claude's usage limit: the rest of the batch would fail the same way. They wait for the reset.
+                    recover(lead, from: lead.reason); failed += 1
+                    break
+                }
                 switch lead.status {
                 case .ready: ready += 1
                 case .needsYou: needsYou += 1
@@ -656,7 +763,7 @@ final class JobHunt {
         }
         let queued = autoQueue(batch)
         try? context.save()
-        lastRun = .now
+        if discover || lastRun == nil { lastRun = .now }
         lastSummary = found == 0 && batch.isEmpty ? "Nothing new" : [
             "\(found) found", oneResume.isEmpty ? "\(batch.count) tailored" : nil, queued > 0 ? "\(queued) queued to apply" : nil, ready > 0 ? "\(ready) ready" : nil, needsYou > 0 ? "\(needsYou) need you" : nil,
             failed > 0 ? "\(failed) failed" : nil, skipped > 0 ? "\(skipped) skipped" : nil, pending.count > batch.count ? "\(pending.count - batch.count) waiting for tomorrow" : nil,
@@ -724,16 +831,42 @@ final class JobHunt {
                 try result.tex.write(toFile: texPath, atomically: true, encoding: .utf8)
                 pdfPath = try await LatexBuild.build(texPath: texPath)
             }
+            let keywords = result.keywords ?? []
+            result = await fitPage(result, prompt: prompt, texPath: texPath, pdfPath: &pdfPath, keywords: keywords, folder: folder)
+            let sources = evidence.map(\.name).filter { $0 != name }
+            phase = .honesty(lead.company)
+            await checkHonesty(lead, tex: result.tex, sources: sources, github: githubContext, folder: folder, okReason: result.notes, note: "")
+            if lead.status == .needsYou, !lead.flagged.isEmpty, lead.reason.hasPrefix("Check these claims") {
+                // One automatic fix: take out or soften exactly what the checker could not trace, rebuild, check again.
+                let fix = prompt + "\n\nTHE HONESTY CHECK FAILED these claims in your previous file. Remove each one or reword it to exactly what "
+                    + "my sources say (never stronger), keep everything else, keep the page full and one page, and return the whole file.\n<untraceable>\n"
+                    + lead.flagged + "\n</untraceable>\n<previous_tex>\n\(result.tex)\n</previous_tex>"
+                if let fixed = try? await Self.check(TailorResult.self, prompt: fix, schema: Self.tailorSchema, browserFlags: nil, tools: Self.fileTools, cwd: folder),
+                   !fixed.tex.isEmpty {
+                    try fixed.tex.write(toFile: texPath, atomically: true, encoding: .utf8)
+                    if let built = try? await LatexBuild.build(texPath: texPath) {
+                        pdfPath = built; result = fixed
+                        await checkHonesty(lead, tex: result.tex, sources: sources, github: githubContext, folder: folder,
+                                           okReason: [result.notes, "Fixed what the honesty check flagged."].joined(separator: " "), note: "")
+                    } else {
+                        try result.tex.write(toFile: texPath, atomically: true, encoding: .utf8)
+                        pdfPath = try await LatexBuild.build(texPath: texPath)
+                    }
+                }
+            }
             lead.coverage = result.coverage
             pdfPath = organizeResumes()[pdfPath] ?? pdfPath   // a second variant for the company moves both into its folder
             let uploadNote = await attachPDF(lead, pdfPath: pdfPath, context: context)   // a failed upload never fails a built variant
+            if !uploadNote.isEmpty { lead.reason = [lead.reason, uploadNote].joined(separator: " ") }
+            if let fit = HuntAutopilot.measure(pdfAt: pdfPath) {
+                let score = Int((HuntAutopilot.keywordScore(keywords, in: HuntAutopilot.text(ofPDFAt: pdfPath)) * 100).rounded())
+                lead.reason = [lead.reason, keywords.isEmpty ? nil : "Keywords: \(score)%.", fit.isGood ? nil : fit.summary]
+                    .compactMap { $0 }.joined(separator: " ")
+            }
             Self.bump("tailored")
             rescan()
-            phase = .honesty(lead.company)
             let choices = lead.answers.filter { $0.kind == "choice" }
             lead.answers = lead.bank(bank).merge(result.answers) + choices
-            await checkHonesty(lead, tex: result.tex, sources: evidence.map(\.name).filter { $0 != name }, github: githubContext, folder: folder,
-                               okReason: result.notes, note: uploadNote)
             lead.updatedAt = .now
             try context.save()
         } catch let build as LatexBuild.Failure {
@@ -743,6 +876,60 @@ final class JobHunt {
         } catch {
             fail(error.localizedDescription)
         }
+    }
+
+    /// Up to two revision passes that make the page full but not over (no blank band at the bottom, no one-word lines) and bring in
+    /// the posting's own wording for terms my material supports. Each pass must compile; a pass that makes the page overflow is
+    /// undone. Returns the result whose .tex is on disk; `pdfPath` is its PDF.
+    private func fitPage(_ start: TailorResult, prompt: String, texPath: String, pdfPath: inout String, keywords: [String], folder: String) async -> TailorResult {
+        var current = start
+        for _ in 0..<2 {
+            guard let fit = HuntAutopilot.measure(pdfAt: pdfPath) else { break }
+            let missing = HuntAutopilot.missingKeywords(keywords, in: HuntAutopilot.text(ofPDFAt: pdfPath))
+            guard !fit.isGood || !missing.isEmpty else { break }
+            let revise = prompt + "\n\n" + Self.fitInstructions(fit, missing: missing) + "\n<previous_tex>\n\(current.tex)\n</previous_tex>"
+            guard let next = try? await Self.check(TailorResult.self, prompt: revise, schema: Self.tailorSchema, browserFlags: nil, tools: Self.fileTools, cwd: folder),
+                  !next.tex.isEmpty, (try? next.tex.write(toFile: texPath, atomically: true, encoding: .utf8)) != nil,
+                  let built = try? await LatexBuild.build(texPath: texPath) else {
+                try? current.tex.write(toFile: texPath, atomically: true, encoding: .utf8)
+                if let back = try? await LatexBuild.build(texPath: texPath) { pdfPath = back }
+                break
+            }
+            if let after = HuntAutopilot.measure(pdfAt: built), after.overflows, !fit.overflows {
+                // Filling went too far: keep the version that fit.
+                try? current.tex.write(toFile: texPath, atomically: true, encoding: .utf8)
+                if let back = try? await LatexBuild.build(texPath: texPath) { pdfPath = back }
+                break
+            }
+            var merged = next
+            if merged.answers.isEmpty { merged.answers = current.answers }
+            current = merged; pdfPath = built
+        }
+        return current
+    }
+
+    /// What the revision pass is told about the page as built.
+    static func fitInstructions(_ fit: HuntAutopilot.PageFit, missing: [String]) -> String {
+        var asks: [String] = []
+        if fit.overflows {
+            asks.append("The PDF does not fit: \(fit.summary) Cut the bullets that help this posting least, or merge two short ones, until it "
+                + "fits on one page. Never shrink fonts, margins or spacing.")
+        } else if fit.underfilled {
+            asks.append("The PDF leaves blank space: \(fit.summary) Fill it with real content that helps this application: the next most "
+                + "relevant bullets from my other variants or GitHub material (Read them), concrete outcomes for a project already on the page, "
+                + "or another relevant project. Only what my sources show; no padding, no repeating a point, and no changing fonts, margins or "
+                + "spacing to fill. End within about 0.3 in of the bottom margin and stay on one page.")
+        }
+        if fit.shortLines > 0, !fit.overflows {
+            asks.append("\(fit.shortLines) line\(fit.shortLines == 1 ? "" : "s") wrap with only a few words on their last line. Reword those bullets so "
+                + "each ends on a full line or one line shorter.")
+        }
+        if !missing.isEmpty {
+            asks.append("These terms from the posting are backed by my material but do not appear on the page in the posting's wording: "
+                + missing.joined(separator: ", ") + ". Use the posting's exact wording for each one my sources support: in the Summary, the "
+                + "first bullets of the most relevant role, and Skills. Skip any my sources do not support.")
+        }
+        return "REVISE YOUR PREVIOUS FILE (same rules as above; return the whole file again):\n- " + asks.joined(separator: "\n- ")
     }
 
     /// Variants that may serve as evidence or a base for a lead. Variants other leads generated but nobody has reviewed
@@ -864,11 +1051,14 @@ final class JobHunt {
         lead.status = .submitting; lead.flagged = ""; lead.updatedAt = .now
         try? context.save()
         let pdfPath = Self.plainName(lead.variantName).map { ResumeFolders.find($0, ext: "pdf", in: settings.resumeFolder) ?? "" } ?? HuntPrefs.resumePDF
+        let autonomous = HuntPrefs.keepApplying
+        var requeue = false   // set when keep applying took the lead back; it stays queued
         if !chrome { browser?.reset() }
         if pdfPath.isEmpty || !FileManager.default.fileExists(atPath: pdfPath) {
             lead.status = .failed
             lead.reason = lead.variantName.isEmpty ? "No résumé to send: choose one in Hunt settings or prepare this application"
                 : "The PDF is missing; regenerate the résumé first"
+            recover(lead, from: lead.reason)
         } else if chrome, !(await openChrome()) {
             lead.status = .ready; lead.flagged = chromeStatus ?? Self.noChromeMessage
         } else if !chrome, let huntBrowser, Self.isLinkedIn(lead.link),
@@ -891,8 +1081,17 @@ final class JobHunt {
             do {
                 let flags = chrome ? Self.chromeFlags(tools: Self.chromeSubmitTools) : browser?.claudeFlags(extraTools: "")
                 let result = try await Self.check(SubmitResult.self, prompt: Self.submitPrompt(lead: lead, pdfPath: pdfPath, bank: settings.answerBank, chrome: chrome,
-                                                                                              resume: resume),
+                                                                                              resume: resume, autonomous: autonomous),
                                                   schema: Self.submitSchema, browserFlags: flags, tools: "", cwd: settings.resumeFolder)
+                // What Claude answered on its own (autonomous mode) is kept on the lead, so the user can see what was sent.
+                let selfAnswered = (result.self_answered ?? []).filter { !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                if !selfAnswered.isEmpty {
+                    var all = lead.answers
+                    for a in selfAnswered where !all.contains(where: { AnswerBank.normalized($0.question) == AnswerBank.normalized(a.question) }) {
+                        all.append(FormAnswer(question: a.question, answer: a.answer, kind: "drafted", required: true))
+                    }
+                    lead.answers = all
+                }
                 switch result.status {
                 case "submitted" where !result.confirmation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty:
                     let role = Role(company: lead.company, title: lead.title.isEmpty ? "Role" : lead.title, location: lead.location,
@@ -920,27 +1119,38 @@ final class JobHunt {
                     lead.answers = lead.bank(settings.answerBank).merge(Self.addingUnknown(result.unknown_questions, to: lead.answers))
                     // Every question it stopped on gets a suggestion for the user to approve: drafted for this role when open-ended
                     // ("What are you proud of?"), otherwise what the form's options and my facts point to. Legal ones stay with the user.
-                    let drafted = await draftOpenQuestions(lead, settings: settings, kind: "suggested")
-                    let (withSuggestions, picked) = Self.applySuggestions(result.suggestions ?? [], to: lead.answers)
+                    let kind = autonomous ? "drafted" : "suggested"
+                    let drafted = await draftOpenQuestions(lead, settings: settings, kind: kind)
+                    let (withSuggestions, picked) = Self.applySuggestions(result.suggestions ?? [], to: lead.answers, kind: kind)
                     lead.answers = withSuggestions
-                    if drafted + picked > 0 {
+                    if autonomous, drafted + picked > 0, result.questions_only == true, lead.canSubmit,
+                       attempts[lead.id, default: 0] < HuntAutopilot.maxAttempts {
+                        // Keep applying answers for me: the application continues where it stopped on the next queue tick.
+                        attempts[lead.id, default: 0] += 1
+                        let n = drafted + picked
+                        lead.status = .ready; lead.flagged = ""; requeue = true
+                        lead.reason = "Answered \(n) more question\(n == 1 ? "" : "s") from your material; continuing the application"
+                    } else if drafted + picked > 0 {
                         let n = drafted + picked
                         lead.reason = "Claude suggested \(n) answer\(n == 1 ? "" : "s"). Approve them and the application continues where it stopped, "
                             + "with everything else still filled in." + (result.questions_only == false && !result.reason.isEmpty ? " Also: " + result.reason : "")
                     }
-                    Self.notifyNeedsYou(lead)
+                    if !requeue { Self.notifyNeedsYou(lead) }
                 default:
                     forgetForm(lead)
                     lead.status = .failed; lead.reason = result.reason.isEmpty ? "Submit failed" : result.reason
+                    requeue = recover(lead, from: lead.reason) && lead.submitRequested
                 }
             } catch {
                 holdStopped(nil)
                 lead.status = .needsYou
                 lead.flagged = "Submit ended without a result; check \(chrome ? "the open Chrome tab" : "the Browser card") before trying again"
                 lead.reason = error.localizedDescription
+                requeue = recover(lead, from: error.localizedDescription) && lead.submitRequested
             }
         }
-        lead.submitRequested = false; lead.updatedAt = .now
+        lead.submitRequested = requeue; lead.updatedAt = .now
+        if lead.status == .submitted { attempts[lead.id] = nil }
         try? context.save()
     }
 
@@ -1008,8 +1218,9 @@ final class JobHunt {
     """#
 
     static let tailorSchema = #"""
-    {"type":"object","required":["tex","coverage","answers","ledger","notes"],"properties":{
+    {"type":"object","required":["tex","coverage","answers","ledger","notes","keywords"],"properties":{
       "tex":{"type":"string"},
+      "keywords":{"type":"array","items":{"type":"string"}},
       "coverage":{"type":"array","items":{"type":"object","required":["term","covered"],
         "properties":{"term":{"type":"string"},"covered":{"type":"boolean"}}}},
       "answers":{"type":"array","items":{"type":"object","required":["question","answer","kind","required"],
@@ -1076,6 +1287,8 @@ final class JobHunt {
       "unknown_questions":{"type":"array","items":{"type":"string"}},"confirmation":{"type":"string"},"questions_only":{"type":"boolean"},
       "page_url":{"type":"string"},
       "suggestions":{"type":"array","items":{"type":"object","required":["question","answer"],
+        "properties":{"question":{"type":"string"},"answer":{"type":"string"}}}},
+      "self_answered":{"type":"array","items":{"type":"object","required":["question","answer"],
         "properties":{"question":{"type":"string"},"answer":{"type":"string"}}}}}}
     """#
 
@@ -1178,8 +1391,20 @@ final class JobHunt {
         veteran or disability status, and salary) are never drafted: return them with kind "needs_you" and an empty answer.
 
         FORMAT:
-        - Keep the base's preamble, packages, macros, section commands and layout exactly as they are; change only the content. One page: \
-        the result must stay one page (cut bullets rather than shrink fonts or margins).
+        - Keep the base's preamble, packages, macros, section commands and layout exactly as they are; change only the content. One page, \
+        and a full one: the last line should sit near the bottom margin with no blank band under it. If the content runs short, add the \
+        next most relevant real bullets or project lines from my other variants rather than leaving space; if it runs long, cut the bullets \
+        that help this posting least. Never shrink fonts, margins or spacing to make it fit, and never pad.
+        - Avoid bullets whose last line holds only a few words: reword to end on a full line or a line shorter.
+
+        KEYWORDS (applicant tracking systems match the posting's own words):
+        - List the posting's 15 to 25 most important terms that my material supports (languages, frameworks, tools, platforms, domain \
+        phrases such as "payments" or "real-time collaboration", practices such as "CI/CD" or "A/B testing"), spelled exactly as the posting \
+        spells them, in `keywords`.
+        - Put every one of them on the page in that exact spelling, where my evidence for it is: the headline under my name (the posting's \
+        role title and its top skills, when the base has a headline), the Summary, the first bullets of the most relevant role, and Skills. \
+        Use the posting's term in place of my synonym ("React Native", not "RN"; "Kubernetes", not "k8s") when they mean the same thing.
+        - Order Skills so the posting's terms come first in each row. Never add a term my material does not support, however important.
         - Keep the comment-header convention at the top of the file, in the base's style: "%" comment lines holding a line \
         "%    \(lead.company.uppercased()) VARIANT: <role title, team, location>", then a "%    JD MAP:" block whose bullets are \
         "%      * \\"<JD requirement>\\" -> <where the page covers it and which variant or repo it came from>", then a \
@@ -1196,6 +1421,7 @@ final class JobHunt {
         built only from my material and specific to this company and role (name the product or team from the JD my work connects to); or kind "needs_you" with "" for legal questions. required is true when the listing says so. An empty \
         array when the listing shows no questions.
         - ledger: the HONESTY LEDGER bullets as plain strings.
+        - keywords: see KEYWORDS above.
         - notes: one or two sentences: which variants you took from and anything I should double-check.
 
         THE JOB
@@ -1350,7 +1576,8 @@ final class JobHunt {
         }
     }
 
-    static func submitPrompt(lead: Lead, pdfPath: String, bank base: AnswerBank, chrome: Bool = false, resume: SubmitResume = .none) -> String {
+    static func submitPrompt(lead: Lead, pdfPath: String, bank base: AnswerBank, chrome: Bool = false, resume: SubmitResume = .none,
+                             autonomous: Bool = false) -> String {
         let bank = lead.bank(base)
         var notes = ATS.formNotes(ATS.kind(lead.link))
         if chrome { notes = notes.replacingOccurrences(of: "upload_file", with: "file_upload") }   // the Chrome tool's name
@@ -1363,11 +1590,14 @@ final class JobHunt {
         ].compactMap { $0 }.joined(separator: "\n")
         let answers = lead.answers.filter { $0.kind != "choice" }.map { "- Q: \($0.question)\($0.required ? " (required)" : "")\n  A: \($0.answer)" }
         let choices = Lead.Choice.allCases.compactMap { c in lead.choice(c).map { "- \(c.rawValue): \($0)" } }
-        let facts = [("Full name", bank.fullName), ("Email", bank.email), ("Phone", bank.phone), ("City / location", bank.city),
+        let contact: [(String, String)] = [("Full name", bank.fullName), ("Email", bank.email), ("Phone", bank.phone), ("City / location", bank.city),
                      ("LinkedIn", bank.linkedin), ("GitHub", bank.github), ("Portfolio / website", bank.portfolio),
                      ("Résumé link (when a form asks for a link or URL to my résumé instead of a file)", bank.resumeLink.isEmpty ? bank.portfolio : bank.resumeLink),
-                     ("Work authorization", bank.workAuthorization), ("Needs visa sponsorship", bank.needsSponsorship),
-                     ("Citizenship / immigration status", bank.citizenship),
+                     ]
+        // With a US work status chosen, the IMMIGRATION block below replaces these free-text lines.
+        let legacyLegal: [(String, String)] = bank.immigrationFacts.isEmpty ? [("Work authorization", bank.workAuthorization),
+                     ("Needs visa sponsorship", bank.needsSponsorship), ("Citizenship / immigration status", bank.citizenship)] : []
+        let rest: [(String, String)] = [
                      ("Earliest start date", bank.startDate), ("Willing to relocate", bank.relocation),
                      ("Salary expectation", bank.salary.isEmpty ? "(leave blank; if required, stop and report it)" : bank.salary),
                      ("Gender", bank.gender.isEmpty ? "Decline to self-identify" : bank.gender),
@@ -1379,7 +1609,9 @@ final class JobHunt {
                      ("Current or most recent job title", bank.currentTitle), ("Years of professional experience", bank.yearsExperience),
                      ("How I heard about the job", !bank.referralSource.isEmpty ? bank.referralSource
                         : lead.source.hasPrefix("linkedin") ? "LinkedIn" : lead.source == "careers" ? "Company careers site" : "")]
+        let facts = (contact + legacyLegal + rest)
             .map { "- \($0.0): \($0.1.isEmpty ? "(unknown; if the form requires it, stop and report it)" : $0.1)" }
+        let immigration = bank.immigrationFacts.map { "- " + $0 }
         let history = [("EDUCATION HISTORY (most recent first)", bank.education), ("EMPLOYMENT HISTORY (most recent first)", bank.employment)]
             .filter { !$0.1.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .map { "\($0.0):\n\($0.1)" }
@@ -1401,9 +1633,13 @@ final class JobHunt {
         elsewhere. Optional fields with no answer here: leave blank. EEO questions: use the given answers, otherwise "Decline to self-identify" \
         or the closest "I don't wish to answer" option.
         - Upload the PDF given above; do not use a profile résumé or paste text instead.
+        - ALREADY APPLIED: before filling anything, check whether I already applied to this posting (an "Applied" badge on LinkedIn, \
+        "You've already applied", an application status or confirmation page). If so, do not apply again: return status "submitted" with \
+        what the page shows as `confirmation`.
+        \(autonomous ? Self.autonomousRule : "")
         - STOP CONDITIONS. Do not submit, leave the page exactly where you stopped, and return status "needs_you" with the reason and every \
         question you could not answer in `unknown_questions` (the question text as shown), when any of these happens: a required question is \
-        not covered by the answers below; the site asks you to create an account, sign in, or complete two-factor authentication; a CAPTCHA; \
+        not covered by the answers below\(autonomous ? " or by ANSWERING ON YOUR OWN" : ""); the site asks you to create an account, sign in, or complete two-factor authentication; a CAPTCHA; \
         an assessment, test, video or coding exercise; a cover letter or other document you do not have; a request to pay; the posting is \
         closed or a different job opens; an error you cannot resolve; or anything else unexpected.
         - Return status "failed" with the reason only when the application page cannot be reached at all.
@@ -1417,6 +1653,7 @@ final class JobHunt {
         from my facts, answers and history below, and for a choice one of the options exactly as the form shows it. Answer "" when nothing \
         below honestly supports one, and always "" for legal questions (work authorization, sponsorship, citizenship, EEO, salary). \
         Suggestions are only for me: never enter them in the form. An empty array when you submitted.
+        - self_answered: every question you answered under ANSWERING ON YOUR OWN, with the answer you entered; an empty array otherwise.
         - page_url: the URL of the page you ended on (the application form, when you stopped).
         - Do nothing else in the browser: no other applications, no profile edits, no messages, no saving jobs.
 
@@ -1426,12 +1663,29 @@ final class JobHunt {
 
         STANDARD FACTS (count as approved answers for the usual fields):
         \(facts.joined(separator: "\n"))
+        \(immigration.isEmpty ? "" : "\nIMMIGRATION (approved; answer every work authorization, visa, sponsorship and citizenship question from this, however it is worded):\n" + immigration.joined(separator: "\n") + "\n")
+        ROUTINE QUESTIONS (approved): acknowledge privacy notices and declarations that my answers are true; decline SMS, WhatsApp and \
+        marketing messages; "Have you worked at <company>?" is No unless my employment history names it; "Are you 18 or older?" Yes; \
+        willing to take a background check Yes.
 
         SAVED ANSWERS (reuse when the form asks the same question):
         \(bullets(saved))
         \(history.isEmpty ? "" : "\nUse these for education and work-experience sections (add one entry per line, as the form allows):\n" + history.joined(separator: "\n\n"))
         """
     }
+
+    /// Keep applying's extra submit rule: the screening questions a person would answer from their own facts without thinking.
+    static let autonomousRule = """
+    - ANSWERING ON YOUR OWN (I asked you to apply without me): a required question that is not legal and that the lists below do not \
+    cover word for word may still be answered when my facts, history, saved answers or the uploaded résumé clearly support exactly one \
+    answer. Examples: "Are you 18 or older?" (my degree dates make it certain), "Do you have a bachelor's degree?", "How many years of \
+    experience with Swift?" (count from the résumé's dates), "Can you work on-site in <city>?" (when my city or relocation answer \
+    covers that city), "Preferred name", "Pronouns" (leave blank if optional), "How did you hear about us?", a link field that my \
+    LinkedIn, GitHub or portfolio answers, a short "Why this company / role?" (write 2 to 4 first-person sentences that connect my real \
+    work on the résumé to what the posting says the team builds; nothing invented). Pick the form's option that matches exactly. Never \
+    do this for legal questions (work authorization, sponsorship, citizenship, EEO, salary), never invent a fact, number or employer, and \
+    when two answers are plausible, stop as below. List each in `self_answered`.
+    """
 
     /// The shell line for one headless run. `tools` is the whole built-in set the run gets (`--tools`, so the user's global Bash and
     /// web allowlist never applies) and is also allowed outright; "" leaves only the MCP tools in `browserFlags`.

@@ -310,6 +310,9 @@ struct AnswerBank: Codable, Equatable {
     var workAuthorization = ""      // e.g. "Authorized to work in the US (F-1 OPT)"
     var needsSponsorship = ""       // "Yes" | "No" | ""; "Yes" also skips roles that say they don't sponsor
     var citizenship = ""            // citizenship / immigration status, e.g. "Indian citizen, F-1 OPT"; "" = ask me each time
+    var visaStatus = ""             // VisaStatus raw value; once chosen, every immigration question is answered from it
+    var citizenshipCountry = ""     // "Country of citizenship" / "Nationality"
+    var eadExpiry = ""              // when the current work authorization (EAD) ends, e.g. "June 2028"
     var startDate = ""
     var relocation = ""             // "Yes" | "No" | "Open to it"
     var salary = ""                 // "" = decline / leave blank
@@ -320,7 +323,141 @@ struct AnswerBank: Codable, Equatable {
     var education = "", employment = ""   // one entry per line, most recent first
     var referralSource = ""         // "How did you hear about us?"
     var saved: [String: String] = [:]   // reusable free-text answers keyed by question
-    var isComplete: Bool { !fullName.isEmpty && !email.isEmpty && !phone.isEmpty && !workAuthorization.isEmpty && !needsSponsorship.isEmpty }
+    var isComplete: Bool {
+        !fullName.isEmpty && !email.isEmpty && !phone.isEmpty && (status != nil || !workAuthorization.isEmpty && !needsSponsorship.isEmpty)
+    }
+    var status: VisaStatus? { VisaStatus(rawValue: visaStatus) }
+
+    /// A status typed into the old free-text fields ("Authorized to work in the US (F-1 STEM OPT)"), so it carries over.
+    static func inferStatus(_ text: String) -> VisaStatus? {
+        let t = " " + normalized(text).replacingOccurrences(of: "f 1", with: "f1").replacingOccurrences(of: "h 1b", with: "h1b") + " "
+        if t.contains(" stem ") { return .f1stemopt }
+        if t.contains(" opt ") { return .f1opt }
+        if t.contains(" cpt ") { return .f1cpt }
+        if t.contains(" h1b ") { return .h1b }
+        if t.contains(" green card ") || t.contains(" permanent resident ") { return .greenCard }
+        return nil
+    }
+
+    /// The US work status the immigration answers come from.
+    enum VisaStatus: String, CaseIterable, Identifiable {
+        case citizen, greenCard, f1opt, f1stemopt, f1cpt, h1b, other
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .citizen: "US citizen"
+            case .greenCard: "Green card (permanent resident)"
+            case .f1opt: "F-1 OPT"
+            case .f1stemopt: "F-1 STEM OPT"
+            case .f1cpt: "F-1 CPT"
+            case .h1b: "H-1B"
+            case .other: "Other (type it below)"
+            }
+        }
+        /// How forms that ask "what is your status" get it.
+        var formText: String {
+            switch self {
+            case .citizen: "US citizen"
+            case .greenCard: "US permanent resident (green card)"
+            case .f1opt: "F-1 student on OPT (EAD)"
+            case .f1stemopt: "F-1 student on STEM OPT extension (EAD)"
+            case .f1cpt: "F-1 student on CPT"
+            case .h1b: "H-1B"
+            case .other: ""
+            }
+        }
+        var isF1: Bool { [.f1opt, .f1stemopt, .f1cpt].contains(self) }
+        /// Sponsorship is needed at some point (an H-1B petition or transfer).
+        var needsSponsorship: Bool { isF1 || self == .h1b }
+    }
+
+    /// The answer to an immigration question, worked out from `visaStatus` for the question's own shape ("Are you a US citizen?",
+    /// "Will you now or in the future need sponsorship?", "What type of sponsorship?", "What is your visa status?"). Nil when the
+    /// question is not about immigration or no status is chosen; "" when it needs a fact the bank lacks (the user is asked).
+    func immigrationAnswer(for question: String) -> String? {
+        guard let status, status != .other else { return nil }
+        let q = " " + Self.normalized(question).replacingOccurrences(of: "u s ", with: "us ").replacingOccurrences(of: "f 1", with: "f1") + " "
+        func has(_ words: String...) -> Bool { words.contains { q.contains(" " + $0 + " ") } }        // whole words ("opt", not "optional")
+        func any(_ stems: String...) -> Bool { stems.contains { q.contains(" " + $0) } }   // word starts ("authoriz" → authorized)
+        let yes = "Yes", no = "No"
+        let about = any("sponsor", "visa", "citizen", "immigra", "authoriz", "authoris", "legally", "eligible to work", "right to work",
+                        "permitted to work", "permanent resident", "green card", "nationality", "work status", "work permit")
+            || has("opt", "cpt", "ead", "f1", "stem opt", "h1b")
+        guard about else { return nil }
+        if any("what kind", "what type", "which type", "type of sponsor", "type of visa sponsor"), any("sponsor") {
+            return status == .h1b ? "H-1B transfer" : status.needsSponsorship ? "H-1B" : "None"
+        }
+        if any("expir", "end date", "valid until", "valid through") { return eadExpiry }
+        if any("country of citizenship", "citizenship country", "nationality", "what is your citizenship", "which country") {
+            return status == .citizen ? "United States" : citizenshipCountry
+        }
+        if any("visa status", "immigration status", "current status", "work authorization status", "work status", "type of work authorization",
+               "current visa", "what visa", "which visa", "visa type", "type of visa", "best describes", "describe your") {
+            return status.formText
+        }
+        if any("sponsor") {
+            // "Do you currently need sponsorship?" asked alone: OPT / CPT already authorizes the job, so No. Any mention of the future,
+            // or of OPT itself as a kind of sponsorship (DoorDash lists "STEM OPT"), is Yes for someone who will need an H-1B.
+            let nowOnly = any("currently", "now", "at this time", "to start") && !any("future", "any point", "any time", "later", "eventually", "maintain")
+            if !status.needsSponsorship { return no }
+            if status.isF1, nowOnly, !has("opt", "stem opt", "cpt") { return no }
+            return yes
+        }
+        if any("permanent resident", "green card", "lawful permanent") {
+            return status == .greenCard || status == .citizen && any("citizen") ? yes : no
+        }
+        if any("citizen") { return status == .citizen ? yes : no }
+        if has("opt", "cpt", "ead", "f1", "stem opt") || any("student visa") { return status.isF1 ? yes : no }
+        if has("h1b") { return status == .h1b ? yes : no }
+        if any("authoriz", "authoris", "legally", "eligible to work", "right to work", "permitted to work", "work permit") { return yes }
+        return nil
+    }
+
+    /// Every immigration answer spelled out for the browser agent, so it can match any wording or option list on a form.
+    var immigrationFacts: [String] {
+        guard let status, status != .other else { return [] }
+        func a(_ q: String) -> String { immigrationAnswer(for: q) ?? "" }
+        let country = status == .citizen ? "United States" : citizenshipCountry
+        return [
+            "My status: \(status.formText)\(eadExpiry.isEmpty ? "" : ", work authorization valid until \(eadExpiry)")",
+            "Legally authorized to work in the US: \(a("Are you legally authorized to work in the US?"))",
+            "Need sponsorship now or in the future (e.g. H-1B): \(a("Will you now or in the future require sponsorship?"))",
+            "Need sponsorship to start this job right now, when asked on its own: \(a("Do you currently require sponsorship?"))",
+            "Kind of sponsorship I will need: \(a("What type of sponsorship will you require?"))",
+            "US citizen: \(a("Are you a US citizen?")); US permanent resident / green card holder: \(a("Are you a permanent resident?"))",
+            "On F-1 OPT, STEM OPT or CPT / hold an EAD: \(a("Are you on OPT or hold an EAD?"))",
+            "Country of citizenship / nationality: \(country.isEmpty ? "(unknown; if required, stop and report it)" : country)",
+            "When a form lists status options, choose the one matching \"\(status.formText)\" (e.g. \"F-1 / OPT\", \"Student visa (F-1)\", "
+                + "\"STEM OPT\", \"Other\" with \"\(status.label)\" typed in). Never answer that I am a citizen or permanent resident unless the above says so.",
+        ]
+    }
+
+    /// Routine screening questions with one honest everyday answer, so they never stop an application: privacy notices and
+    /// declarations get acknowledged, marketing texts declined, "have you worked here" checked against my employment history.
+    /// Saved answers win over these. Nil when the question is not one of them.
+    func screeningAnswer(for question: String) -> String? {
+        let q = " " + Self.normalized(question) + " "
+        func any(_ stems: String...) -> Bool { stems.contains { q.contains(" " + $0) } }
+        if any("sms", "text message", "whatsapp", "marketing", "newsletter", "promotional") { return "No" }
+        if any("worked at", "worked for", "been employed", "employed by", "former employee", "previously employed", "current or former",
+               "currently employed by", "ever worked") {
+            let past = Self.normalized(employment + " " + currentEmployer)
+            let words = Set(past.split(separator: " ").map(String.init).filter { $0.count > 3 })
+            let named = Self.normalized(question).split(separator: " ").map(String.init).filter { $0.count > 3 && $0.first?.isLetter == true }
+            // A company I worked for named in the question needs a real answer; otherwise No.
+            let generic: Set<String> = ["have", "worked", "work", "ever", "been", "employed", "previously", "company", "former", "current",
+                                        "employee", "with", "your", "this", "before", "subsidiar", "affiliate", "currently", "while", "were"]
+            return named.contains { words.contains($0) && !generic.contains($0) } ? nil : "No"
+        }
+        if any("18 years", "at least 18", "over 18", "over the age of 18", "18 or older") { return "Yes" }
+        if any("background check", "drug test", "drug screen") { return "Yes" }
+        if any("privacy", "i acknowledge", "acknowledge", "i agree", "i certify", "i confirm", "i have read", "i understand", "attest",
+               "consent to the processing", "accurate and complete", "true and complete") {
+            return "Yes, I acknowledge"
+        }
+        return nil
+    }
+
 
     init() {}
     /// Tolerates partial JSON (the table default is `{}`), so missing keys stay empty instead of failing the sync.
@@ -330,6 +467,8 @@ struct AnswerBank: Codable, Equatable {
         fullName = s(.fullName); email = s(.email); phone = s(.phone); city = s(.city)
         linkedin = s(.linkedin); github = s(.github); portfolio = s(.portfolio); resumeLink = s(.resumeLink)
         workAuthorization = s(.workAuthorization); needsSponsorship = s(.needsSponsorship); citizenship = s(.citizenship)
+        visaStatus = s(.visaStatus); citizenshipCountry = s(.citizenshipCountry); eadExpiry = s(.eadExpiry)
+        if visaStatus.isEmpty { visaStatus = Self.inferStatus(workAuthorization + " " + citizenship)?.rawValue ?? "" }
         startDate = s(.startDate); relocation = s(.relocation); salary = s(.salary)
         gender = s(.gender); race = s(.race); veteran = s(.veteran); disability = s(.disability)
         school = s(.school); degree = s(.degree); major = s(.major); graduation = s(.graduation); gpa = s(.gpa)
@@ -409,6 +548,12 @@ struct AnswerBank: Codable, Equatable {
     /// The bank's answer for a form question, if the bank covers it. `legal` answers always come from the bank; the others keep a
     /// drafted answer when the bank is empty. An empty citizenship field leaves the question to the user, as before.
     func answer(for question: String) -> (answer: String, kind: String, legal: Bool)? {
+        if let derived = immigrationAnswer(for: question) {
+            return derived.isEmpty ? ("", "needs_you", true) : (derived, "bank", true)
+        }
+        if Self.rule(for: question) == nil, savedAnswer(for: question) == nil, let routine = screeningAnswer(for: question) {
+            return (routine, "bank", false)
+        }
         if let rule = Self.rule(for: question) {
             let value = self[keyPath: rule.field]
             if !value.isEmpty { return (value, "bank", rule.legal) }
