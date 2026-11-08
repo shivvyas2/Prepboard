@@ -8,7 +8,9 @@
 
 /* Begin PBXBuildFile section */
 		08108FC9E8C5B712FC14D95C /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = F3E5093A27FB62748907EA2C /* Supabase */; };
+		08ABA318497EFAAE84BFEED5 /* HuntTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4410625414C6B229E3F98C60 /* HuntTools.swift */; };
 		0A53D34690A30053D025845B /* ResumeFolders.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B82D09FE3A4A14E8019D81 /* ResumeFolders.swift */; };
+		0B497F127AD0896AF133A9EB /* OfflineViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 390523C8ACD951F835DF0BF9 /* OfflineViews.swift */; };
 		0BD88D39DAB48C5ED518C025 /* JobSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7371BC26EA3E464EB3EA140A /* JobSync.swift */; };
 		0D5C26B865FFF8841BAAFA07 /* MediaViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C2237C2FE9593FEE15E0D76 /* MediaViews.swift */; };
 		0E3D16CB0C39C296F09CEB09 /* LatexBuild.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5601107F594DF6460E1ADC /* LatexBuild.swift */; };
@@ -21,6 +23,7 @@
 		1F76FDF88D3924E666D8BBE0 /* RunConsole.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91267B629C53613C5DDDC396 /* RunConsole.swift */; };
 		21124C2AA59DFDEC1FCD3060 /* ResumeLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC113D5260E8E466AEA9A6A6 /* ResumeLibrary.swift */; };
 		2166638E5EA8352CDC98E214 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B116C2CC40AD6A20444100E /* DashboardView.swift */; };
+		2206B10110A9B315D5315152 /* OfflineViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 390523C8ACD951F835DF0BF9 /* OfflineViews.swift */; };
 		2396B7BD6D8533F36C91AF76 /* NewPrepView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1011E204D4362832B715B72 /* NewPrepView.swift */; };
 		23F4D9C73501199D741B0945 /* Avatars.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C674D8FFA5AF52B25B4BEC7 /* Avatars.swift */; };
 		24068FD3DF6162F137B3150E /* ClaudePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECC76875631FCA668A14AE13 /* ClaudePanel.swift */; };
@@ -101,6 +104,8 @@
 		B44B1D5ED20ED385CF2CC9C0 /* ClaudePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECC76875631FCA668A14AE13 /* ClaudePanel.swift */; };
 		B84175618128F07C8E1EAB21 /* Learning.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB9073FEB4AD369E9018B0DD /* Learning.swift */; };
 		B9E0A3BA1365E39A7831F8C7 /* MarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 854854AA1F340A335592DD89 /* MarkdownView.swift */; };
+		BC713D7B7E06C0A2F821F2A6 /* Offline.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7B5CB664515303BCC5236AE /* Offline.swift */; };
+		C344DF9D4E6CCACC291B176A /* Offline.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7B5CB664515303BCC5236AE /* Offline.swift */; };
 		C35869F2EB483F65249B8F61 /* DocOrder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 685D00C62F89689A83DE96E6 /* DocOrder.swift */; };
 		C5CA66263117E05B4D77AF14 /* WorkspaceViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA38C9ECC0EA87B9053226FD /* WorkspaceViews.swift */; };
 		C65E7E59B27C42246189F8D6 /* TextClean.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F3F85AEB7443FD9579A22E0 /* TextClean.swift */; };
@@ -128,6 +133,7 @@
 		E8C0F0C55171374A3A028D60 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2B116C2CC40AD6A20444100E /* DashboardView.swift */; };
 		ECC11F2A5615B638B3D8078A /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BC5297DFE0F267A5635C878 /* Components.swift */; };
 		ED37902032EF29A9F25604AD /* WorkspaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 004EB371DE9FEE99A8D3D69A /* WorkspaceTests.swift */; };
+		F313BA8D7310F36F7CAFD658 /* HuntTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4410625414C6B229E3F98C60 /* HuntTools.swift */; };
 		F819F2072F742EBD2FA8FC4C /* ATS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06163BFD206746C41E205251 /* ATS.swift */; };
 		F87CA30ED64246DF8B4946C3 /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7680513B119FE9D73EC93F5B /* Keychain.swift */; };
 		FD84D652173075FCCB5F790C /* CodeRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22401A38A881162C1A4CBA48 /* CodeRunnerTests.swift */; };
@@ -160,8 +166,10 @@
 		34D43DFEE11026FB4FA3DB52 /* BrowserServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserServer.swift; sourceTree = "<group>"; };
 		351E33EDB990739C7D995D23 /* PrepboardApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrepboardApp.swift; sourceTree = "<group>"; };
 		38795E006267302A5600E7F9 /* DocumentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentsView.swift; sourceTree = "<group>"; };
+		390523C8ACD951F835DF0BF9 /* OfflineViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineViews.swift; sourceTree = "<group>"; };
 		3C674D8FFA5AF52B25B4BEC7 /* Avatars.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Avatars.swift; sourceTree = "<group>"; };
 		3C949862B5ADEDCAECFA782B /* BrowserScripts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserScripts.swift; sourceTree = "<group>"; };
+		4410625414C6B229E3F98C60 /* HuntTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HuntTools.swift; sourceTree = "<group>"; };
 		4582BCDD2818F3F4AE01FEBF /* Prepboard-iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "Prepboard-iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		479416F1BCB7896BA0448919 /* LinkedInSignIn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkedInSignIn.swift; sourceTree = "<group>"; };
 		4D19EF654466009659F7DE8F /* Prepboard-macOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Prepboard-macOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -210,9 +218,10 @@
 		E1B82D09FE3A4A14E8019D81 /* ResumeFolders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResumeFolders.swift; sourceTree = "<group>"; };
 		ECC76875631FCA668A14AE13 /* ClaudePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudePanel.swift; sourceTree = "<group>"; };
 		F1011E204D4362832B715B72 /* NewPrepView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewPrepView.swift; sourceTree = "<group>"; };
+		F7B5CB664515303BCC5236AE /* Offline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Offline.swift; sourceTree = "<group>"; };
 		FA38C9ECC0EA87B9053226FD /* WorkspaceViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceViews.swift; sourceTree = "<group>"; };
 		FAC34C8528365ECCD58D9852 /* MacBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacBridge.swift; sourceTree = "<group>"; };
-		"TEMP_CF3FB7E3-319B-45ED-B83E-40494F437C42" /* Prepboard.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Prepboard.xcconfig; sourceTree = "<group>"; };
+		"TEMP_BBF23747-A706-4FFC-84A2-D219013EFA26" /* Prepboard.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Prepboard.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -264,6 +273,7 @@
 				854854AA1F340A335592DD89 /* MarkdownView.swift */,
 				6C2237C2FE9593FEE15E0D76 /* MediaViews.swift */,
 				F1011E204D4362832B715B72 /* NewPrepView.swift */,
+				390523C8ACD951F835DF0BF9 /* OfflineViews.swift */,
 				C570E7B529A79775F8DB3F03 /* PracticeView.swift */,
 				5655B19D65046930196F5019 /* ResumeEditorSheet.swift */,
 				6E02443C80B213288CCA76C4 /* RolesView.swift */,
@@ -331,6 +341,7 @@
 				2927B8FFF21E41F481AE774A /* GitHub.swift */,
 				E0DDFC5A58C077C1EEBB2160 /* HuntAutopilot.swift */,
 				D9C29A8F26EEC6B3841F6EEB /* HuntBrowser.swift */,
+				4410625414C6B229E3F98C60 /* HuntTools.swift */,
 				7A551FCD872223FA6A2D310F /* InterviewBrief.swift */,
 				20BA65949AA0507C7D123CFA /* JobHunt.swift */,
 				7371BC26EA3E464EB3EA140A /* JobSync.swift */,
@@ -340,6 +351,7 @@
 				479416F1BCB7896BA0448919 /* LinkedInSignIn.swift */,
 				FAC34C8528365ECCD58D9852 /* MacBridge.swift */,
 				B73BFD19624466AB957B8B72 /* Models.swift */,
+				F7B5CB664515303BCC5236AE /* Offline.swift */,
 				1B209C3AE9C59D4538BB7F70 /* Practice.swift */,
 				E1B82D09FE3A4A14E8019D81 /* ResumeFolders.swift */,
 				BC113D5260E8E466AEA9A6A6 /* ResumeLibrary.swift */,
@@ -350,10 +362,10 @@
 			path = Model;
 			sourceTree = "<group>";
 		};
-		"TEMP_758F6841-EF66-417C-8E57-98D769FF0CAE" /* native */ = {
+		"TEMP_6A749434-1F0B-4C9A-99A6-46AC0D71DB97" /* native */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_CF3FB7E3-319B-45ED-B83E-40494F437C42" /* Prepboard.xcconfig */,
+				"TEMP_BBF23747-A706-4FFC-84A2-D219013EFA26" /* Prepboard.xcconfig */,
 			);
 			path = native;
 			sourceTree = "<group>";
@@ -515,6 +527,7 @@
 				161A2B6E4D95A8C986A55DAE /* GitHub.swift in Sources */,
 				7239D7136D4DC65448A969A7 /* HuntAutopilot.swift in Sources */,
 				1132BA48C8111E40E3B2212D /* HuntBrowser.swift in Sources */,
+				F313BA8D7310F36F7CAFD658 /* HuntTools.swift in Sources */,
 				99897600166A5DAA3A32BFF2 /* HuntView.swift in Sources */,
 				4F74F0854EB396E259AFC131 /* InterviewBrief.swift in Sources */,
 				9D951AA1B79B29622606A6BE /* JobHunt.swift in Sources */,
@@ -529,6 +542,8 @@
 				0D5C26B865FFF8841BAAFA07 /* MediaViews.swift in Sources */,
 				2D8F40774A3CBE0D418AF486 /* Models.swift in Sources */,
 				2396B7BD6D8533F36C91AF76 /* NewPrepView.swift in Sources */,
+				C344DF9D4E6CCACC291B176A /* Offline.swift in Sources */,
+				2206B10110A9B315D5315152 /* OfflineViews.swift in Sources */,
 				AC53B5797598656B1BB7FEE3 /* Practice.swift in Sources */,
 				4198975AD42D832B998694DF /* PracticeView.swift in Sources */,
 				D9208C24612868E1BC17D711 /* PrepboardApp.swift in Sources */,
@@ -577,6 +592,7 @@
 				779A3EACAF0495B0D34FBF4B /* GitHub.swift in Sources */,
 				DC284E970C9EFB6C88CD4730 /* HuntAutopilot.swift in Sources */,
 				B0279D36E8946EBF4972206F /* HuntBrowser.swift in Sources */,
+				08ABA318497EFAAE84BFEED5 /* HuntTools.swift in Sources */,
 				AD8B54C443C730AE581AB722 /* HuntView.swift in Sources */,
 				C81C004BC29C0214050551D0 /* InterviewBrief.swift in Sources */,
 				E602258732CF68968D2B6497 /* JobHunt.swift in Sources */,
@@ -591,6 +607,8 @@
 				28BF1BC3998A822335E85FF4 /* MediaViews.swift in Sources */,
 				AB96521CB18B51F737A936C5 /* Models.swift in Sources */,
 				3845ED09936D299162D5D713 /* NewPrepView.swift in Sources */,
+				BC713D7B7E06C0A2F821F2A6 /* Offline.swift in Sources */,
+				0B497F127AD0896AF133A9EB /* OfflineViews.swift in Sources */,
 				7377543A6CF61603C147AB4B /* Practice.swift in Sources */,
 				D2530C4765BECF97608E75D9 /* PracticeView.swift in Sources */,
 				6E71916771134F0651F48F90 /* PrepboardApp.swift in Sources */,
@@ -641,7 +659,7 @@
 /* Begin XCBuildConfiguration section */
 		10744D7376C93E547E6FC5D0 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_CF3FB7E3-319B-45ED-B83E-40494F437C42" /* Prepboard.xcconfig */;
+			baseConfigurationReference = "TEMP_BBF23747-A706-4FFC-84A2-D219013EFA26" /* Prepboard.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -676,7 +694,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 19;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -693,7 +711,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = PrepBoard;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.14;
+				MARKETING_VERSION = 1.15;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -823,7 +841,7 @@
 		};
 		DFD456A3EE378308373DEC56 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_CF3FB7E3-319B-45ED-B83E-40494F437C42" /* Prepboard.xcconfig */;
+			baseConfigurationReference = "TEMP_BBF23747-A706-4FFC-84A2-D219013EFA26" /* Prepboard.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -858,7 +876,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 19;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -881,7 +899,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = PrepBoard;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.14;
+				MARKETING_VERSION = 1.15;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

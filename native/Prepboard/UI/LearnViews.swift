@@ -72,7 +72,7 @@ struct VideoThumb: View {
     var body: some View {
         Button { app.playingVideo = video } label: {
             VStack(alignment: .leading, spacing: 0) {
-                AsyncImage(url: video.thumbnailURL) { img in img.resizable().scaledToFill() } placeholder: { Color.black.opacity(0.85) }
+                VideoThumbnail(video: video)
                     .frame(width: 200, height: 112).clipped()
                     .overlay { Image(systemName: "play.fill").font(.system(size: 20)).foregroundStyle(.white).shadow(radius: 4) }
                 VStack(alignment: .leading, spacing: 4) {
@@ -120,6 +120,7 @@ struct QuizSheet: View {
                 Text(topic).font(.system(size: 14, weight: .semibold)).lineLimit(1)
                 Spacer()
                 if source == "claude-code" { HStack(spacing: 4) { ClaudeMark().frame(width: 12, height: 12); Text("Claude Code").font(.system(size: 11)).foregroundStyle(PB.muted) } }
+                if source == "offline" { Label("Saved questions · offline", systemImage: "wifi.slash").font(.system(size: 11)).foregroundStyle(PB.muted) }
                 CircleIconButton(systemImage: "xmark", size: 32, label: "Close") { dismiss() }
             }
             .padding(.horizontal, 24).padding(.vertical, 16)
@@ -152,6 +153,11 @@ struct QuizSheet: View {
         case .done(let attempt):
             ResultsView(attempt: attempt) {
                 if let s = attempt.sessionId.nilIfEmpty, sessionID != nil { _ = s; index = 0; answers = [:]; Task { await start() } }
+                else {
+                    // Reviewing an old quiz: retake its own questions, which needs no signal.
+                    practiceOffline(attempt.items.map { Learning.Question(question: $0.question, options: $0.options, answer: $0.answer,
+                                                                           explanation: $0.explanation, topic: $0.topic) })
+                }
             } openScores: { dismiss(); app.section = .scores }
         }
     }
@@ -213,15 +219,41 @@ struct QuizSheet: View {
             guard !payload.questions.isEmpty else { throw Learning.Failure.message("No questions came back. Try again.") }
             questions = payload.questions; source = src; index = 0; answers = [:]
             phase = .question
-        } catch { phase = .error(error.localizedDescription) }
+        } catch {
+            // No signal (or no Claude): practice the questions this session's earlier quizzes asked, in a new order.
+            let saved = savedQuestions(sessionID: task.id)
+            if saved.isEmpty { phase = .error(error.localizedDescription) } else { practiceOffline(saved) }
+        }
+    }
+
+    /// Every question earlier quizzes for this session asked, once each.
+    private func savedQuestions(sessionID: String) -> [Learning.Question] {
+        var seen = Set<String>()
+        return attempts.filter { $0.sessionId == sessionID }.flatMap(\.items).filter { seen.insert($0.question).inserted }.map {
+            Learning.Question(question: $0.question, options: $0.options, answer: $0.answer, explanation: $0.explanation, topic: $0.topic)
+        }
+    }
+
+    private func practiceOffline(_ saved: [Learning.Question]) {
+        questions = Array(saved.shuffled().prefix(10)); source = "offline"; index = 0; answers = [:]
+        phase = .question
     }
 
     private func finish() {
-        guard let task = tasks.first(where: { $0.id == sessionID }) else { return }
+        // A retake from Scores has no session open: it files under the quiz it came from.
+        let reviewed = attempts.first { $0.id == reviewID }
+        if let task = tasks.first(where: { $0.id == sessionID }) {
+            save(roleId: task.roleId, sessionId: task.id, topic: task.title)
+        } else if let reviewed {
+            save(roleId: reviewed.roleId, sessionId: reviewed.sessionId, topic: reviewed.topic)
+        }
+    }
+
+    private func save(roleId: String, sessionId: String, topic: String) {
         let items = questions.enumerated().map { k, q in
             QuizItem(question: q.question, options: q.options, answer: q.answer, chosen: answers[k], explanation: q.explanation, topic: q.topic)
         }
-        let attempt = QuizAttempt(roleId: task.roleId, sessionId: task.id, topic: task.title, items: items, source: source)
+        let attempt = QuizAttempt(roleId: roleId, sessionId: sessionId, topic: topic, items: items, source: source)
         context.insert(attempt)
         try? context.save()
         phase = .done(attempt)

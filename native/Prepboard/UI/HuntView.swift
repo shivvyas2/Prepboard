@@ -1386,6 +1386,7 @@ struct HuntRunCard: View {
     @Bindable var settings: HuntSettings
     let leads: [Lead]
     var openSettings: () -> Void = {}
+    @State private var remoteError: String?
     @Environment(JobHunt.self) private var hunt
     @Environment(ClaudeCode.self) private var claude
     @AppStorage(HuntPrefs.keepApplyingKey) private var keepApplying = false
@@ -1424,7 +1425,12 @@ struct HuntRunCard: View {
                 }
                 Button("Rescan résumés") { hunt.rescan() }.buttonStyle(PillButtonStyle(filled: false, compact: true))
                     .disabled(hunt.isRunning)
+                Button { remoteError = hunt.startRemoteSession() } label: { Label("Use from phone with Claude", systemImage: "iphone.radiowaves.left.and.right") }
+                    .buttonStyle(PillButtonStyle(filled: false, compact: true))
+                    .disabled(!claude.isReady)
+                    .help("Opens a Claude Code session with PrepBoard's hunt tools and Remote Control on. In the Claude app on your phone, open the \u{201C}PrepBoard\u{201D} session and ask things like \u{201C}what's my Mac doing?\u{201D} or \u{201C}apply to the Figma role\u{201D}.")
             }
+            if let remoteError { Text(remoteError).font(.system(size: 12)).foregroundStyle(PB.red) }
             Divider()
             FlowLayout(spacing: PB.s4) {
                 Toggle("Keep applying on its own", isOn: $keepApplying).toggleStyle(CheckboxToggleStyle(labeled: true))
@@ -1607,6 +1613,9 @@ struct MacRemoteCard: View {
             }
             .tint(PB.cobalt)
             .frame(minHeight: 44)
+            Label("Rather type it? On your Mac, press \u{201C}Use from phone with Claude\u{201D} in Hunt, then open the PrepBoard session in the Claude app and ask in your own words.",
+                  systemImage: "bubble.left.and.text.bubble.right")
+                .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
         }
         .pbCard(padding: PB.s4)
     }

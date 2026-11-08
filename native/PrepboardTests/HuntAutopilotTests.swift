@@ -274,3 +274,47 @@ final class HuntRemoteTests: XCTestCase {
         XCTAssertFalse(r.macOnline())
     }
 }
+
+final class OfflineAndRemoteTests: XCTestCase {
+    func testHuntEndpointNeedsItsOwnToken() {
+        let h = ["authorization": "Bearer hunt-token"]
+        XCTAssertNil(BrowserServer.gate(method: "POST", path: "/hunt", headers: h, token: "hunt-token", endpoint: "/hunt"))
+        XCTAssertEqual(BrowserServer.gate(method: "POST", path: "/hunt", headers: ["authorization": "Bearer browser-token"], token: "hunt-token", endpoint: "/hunt"), 401)
+        XCTAssertEqual(BrowserServer.gate(method: "POST", path: "/mcp", headers: h, token: "hunt-token", endpoint: "/hunt"), 404)
+        XCTAssertEqual(BrowserServer.gate(method: "POST", path: "/hunt", headers: h.merging(["origin": "https://evil.example"]) { a, _ in a }, token: "hunt-token", endpoint: "/hunt"), 403)
+    }
+
+    @MainActor func testHuntToolsListOverMCP() async throws {
+        let body = Data(#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#.utf8)
+        let (status, data) = await MCP.handle(body, tools: JobHunt.huntTools, server: BrowserServer.huntName, instructions: "x") { _, _ in .text("") }
+        XCTAssertEqual(status, 200)
+        let names = try XCTUnwrap(((try JSONSerialization.jsonObject(with: XCTUnwrap(data)) as? [String: Any])?["result"] as? [String: Any])?["tools"] as? [[String: Any]]).compactMap { $0["name"] as? String }
+        XCTAssertEqual(Set(names), ["status", "list_roles", "role", "answer", "approve_suggestions", "apply", "rewrite_resume", "skip", "find_roles", "keep_applying"])
+    }
+
+    func testVideoKeyPointsDecodeOldAndNew() throws {
+        let old = try JSONDecoder().decode([Video].self, from: Data(#"[{"id":"abc","title":"T","channel":"C","why":"W"}]"#.utf8))
+        XCTAssertEqual(old.first?.keyPoints, "")
+        var v = Video(id: "abc", title: "T", channel: "C", why: "W", keyPoints: "- two pointers")
+        v = try JSONDecoder().decode(Video.self, from: JSONEncoder().encode(v))
+        XCTAssertEqual(v.keyPoints, "- two pointers")
+    }
+
+    func testPlaylistURL() {
+        let vids = (0..<60).map { Video(id: "id\($0)", title: "", channel: "", why: "") } + [Video(id: "id0", title: "", channel: "", why: "")]
+        let url = Video.playlistURL(vids)?.absoluteString ?? ""
+        XCTAssertTrue(url.hasPrefix("https://www.youtube.com/watch_videos?video_ids=id0,id1,"))
+        XCTAssertEqual(url.components(separatedBy: "=").last?.split(separator: ",").count, 50)
+        XCTAssertNil(Video.playlistURL([]))
+    }
+
+    @MainActor func testSpeakableStripsMarkdown() {
+        let md = "# Two pointers\n- Move **left** when [sum](https://x.y) is small\n```swift\nlet x = 1\n```\n| a | b |"
+        let spoken = SpeechReader.speakable(md)
+        XCTAssertTrue(spoken.contains("Two pointers."))
+        XCTAssertTrue(spoken.contains("Move left when sum is small."))
+        XCTAssertTrue(spoken.contains("Code example skipped."))
+        XCTAssertFalse(spoken.contains("let x"))
+        XCTAssertFalse(spoken.contains("https"))
+    }
+}

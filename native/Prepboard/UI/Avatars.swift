@@ -283,6 +283,7 @@ struct ProfileSheet: View {
                     .accessibilityLabel("Avatar \(i + 1)")
                 }
             }
+            OfflineCard().padding(16).background(RoundedRectangle(cornerRadius: 16).fill(PB.surface))
             TimeFormatSection()
             EmojiCleanupSection()
             #if os(macOS)

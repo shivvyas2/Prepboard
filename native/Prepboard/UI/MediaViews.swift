@@ -220,6 +220,7 @@ struct VideoPlayerSheet: View {
                     CircleIconButton(systemImage: "xmark", size: 32, label: "Close") { dismiss() }
                 }
                 if !video.why.isEmpty { Text(video.why).font(.system(size: 14)).foregroundStyle(PB.ink2) }
+                VideoKeyPoints(video: video)
                 Text("If the video says it can't play here (some channels block embedding), use “YouTube ↗”.")
                     .font(.system(size: 12)).foregroundStyle(PB.muted)
             }

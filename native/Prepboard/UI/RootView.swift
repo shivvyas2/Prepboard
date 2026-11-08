@@ -4,6 +4,7 @@ import SwiftUI
 struct RootView: View {
     @Environment(AppState.self) private var app
     @Environment(Cloud.self) private var cloud
+    @Environment(NetworkStatus.self) private var network
     @Environment(\.modelContext) private var context
     @State private var windowSize: CGSize = .zero
     #if os(macOS)
@@ -22,11 +23,15 @@ struct RootView: View {
             } else if cloud.configured && cloud.user == nil {
                 AuthView()
             } else {
-                #if os(iOS)
-                if sizeClass == .compact { compactShell } else { wideShell }
-                #else
-                wideShell
-                #endif
+                VStack(spacing: 0) {
+                    if !network.isOnline { OfflineBanner() }
+                    #if os(iOS)
+                    if sizeClass == .compact { compactShell } else { wideShell }
+                    #else
+                    wideShell
+                    #endif
+                }
+                .animation(.easeInOut(duration: 0.2), value: network.isOnline)
             }
         }
         .background(PB.background)

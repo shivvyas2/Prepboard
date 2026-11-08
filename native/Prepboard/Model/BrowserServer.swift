@@ -5,6 +5,14 @@ import Network
 import Observation
 
 struct MCPTool { let name: String; let description: String; let inputSchema: [String: Any] }
+
+/// What answers the hunt endpoint's tools (JobHunt): Claude Code sessions, Remote Control from the phone included, drive the
+/// hunt through it.
+@MainActor
+protocol HuntToolProvider: AnyObject {
+    static var huntTools: [MCPTool] { get }
+    func callHuntTool(_ name: String, _ args: [String: Any]) async throws -> String
+}
 enum MCPContent { case text(String), image(Data, mime: String) }
 
 /// Pure JSON-RPC/MCP handling (testable without a socket).
@@ -14,7 +22,9 @@ enum MCP {
 
     /// Handles one HTTP request body. Returns the HTTP status and JSON body (nil body for 202).
     /// Supports: initialize, notifications/* (→ 202), ping, tools/list, tools/call; anything else → JSON-RPC -32601.
-    static func handle(_ body: Data, tools: [MCPTool], call: (String, [String: Any]) async throws -> MCPContent) async -> (status: Int, body: Data?) {
+    static func handle(_ body: Data, tools: [MCPTool], server: String = BrowserServer.name,
+                       instructions: String = "Browser tools for the PrepBoard hunt. Loop: read_page, then click/type/select, then wait or read_page again. Use screenshot when the page is unclear.",
+                       call: (String, [String: Any]) async throws -> MCPContent) async -> (status: Int, body: Data?) {
         guard let obj = try? JSONSerialization.jsonObject(with: body) else { return (200, error(-32700, "Parse error", id: NSNull())) }
         guard let req = obj as? [String: Any] else { return (200, error(-32600, "Invalid Request: a single JSON-RPC object is required", id: NSNull())) }
         let id = requestID(req["id"])
@@ -27,8 +37,8 @@ enum MCP {
             let result: [String: Any] = [
                 "protocolVersion": versions.contains(asked) ? asked : defaultVersion,
                 "capabilities": ["tools": [String: Any]()],
-                "serverInfo": ["name": BrowserServer.name, "version": "1.0"],
-                "instructions": "Browser tools for the PrepBoard hunt. Loop: read_page, then click/type/select, then wait or read_page again. Use screenshot when the page is unclear.",
+                "serverInfo": ["name": server, "version": "1.0"],
+                "instructions": instructions,
             ]
             return (200, reply(id, result))
         case "ping":
@@ -104,9 +114,34 @@ final class BrowserServer {
     private static let uploadExtensions: Set<String> = ["pdf", "docx", "txt", "png"]
 
     init() {
-        var bytes = [UInt8](repeating: 0, count: 16)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        token = bytes.map { String(format: "%02x", $0) }.joined()
+        func random() -> String {
+            var bytes = [UInt8](repeating: 0, count: 16)
+            _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+            return bytes.map { String(format: "%02x", $0) }.joined()
+        }
+        token = random()
+        huntToken = random()   // its own token: browser runs can't reach the hunt tools, a hunt session can't drive the browser
+    }
+
+    // MARK: hunt endpoint (/hunt)
+
+    static let huntName = "prepboard-hunt"
+    let huntToken: String
+    @ObservationIgnored weak var hunt: (any HuntToolProvider)?
+    @ObservationIgnored var huntTools: [MCPTool] = []
+
+    /// An MCP config for a long-lived Claude Code session with the hunt tools, written 0600 in Application Support.
+    func huntConfigFile() -> URL? {
+        guard let port else { return nil }
+        let cfg: [String: Any] = ["mcpServers": [Self.huntName: [
+            "type": "http", "url": "http://127.0.0.1:\(port)/hunt", "headers": ["Authorization": "Bearer \(huntToken)"]]]]
+        guard let data = try? JSONSerialization.data(withJSONObject: cfg, options: [.sortedKeys]) else { return nil }
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Prepboard", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        let file = dir.appendingPathComponent("hunt-mcp.json")
+        try? FileManager.default.removeItem(at: file)
+        FileManager.default.createFile(atPath: file.path, contents: data, attributes: [.posixPermissions: 0o600])
+        return file
     }
 
     // MARK: Lifecycle
@@ -331,12 +366,12 @@ final class BrowserServer {
     struct Request { let method: String; let path: String; let headers: [String: String]; let body: Data }
 
     /// The HTTP status that refuses a request, or nil when it may reach the MCP handler.
-    nonisolated static func gate(method: String, path: String, headers: [String: String], token: String) -> Int? {
+    nonisolated static func gate(method: String, path: String, headers: [String: String], token: String, endpoint: String = "/mcp") -> Int? {
         if headers["origin"] != nil { return 403 }   // browsers always send Origin; only claude (which doesn't) may use this
         let given = (headers["authorization"] ?? "").replacingOccurrences(of: "Bearer ", with: "", options: [.caseInsensitive, .anchored])
             .trimmingCharacters(in: .whitespaces)
         guard constantTimeEqual(given, token) else { return 401 }
-        guard path == "/mcp" || path.hasPrefix("/mcp?") else { return 404 }
+        guard path == endpoint || path.hasPrefix(endpoint + "?") else { return 404 }
         guard method == "POST" else { return 405 }
         return nil
     }
@@ -387,6 +422,17 @@ final class BrowserServer {
     }
 
     private func handle(_ req: Request, conn: NWConnection) async {
+        if req.path == "/hunt" || req.path.hasPrefix("/hunt?") {
+            if let status = Self.gate(method: req.method, path: req.path, headers: req.headers, token: huntToken, endpoint: "/hunt") {
+                return reply(conn, status, Data(#"{"error":"Refused"}"#.utf8))
+            }
+            guard let hunt else { return reply(conn, 503, Data(#"{"error":"The hunt isn't ready yet"}"#.utf8)) }
+            let (status, body) = await MCP.handle(req.body, tools: huntTools, server: Self.huntName,
+                                                  instructions: "PrepBoard's job hunt on this Mac. Start with status, then list_roles. Every application goes out through apply, which queues it for PrepBoard's own submit run.") { name, args in
+                .text(try await hunt.callHuntTool(name, args))
+            }
+            return reply(conn, status, body)
+        }
         if let status = Self.gate(method: req.method, path: req.path, headers: req.headers, token: token) {
             let text = [401: "Unauthorized", 403: "Not allowed", 404: "Not found", 405: "Use POST /mcp"][status] ?? "Refused"
             return reply(conn, status, Data(#"{"error":"\#(text)"}"#.utf8))

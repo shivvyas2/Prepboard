@@ -13,9 +13,10 @@ enum CloudConfig {
         (Bundle.main.object(forInfoDictionaryKey: key) as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
     }
     /// A disposable UI preview, with an in-memory store and no background automation.
+    /// Unit tests host the app as a preview too: they must never open the real store, sign in, or run the hunt's timers.
     static var isPreview: Bool {
         #if DEBUG
-        UserDefaults.standard.bool(forKey: "PrepboardPreview")
+        UserDefaults.standard.bool(forKey: "PrepboardPreview") || ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
         #else
         false
         #endif
@@ -440,12 +441,16 @@ final class Cloud {
         return dir.appendingPathComponent("\(docId).pdf")
     }
 
+    /// True when the PDF is already on this device (it opens without signal).
+    static func hasLocalPDF(_ doc: Doc) -> Bool { FileManager.default.fileExists(atPath: cacheURL(doc.id).path) }
+
     func pdfData(for doc: Doc) async throws -> Data {
         let local = Self.cacheURL(doc.id)
         if let data = try? Data(contentsOf: local) { return data }
         guard let client, user != nil, !doc.filePath.isEmpty else {
             throw Learning.Failure.message("This PDF is stored in your account. Sign in to view it.")
         }
+        if status == .offline { throw Learning.Failure.message("This PDF isn't on this device yet. It downloads by itself next time you're online.") }
         let data = try await client.storage.from(Self.bucket).download(path: doc.filePath)
         try? data.write(to: local)
         return data

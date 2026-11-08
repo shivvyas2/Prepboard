@@ -195,6 +195,7 @@ struct DocEditorView: View {
                     .pickerStyle(.segmented).labelsHidden().frame(width: 140)
                     Text("\(doc.body.split(whereSeparator: \.isWhitespace).count) words · edited \(doc.updatedAt.formatted(.relative(presentation: .named)))")
                         .font(.system(size: 12)).foregroundStyle(PB.muted).lineLimit(1)
+                    if !app.docEditing { ListenButton(id: "doc-" + doc.id, text: doc.title + ".\n" + doc.body) }
                 }
                 Spacer(minLength: 0)
                 if let id = originalID, allDocs.contains(where: { $0.id == id }) {

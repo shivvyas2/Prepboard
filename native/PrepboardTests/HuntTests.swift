@@ -677,9 +677,10 @@ final class HuntTests: XCTestCase {
         let hunt = JobHunt()
         let lead = Lead(company: "Apple", title: "iOS Engineer")
         XCTAssertNil(hunt.texPath(for: lead))
-        lead.variantName = "Shiv-Vyas-Apple-iOSEngineer"
-        XCTAssertEqual(hunt.texPath(for: lead), HuntSettings.defaultResumeFolder + "/TeX/Shiv-Vyas-Apple-iOSEngineer.tex")
-        XCTAssertTrue(hunt.texPath(for: lead)!.hasSuffix(".tex"))
+        // The real résumé folder lives in ~/Documents (privacy-protected): check the path rule on a scratch folder instead.
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("texpath-\(UUID().uuidString)").path
+        defer { try? FileManager.default.removeItem(atPath: folder) }
+        XCTAssertEqual(ResumeFolders.texPath(for: "Shiv-Vyas-Apple-iOSEngineer", in: folder), folder + "/TeX/Shiv-Vyas-Apple-iOSEngineer.tex")
     }
 
     /// `variantName` syncs from Supabase, so only a plain file name may become a path; anything else means "regenerate first".

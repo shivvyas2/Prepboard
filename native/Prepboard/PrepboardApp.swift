@@ -9,6 +9,9 @@ struct PrepboardApp: App {
     @State private var browser = BrowserModel()
     @State private var claude = ClaudeCode()
     @State private var github = GitHub()
+    @State private var network = NetworkStatus()
+    @State private var offline = OfflineLibrary()
+    @State private var reader = SpeechReader()
     #if os(macOS)
     @State private var deviceBridge = DeviceBridge()
     @State private var jobSync = JobSync()
@@ -42,6 +45,12 @@ struct PrepboardApp: App {
         #endif
     }
 
+    private func autoDownload() async {
+        guard offline.auto, network.isUnmetered, cloud.user != nil else { return }
+        try? await Task.sleep(for: .seconds(3))   // let the first sync land so new PDFs are known
+        await offline.downloadAll(context: container.mainContext, cloud: cloud)
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
@@ -53,6 +62,13 @@ struct PrepboardApp: App {
                 .preferredColorScheme(.light)
                 .environment(claude)
                 .environment(github)
+                .environment(network)
+                .environment(offline)
+                .environment(reader)
+                // Offline prep: whatever is missing downloads on Wi-Fi, at launch and whenever the app comes back.
+                .task { await autoDownload() }
+                .onChange(of: scenePhase) { if scenePhase == .active { Task { await autoDownload() } } }
+                .onChange(of: network.isUnmetered) { if network.isUnmetered { Task { await autoDownload() } } }
                 // Bring in other devices' changes whenever the app comes back to the front.
                 .onChange(of: scenePhase) { if scenePhase == .active { cloud.refreshIfStale() } }
                 #if os(iOS)

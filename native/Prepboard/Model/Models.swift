@@ -118,9 +118,9 @@ final class PrepTask {
     var videos: [Video] {
         get { videosRaw.compactMap { s in
             let p = s.components(separatedBy: "\u{1F}")
-            return p.count == 4 ? Video(id: p[0], title: p[1], channel: p[2], why: p[3]) : nil
+            return p.count >= 4 ? Video(id: p[0], title: p[1], channel: p[2], why: p[3], keyPoints: p.count > 4 ? p[4] : "") : nil
         } }
-        set { videosRaw = newValue.map { [$0.id, $0.title, $0.channel, $0.why].joined(separator: "\u{1F}") } }
+        set { videosRaw = newValue.map { [$0.id, $0.title, $0.channel, $0.why, $0.keyPoints].joined(separator: "\u{1F}") } }
     }
     var isBreak: Bool { kind == .break }
     var minutes: Int { max(0, Int(end.timeIntervalSince(start) / 60)) }
@@ -138,6 +138,31 @@ struct Video: Codable, Hashable, Identifiable {
     var title: String
     var channel: String
     var why: String
+    /// What the video covers, as short points from its description and chapters: kept with the problem, so it reads offline.
+    var keyPoints: String = ""
+
+    init(id: String, title: String, channel: String, why: String, keyPoints: String = "") {
+        self.id = id; self.title = title; self.channel = channel; self.why = why; self.keyPoints = keyPoints
+    }
+    /// Older rows have no keyPoints; they decode with "".
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        title = (try? c.decode(String.self, forKey: .title)) ?? ""
+        channel = (try? c.decode(String.self, forKey: .channel)) ?? ""
+        why = (try? c.decode(String.self, forKey: .why)) ?? ""
+        keyPoints = (try? c.decodeIfPresent(String.self, forKey: .keyPoints)) ?? ""
+    }
+    /// One YouTube playlist of these videos (YouTube builds it from the ids; it takes up to 50). In the YouTube app it can be saved
+    /// to the library and downloaded as a whole with Premium. Nil when there are no videos.
+    static func playlistURL(_ videos: [Video]) -> URL? {
+        var seen = Set<String>()
+        let ids = videos.map(\.id).filter { seen.insert($0).inserted }.prefix(50)
+        guard !ids.isEmpty else { return nil }
+        return URL(string: "https://www.youtube.com/watch_videos?video_ids=" + ids.joined(separator: ","))
+    }
+    /// The YouTube app when installed (where Premium's Download button lives), otherwise the web page.
+    var youtubeAppURL: URL { URL(string: "youtube://watch?v=\(id)")! }
     var watchURL: URL { URL(string: "https://www.youtube.com/watch?v=\(id)")! }
     var thumbnailURL: URL { URL(string: "https://i.ytimg.com/vi/\(id)/mqdefault.jpg")! }
 }

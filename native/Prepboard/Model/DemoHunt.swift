@@ -26,6 +26,10 @@ enum DemoHunt {
         lead("Yuzu", "Fullstack Engineer", .needsYou, score: 76, reason: "Claude suggested 2 answers. Keywords: 72%. ATS: Dates use more than one format.")
         lead("Hebbia", "Frontend Engineer", .submitted, score: 82, reason: "Application received.")
         lead("iBegin", "Software Engineer", .skipped, score: 74, reason: Lead.byHandPrefix + "the site needs an account.")
+        let task = PrepTask(roleId: "", title: "Two pointers and sliding window", start: .now, end: .now.addingTimeInterval(3600))
+        task.videos = [Video(id: "jzZsG8n2R9A", title: "Two Pointers Explained", channel: "NeetCode", why: "Clear patterns",
+                             keyPoints: "- When the array is sorted, move the pointer on the side that can't reach the target\n- Sliding window: grow right, shrink left while invalid\n- Both run in O(n)")]
+        context.insert(task)
         try? context.save()
     }
 }

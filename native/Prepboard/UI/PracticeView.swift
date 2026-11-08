@@ -385,7 +385,11 @@ struct PracticeView: View {
     private func statement(_ p: Problem) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Text(p.title).font(.system(size: 22, weight: .bold)).kerning(-0.4)
+                HStack(alignment: .top) {
+                    Text(p.title).font(.system(size: 22, weight: .bold)).kerning(-0.4)
+                    Spacer(minLength: 0)
+                    ListenButton(id: "problem-" + p.id, text: p.title + ".\n" + p.statement + (p.notes.isEmpty ? "" : "\nLast review.\n" + p.notes))
+                }
                 if !p.topics.isEmpty {
                     FlowLayout(spacing: 8) {
                         ForEach(p.topics, id: \.self) { Text($0).font(.system(size: 11, weight: .medium)).lineLimit(1).padding(.horizontal, 8).padding(.vertical, 4)
@@ -653,12 +657,16 @@ struct ProblemVideos: View {
                             CircleIconButton(systemImage: "arrow.up.right.square", size: 32, label: "Open on YouTube") { openURL(v.watchURL) }
                             CircleIconButton(systemImage: "xmark", size: 32, label: "Close video") { playing = nil }
                         }
+                        VideoKeyPoints(video: v)
                     }
                 }
                 HStack(spacing: 8) {
                     Text(problem.videos.isEmpty ? "Video explanations" : "\(problem.videos.count) videos").font(.system(size: 14, weight: .semibold))
                     Spacer(minLength: 0)
                     if compact { CircleIconButton(systemImage: "chevron.up", size: 32, label: "Hide videos") { expanded = false; playing = nil } }
+                    if problem.videos.count > 1, let url = Video.playlistURL(problem.videos) {
+                        CircleIconButton(systemImage: "play.rectangle.on.rectangle", size: 32, label: "Open all as a YouTube playlist (save it there to download)") { openURL(url) }
+                    }
                     Button(searching ? "Searching…" : (problem.videos.isEmpty ? "Find videos" : "Find more")) { find() }
                         .buttonStyle(PillButtonStyle(compact: true)).fixedSize().disabled(searching)
                 }
@@ -670,7 +678,7 @@ struct ProblemVideos: View {
                 ForEach(problem.videos) { v in
                     Button { playing = v } label: {
                         HStack(alignment: .top, spacing: 12) {
-                            AsyncImage(url: v.thumbnailURL) { img in img.resizable().scaledToFill() } placeholder: { Color.black.opacity(0.85) }
+                            VideoThumbnail(video: v)
                                 .frame(width: 128, height: 72).clipped()
                                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                                 .overlay { Image(systemName: "play.fill").font(.system(size: 16)).foregroundStyle(.white).shadow(radius: 4) }

@@ -134,11 +134,11 @@ final class JobHunt {
     var tailoredToday: Int { Self.dailyCount("tailored") }
     var submittedToday: Int { Self.dailyCount("submitted") }
 
-    private var container: ModelContainer?
+    private(set) var container: ModelContainer?
     private weak var claude: ClaudeCode?
     private weak var cloud: Cloud?
     private weak var github: GitHub?
-    private weak var browser: BrowserServer?
+    private(set) weak var browser: BrowserServer?
     private weak var huntBrowser: HuntBrowser?
     private var scheduleTimer: Timer?
     private var queueTimer: Timer?
@@ -248,6 +248,7 @@ final class JobHunt {
     func attach(container: ModelContainer, claude: ClaudeCode, cloud: Cloud, github: GitHub, browser: BrowserServer, huntBrowser: HuntBrowser) {
         self.container = container; self.claude = claude; self.cloud = cloud; self.github = github; self.browser = browser
         self.huntBrowser = huntBrowser
+        browser.hunt = self; browser.huntTools = Self.huntTools
         scheduleTimer?.invalidate(); queueTimer?.invalidate()
         scheduleTimer = Timer.scheduledTimer(withTimeInterval: 5 * 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.runIfDue() }
@@ -444,7 +445,7 @@ final class JobHunt {
         autoHeal()
         guard phase == .idle, !isOpeningChrome, let container, let claude, claude.isReady, !claude.busy,
               let s = settings(in: container.mainContext), s.auto || keepApplying else { return }
-        guard Calendar.current.component(.hour, from: .now) >= s.runHour else { return }
+        guard Calendar.current.component(.hour, from: .now) >= s.runHour else { Task { await fillVideoNotes() }; return }
         if let lastRun, Calendar.current.isDateInToday(lastRun) {
             guard keepApplying, Self.dailyCount("submitted") < s.dailySubmitLimit else { return }
             // Keep applying searches again every few hours once the queue is empty; in between it writes résumés for leads
@@ -453,6 +454,8 @@ final class JobHunt {
                 Task { await run() }
             } else if hasPendingTailoring(container.mainContext, settings: s) {
                 Task { await run(discover: false) }
+            } else {
+                Task { await fillVideoNotes() }   // nothing to apply to: use the quiet time for offline notes
             }
             return
         }
@@ -494,6 +497,49 @@ final class JobHunt {
         processSubmitQueue()
         runIfDue()
     }
+
+    // MARK: offline video notes
+
+    private struct VideoNotesResult: Codable { struct Note: Codable { var id, key_points: String }; var notes: [Note] }
+
+    /// Writes key points for saved videos that have none (up to 6 per call), from each video's own page, so the phone can read
+    /// them on the subway. Runs only while Claude Code is idle; quiet on failure.
+    func fillVideoNotes() async {
+        guard phase == .idle, let container, let claude, claude.isReady, !claude.busy,
+              Date.now.timeIntervalSince(lastVideoNotes) > 1800 else { return }
+        let context = container.mainContext
+        let missing = OfflineLibrary.allVideos(context).filter { $0.keyPoints.isEmpty }.prefix(6)
+        guard !missing.isEmpty else { return }
+        lastVideoNotes = .now
+        claude.busy = true
+        defer { claude.busy = false }
+        let list = missing.map { "- \($0.id) | \($0.title) | \($0.channel) | \($0.watchURL.absoluteString)" }.joined(separator: "\n")
+        let prompt = """
+        For each YouTube video below, open its page with WebFetch and write `key_points`: 3 to 6 short lines, each starting with "- ", \
+        on what the video teaches, taken only from what its page shows (description, chapters, transcript). They are read offline as a \
+        study aid, so be concrete (the technique, the complexity, the pitfall). When the page gives you nothing to go on, return "" for \
+        that video; never guess what a video says. Return one entry per video with its id exactly as given.
+
+        VIDEOS (id | title | channel | url):
+        \(list)
+        """
+        let schema = #"{"type":"object","required":["notes"],"properties":{"notes":{"type":"array","items":{"type":"object","required":["id","key_points"],"properties":{"id":{"type":"string"},"key_points":{"type":"string"}}}}}}"#
+        guard let result = try? await Self.check(VideoNotesResult.self, prompt: prompt, schema: schema, browserFlags: nil, tools: "WebFetch", cwd: nil) else { return }
+        let notes = Dictionary(result.notes.map { ($0.id, $0.key_points.trimmingCharacters(in: .whitespacesAndNewlines)) }, uniquingKeysWith: { a, _ in a })
+        func fill(_ videos: [Video]) -> [Video]? {
+            var changed = false
+            let out = videos.map { v -> Video in
+                guard v.keyPoints.isEmpty, let k = notes[v.id], !k.isEmpty else { return v }
+                changed = true; var m = v; m.keyPoints = k; return m
+            }
+            return changed ? out : nil
+        }
+        for task in (try? context.fetch(FetchDescriptor<PrepTask>())) ?? [] { if let v = fill(task.videos) { task.videos = v } }
+        for problem in (try? context.fetch(FetchDescriptor<Problem>())) ?? [] { if let v = fill(problem.videos) { problem.videos = v } }
+        try? context.save()
+    }
+
+    @ObservationIgnored private var lastVideoNotes: Date = .distantPast
 
     // MARK: remote (the phone asks, the Mac does)
 

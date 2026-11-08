@@ -7,7 +7,7 @@ import Foundation
 enum Learning {
     struct QuizPayload: Codable { let topic: String; let questions: [Question] }
     struct Question: Codable { let question: String; let options: [String]; let answer: Int; let explanation: String; let topic: String }
-    struct VideoPayload: Codable { let url: String?; let id: String?; let title: String; let channel: String; let why: String }
+    struct VideoPayload: Codable { let url: String?; let id: String?; let title: String; let channel: String; let why: String; var key_points: String? = nil }
 
     private struct QuizRequest: Encodable { let mode = "quiz"; let topic: String; let material: String; let count: Int; let now: String; let timezone: String }
     private struct QuizResponse: Decodable { let quiz: QuizPayload?; let error: String? }
@@ -82,7 +82,10 @@ enum Learning {
             Context: \(context)
             Prefer clear explanations from reputable channels. Only include URLs you actually found.
             Reply with ONLY a JSON array, no prose and no code fences:
-            [{"url": "https://www.youtube.com/watch?v=...", "title": "...", "channel": "...", "why": "one sentence on why it helps"}]
+            [{"url": "https://www.youtube.com/watch?v=...", "title": "...", "channel": "...", "why": "one sentence on why it helps", "key_points": "..."}]
+            key_points: open each video's page with WebFetch and write 3 to 6 short lines, one per line starting with "- ", on what \
+            it teaches, taken only from its description, chapters or transcript as the page shows them (I read these offline on the \
+            subway). Leave it "" when the page gives you nothing to go on; never guess what a video says.
             """
             raw = try await claude.runJSON(prompt, tools: "WebSearch WebFetch")
         }
@@ -97,7 +100,7 @@ enum Learning {
         return raw.compactMap { v in
             guard let id = v.id ?? v.url.flatMap(youtubeID), !seen.contains(id) else { return nil }
             seen.insert(id)
-            return Video(id: id, title: v.title, channel: v.channel, why: v.why)
+            return Video(id: id, title: v.title, channel: v.channel, why: v.why, keyPoints: v.key_points ?? "")
         }
     }
 

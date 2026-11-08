@@ -40,7 +40,7 @@ final class AppState {
     var sessionEditor: SessionDraft?
     var showClaude = false
     var claudeTerminal = false          // Claude panel: chat (false) or the real Claude Code terminal (true)
-    var showProfile = false
+    var showProfile = UserDefaults.standard.bool(forKey: "PrepboardOpenProfile")   // launch flag for screenshots
     var showNewPrep = false
     var showPipeline = false             // the full-screen pipeline board
     var huntShowNeedsYou = false         // Hunt opens on its "Needs you" filter (from the Home alerts card)

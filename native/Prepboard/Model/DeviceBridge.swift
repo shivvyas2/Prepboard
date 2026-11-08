@@ -34,6 +34,8 @@ final class DeviceBridge {
         #if DEBUG
         // `-PrepboardBridgeTestCode ABCD…` (16 chars): throwaway code for local testing; never stored.
         if let t = UserDefaults.standard.string(forKey: "PrepboardBridgeTestCode"), t.count == 16 { code = t; return }
+        // Unit tests host the app: never touch the real Keychain there (a debug signature makes macOS wait on an access prompt).
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil { code = Self.newCode(); return }
         #endif
         if let c = Keychain.read(Self.codeKey), c.count == 16 { code = c } else { code = Self.newCode(); Keychain.save(code, Self.codeKey) }
     }
