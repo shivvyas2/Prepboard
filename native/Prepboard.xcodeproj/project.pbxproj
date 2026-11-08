@@ -67,6 +67,7 @@
 		7399CE4F1A4857FA39BEB16B /* Workspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FABD1561F8F6E3CB78CB3FD /* Workspace.swift */; };
 		75F989CCCE7C56055041DF0B /* MacBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC34C8528365ECCD58D9852 /* MacBridge.swift */; };
 		779A3EACAF0495B0D34FBF4B /* GitHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2927B8FFF21E41F481AE774A /* GitHub.swift */; };
+		78A9F686FB981DF6609186E0 /* DemoHunt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 716E90B9C3D4884FBEF65CE2 /* DemoHunt.swift */; };
 		7D87B988C57AE2F5F4B419EB /* LatexBuild.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA5601107F594DF6460E1ADC /* LatexBuild.swift */; };
 		7E1B01F0D9DB36B25A0A7B8F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D5A22B3E3CDDECC8B7D281BA /* Assets.xcassets */; };
 		854E512FCDDBBE633249ED1F /* EssentialsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 863595FE71E5D6B79DB81E8B /* EssentialsView.swift */; };
@@ -74,6 +75,7 @@
 		86D28825F6B7BB5428EECBA5 /* AutoPrepTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DDDB74D549CECCE4DAF192B /* AutoPrepTests.swift */; };
 		88297BEE959A45436DE8FED8 /* SyntaxHighlighter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C91DB912635B8A6592F9B8FA /* SyntaxHighlighter.swift */; };
 		8CB1EC9CF313CDA0D1B16A50 /* WorkspaceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8355BF090C59654C60B520A /* WorkspaceManager.swift */; };
+		90C08C1A2DB004A0E05DD441 /* DemoHunt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 716E90B9C3D4884FBEF65CE2 /* DemoHunt.swift */; };
 		9194350FF0CD45498CD29074 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D5A22B3E3CDDECC8B7D281BA /* Assets.xcassets */; };
 		9258A319E668D1008D056D2F /* LearnViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB8E4C959CF417900DFFC346 /* LearnViews.swift */; };
 		950D12048398F2613E354E8D /* DocOrder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 685D00C62F89689A83DE96E6 /* DocOrder.swift */; };
@@ -172,6 +174,7 @@
 		6E02443C80B213288CCA76C4 /* RolesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RolesView.swift; sourceTree = "<group>"; };
 		6E6DDEB89BA448D6429889B5 /* HuntTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HuntTests.swift; sourceTree = "<group>"; };
 		6FABD1561F8F6E3CB78CB3FD /* Workspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Workspace.swift; sourceTree = "<group>"; };
+		716E90B9C3D4884FBEF65CE2 /* DemoHunt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DemoHunt.swift; sourceTree = "<group>"; };
 		7371BC26EA3E464EB3EA140A /* JobSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JobSync.swift; sourceTree = "<group>"; };
 		7680513B119FE9D73EC93F5B /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		7A551FCD872223FA6A2D310F /* InterviewBrief.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterviewBrief.swift; sourceTree = "<group>"; };
@@ -209,7 +212,7 @@
 		F1011E204D4362832B715B72 /* NewPrepView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewPrepView.swift; sourceTree = "<group>"; };
 		FA38C9ECC0EA87B9053226FD /* WorkspaceViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceViews.swift; sourceTree = "<group>"; };
 		FAC34C8528365ECCD58D9852 /* MacBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacBridge.swift; sourceTree = "<group>"; };
-		"TEMP_EBA55D42-5CC2-4A83-80F8-C213D5DB33B5" /* Prepboard.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Prepboard.xcconfig; sourceTree = "<group>"; };
+		"TEMP_CF3FB7E3-319B-45ED-B83E-40494F437C42" /* Prepboard.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Prepboard.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -322,6 +325,7 @@
 				34D43DFEE11026FB4FA3DB52 /* BrowserServer.swift */,
 				CA84D9C3ECFFFF00DCDB21C1 /* ClaudeCode.swift */,
 				6A4A493B86B1E3BAC90CEF43 /* Cloud.swift */,
+				716E90B9C3D4884FBEF65CE2 /* DemoHunt.swift */,
 				7E6D89C3F190EB4E44310FC5 /* DeviceBridge.swift */,
 				685D00C62F89689A83DE96E6 /* DocOrder.swift */,
 				2927B8FFF21E41F481AE774A /* GitHub.swift */,
@@ -346,10 +350,10 @@
 			path = Model;
 			sourceTree = "<group>";
 		};
-		"TEMP_285E7CD1-9C8A-4980-90DA-2EC309D8B2E4" /* native */ = {
+		"TEMP_758F6841-EF66-417C-8E57-98D769FF0CAE" /* native */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_EBA55D42-5CC2-4A83-80F8-C213D5DB33B5" /* Prepboard.xcconfig */,
+				"TEMP_CF3FB7E3-319B-45ED-B83E-40494F437C42" /* Prepboard.xcconfig */,
 			);
 			path = native;
 			sourceTree = "<group>";
@@ -503,6 +507,7 @@
 				2CC5C178D9E49DAD3A6D580D /* Cloud.swift in Sources */,
 				329DAC5A24BEABCF0EA4C439 /* Components.swift in Sources */,
 				E8C0F0C55171374A3A028D60 /* DashboardView.swift in Sources */,
+				78A9F686FB981DF6609186E0 /* DemoHunt.swift in Sources */,
 				E31797C4DD9505448D921C50 /* DeviceBridge.swift in Sources */,
 				950D12048398F2613E354E8D /* DocOrder.swift in Sources */,
 				57528548A6A157C9F0F5BDBD /* DocumentsView.swift in Sources */,
@@ -564,6 +569,7 @@
 				98A27C8C015DFFF7FC1D5352 /* Cloud.swift in Sources */,
 				ECC11F2A5615B638B3D8078A /* Components.swift in Sources */,
 				2166638E5EA8352CDC98E214 /* DashboardView.swift in Sources */,
+				90C08C1A2DB004A0E05DD441 /* DemoHunt.swift in Sources */,
 				582D199A13C80757F18FD7CE /* DeviceBridge.swift in Sources */,
 				C35869F2EB483F65249B8F61 /* DocOrder.swift in Sources */,
 				D8BC01DD6F66C2135E9C5EFA /* DocumentsView.swift in Sources */,
@@ -635,7 +641,7 @@
 /* Begin XCBuildConfiguration section */
 		10744D7376C93E547E6FC5D0 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_EBA55D42-5CC2-4A83-80F8-C213D5DB33B5" /* Prepboard.xcconfig */;
+			baseConfigurationReference = "TEMP_CF3FB7E3-319B-45ED-B83E-40494F437C42" /* Prepboard.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -670,7 +676,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -687,7 +693,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = PrepBoard;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.13;
+				MARKETING_VERSION = 1.14;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -817,7 +823,7 @@
 		};
 		DFD456A3EE378308373DEC56 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_EBA55D42-5CC2-4A83-80F8-C213D5DB33B5" /* Prepboard.xcconfig */;
+			baseConfigurationReference = "TEMP_CF3FB7E3-319B-45ED-B83E-40494F437C42" /* Prepboard.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -852,7 +858,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -875,7 +881,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = PrepBoard;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.13;
+				MARKETING_VERSION = 1.14;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

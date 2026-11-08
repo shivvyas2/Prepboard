@@ -36,6 +36,10 @@ struct PrepboardApp: App {
             try? Transfer.importData(data, into: container.mainContext, replace: true)
         }
         DocOrder.normalize(container.mainContext)
+        #if DEBUG
+        // `-PrepboardPreview YES -PrepboardDemoHunt YES`: sample roles for screenshots of the Hunt screens (in-memory store only).
+        if CloudConfig.isPreview, UserDefaults.standard.bool(forKey: "PrepboardDemoHunt") { DemoHunt.seed(container.mainContext) }
+        #endif
     }
 
     var body: some Scene {

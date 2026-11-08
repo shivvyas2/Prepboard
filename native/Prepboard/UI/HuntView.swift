@@ -18,8 +18,10 @@ struct HuntView: View {
             VStack(alignment: .leading, spacing: PB.s4) {
                 header
                 #if os(macOS)
-                if let settings { HuntRunCard(settings: settings) }
+                if let settings { HuntRunCard(settings: settings, leads: leads, openSettings: { showSettings = true }) }
                 HuntBrowserCard()
+                #else
+                if let settings, !Self.cardsOnly { MacRemoteCard(settings: settings, leads: leads, openSettings: { showSettings = true }) }
                 #endif
                 if leads.isEmpty {
                     emptyState
@@ -40,7 +42,8 @@ struct HuntView: View {
                     group("Needs another try", items(.failed))
                     group("In progress", leads.filter { filter.includes($0) && [.new, .tailoring, .submitting].contains($0.status) })
                     group("Submitted", items(.submitted))
-                    group("Skipped", items(.skipped), collapsed: filter == .all && !showSkipped) {
+                    group("Apply by hand", leads.filter { $0.isByHand && filter.includes($0) })
+                    group("Skipped", items(.skipped).filter { !$0.isByHand }, collapsed: filter == .all && !showSkipped) {
                         if filter == .all {
                             Button(showSkipped ? "Hide" : "Show") { showSkipped.toggle() }
                                 .buttonStyle(PillButtonStyle(filled: false, compact: true))
@@ -70,16 +73,22 @@ struct HuntView: View {
                 Button { showSettings = true } label: { Label("Settings", systemImage: "slider.horizontal.3") }
                     .buttonStyle(PillButtonStyle(filled: false, compact: true))
             }
-            #if os(iOS)
-            Label("Your Mac finds roles and submits what you queue here.", systemImage: "desktopcomputer")
-                .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
-            #endif
         }
     }
 
-    private var filters: some View {
-        VStack(alignment: .leading, spacing: PB.s2) {
-            FlowLayout(spacing: PB.s2) {
+    @ViewBuilder private var filters: some View {
+        #if os(iOS)
+        // One swipeable row on a phone instead of chips wrapping over three lines.
+        ScrollView(.horizontal) { HStack(spacing: PB.s2) { filterChips } }
+            .scrollIndicators(.hidden)
+            .padding(.horizontal, -PB.s4).contentMargins(.horizontal, PB.s4, for: .scrollContent)
+        #else
+        FlowLayout(spacing: PB.s2) { filterChips }
+        #endif
+    }
+
+    private var filterChips: some View {
+        Group {
                 ForEach(HuntFilter.allCases) { item in
                     Button { filter = item } label: {
                         HStack(spacing: PB.s2) {
@@ -102,7 +111,6 @@ struct HuntView: View {
                     .accessibilityLabel("\(item.rawValue), \(leads.filter(item.includes).count) roles")
                     .accessibilityAddTraits(filter == item ? [.isSelected] : [])
                 }
-            }
         }
     }
 
@@ -118,6 +126,14 @@ struct HuntView: View {
     }
 
     private var settings: HuntSettings? { settingsRows.first }
+    /// Screenshot aid: `-PrepboardHuntCardsOnly YES` in debug builds starts the list at the role cards.
+    private static var cardsOnly: Bool {
+        #if DEBUG
+        UserDefaults.standard.bool(forKey: "PrepboardHuntCardsOnly")
+        #else
+        false
+        #endif
+    }
 
     /// Home's "Needs you" card sends the user here on the right filter, or straight into the Answer Bank.
     private func openFromHome() {
@@ -148,7 +164,7 @@ struct HuntView: View {
 }
 
 private enum HuntFilter: String, CaseIterable, Identifiable {
-    case all = "All", review = "Review", needsYou = "Needs you", active = "In progress", submitted = "Submitted", skipped = "Skipped"
+    case all = "All", review = "Review", needsYou = "Needs you", active = "In progress", submitted = "Submitted", byHand = "By hand", skipped = "Skipped"
     var id: String { rawValue }
 
     func includes(_ lead: Lead) -> Bool {
@@ -158,7 +174,8 @@ private enum HuntFilter: String, CaseIterable, Identifiable {
         case .needsYou: [.needsYou, .failed].contains(lead.status)
         case .active: [.new, .tailoring, .submitting].contains(lead.status)
         case .submitted: lead.status == .submitted
-        case .skipped: lead.status == .skipped
+        case .byHand: lead.isByHand
+        case .skipped: lead.status == .skipped && !lead.isByHand
         }
     }
 
@@ -169,6 +186,7 @@ private enum HuntFilter: String, CaseIterable, Identifiable {
         case .needsYou: "No applications need your input right now."
         case .active: "No applications are being prepared or submitted right now."
         case .submitted: "Applications you’ve sent will appear here, with a link to track each role."
+        case .byHand: "Roles whose site needs an account or an assessment land here, so you can apply to them yourself."
         case .skipped: "Roles you skip will stay here for reference."
         }
     }
@@ -190,6 +208,10 @@ struct LeadCard: View {
     #endif
     @State private var showPDF = false
     @State private var showEditor = false
+    @State private var showDetails = false
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    #endif
 
     var body: some View {
         VStack(alignment: .leading, spacing: PB.s3) {
@@ -201,17 +223,89 @@ struct LeadCard: View {
                 if !lead.location.isEmpty { Text(lead.location).font(.system(size: 12)).foregroundStyle(PB.muted) }
             }
             FlowLayout(spacing: PB.s2) {
-                Chip(text: "Score \(lead.score)", style: lead.score >= 80 ? .dark : .plain)
+                Chip(text: "Match \(lead.score)", style: lead.score >= 80 ? .dark : .plain)
                 Chip(text: sourceName)
                 if let s = statusLabel { Chip(text: s, style: lead.status == .failed ? .red : .plain) }
+                if let k = lead.keywordScore { QualityBadge(icon: "text.magnifyingglass", text: "Keywords \(k)%", good: k >= 80) }
+                if let ats = lead.atsIssues {
+                    QualityBadge(icon: ats.isEmpty ? "checkmark.seal" : "exclamationmark.triangle",
+                                 text: ats.isEmpty ? "ATS ready" : "ATS: \(ats.count) issue\(ats.count == 1 ? "" : "s")", good: ats.isEmpty)
+                        .help(ats.isEmpty ? "The PDF's text parses cleanly: contact details, standard headings, one date format." : ats.joined(separator: "\n"))
+                }
             }
+            if compact {
+                // On a phone the why-it-matches detail folds away, so a card is one glance and one tap.
+                DisclosureGroup(isExpanded: $showDetails) {
+                    VStack(alignment: .leading, spacing: PB.s3) {
+                        matchDetails
+                        if ![.submitted, .submitting, .skipped].contains(lead.status) { choices }
+                    }
+                    .padding(.top, PB.s2)
+                } label: {
+                    Text(lead.status == .submitted || lead.status == .skipped ? "Details" : "Details and choices for this role")
+                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(PB.ink2)
+                }
+                .tint(PB.ink2)
+            } else if !lead.scoreReason.isEmpty {
+                Text(lead.scoreReason).font(.system(size: 13)).foregroundStyle(PB.ink2).fixedSize(horizontal: false, vertical: true)
+            }
+            if !lead.displayReason.isEmpty {
+                Text(lead.displayReason).font(.system(size: 12)).foregroundStyle(lead.status == .failed ? PB.red : PB.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if !compact { matchDetailsBody }
+            if !lead.flagged.isEmpty {
+                VStack(alignment: .leading, spacing: PB.s1) {
+                    ForEach(lead.flagged.split(separator: "\n").map(String.init), id: \.self) { line in
+                        Text(line).font(.system(size: 12)).foregroundStyle(PB.red).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            if !compact, ![.submitted, .submitting, .skipped].contains(lead.status) { choices }
+            answers
+            if let reviewHint {
+                Label(reviewHint, systemImage: lead.submitRequested ? "clock" : "checklist")
+                    .font(.system(size: 12)).foregroundStyle(PB.ink2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(PB.s3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: PB.rMD).fill(PB.cobaltSoft))
+            }
+            if compact { compactActions } else { actions }
+        }
+        .padding(PB.s4)
+        .padding(.leading, PB.s1)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: PB.rLG, style: .continuous).fill(PB.surface))
+        .overlay(alignment: .leading) {
+            // Status at a glance: cobalt ready, orange needs you, red failed, green sent.
+            Capsule().fill(accent).frame(width: 4).padding(.vertical, PB.s4).padding(.leading, 6)
+        }
+        .overlay(RoundedRectangle(cornerRadius: PB.rLG, style: .continuous).strokeBorder(PB.line))
+        .sheet(isPresented: $showPDF) { if let pdfDoc { ResumeSheet(doc: pdfDoc) } }
+        #if os(macOS)
+        .sheet(isPresented: $showEditor) { ResumeEditorSheet(lead: lead) }
+        #endif
+    }
+
+    private var compact: Bool {
+        #if os(iOS)
+        sizeClass == .compact
+        #else
+        false
+        #endif
+    }
+
+    private var matchDetails: some View {
+        VStack(alignment: .leading, spacing: PB.s3) {
             if !lead.scoreReason.isEmpty {
                 Text(lead.scoreReason).font(.system(size: 13)).foregroundStyle(PB.ink2).fixedSize(horizontal: false, vertical: true)
             }
-            if !lead.reason.isEmpty {
-                Text(lead.reason).font(.system(size: 12)).foregroundStyle(lead.status == .failed ? PB.red : PB.muted)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            matchDetailsBody
+        }
+    }
+
+    @ViewBuilder private var matchDetailsBody: some View {
             if !lead.baseVariant.isEmpty {
                 VStack(alignment: .leading, spacing: PB.s1) {
                     Text("Based on \(lead.baseVariant)").font(.system(size: 12, weight: .medium)).fixedSize(horizontal: false, vertical: true)
@@ -226,33 +320,17 @@ struct LeadCard: View {
                     ForEach(Array(coverage.enumerated()), id: \.offset) { Chip(text: $0.element.term, style: $0.element.covered ? .dark : .plain) }
                 }
             }
-            if !lead.flagged.isEmpty {
-                VStack(alignment: .leading, spacing: PB.s1) {
-                    ForEach(lead.flagged.split(separator: "\n").map(String.init), id: \.self) { line in
-                        Text(line).font(.system(size: 12)).foregroundStyle(PB.red).fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-            }
-            if ![.submitted, .submitting, .skipped].contains(lead.status) { choices }
-            answers
-            if let reviewHint {
-                Label(reviewHint, systemImage: lead.submitRequested ? "clock" : "checklist")
-                    .font(.system(size: 12)).foregroundStyle(PB.ink2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(PB.s3)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: PB.rMD).fill(PB.cobaltSoft))
-            }
-            actions
+    }
+
+    private var accent: Color {
+        switch lead.status {
+        case .ready: PB.cobalt
+        case .needsYou: PB.sun
+        case .failed: PB.red
+        case .submitted: PB.green
+        case .tailoring, .submitting, .new: PB.cobalt.opacity(0.4)
+        default: PB.line2
         }
-        .padding(PB.s4)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: PB.rLG, style: .continuous).fill(PB.surface))
-        .overlay(RoundedRectangle(cornerRadius: PB.rLG, style: .continuous).strokeBorder(PB.line))
-        .sheet(isPresented: $showPDF) { if let pdfDoc { ResumeSheet(doc: pdfDoc) } }
-        #if os(macOS)
-        .sheet(isPresented: $showEditor) { ResumeEditorSheet(lead: lead) }
-        #endif
     }
 
     /// This role's own decisions; each overrides the Answer Bank for this application only.
@@ -422,6 +500,60 @@ struct LeadCard: View {
         .padding(.top, PB.s1)
     }
 
+    /// Phone layout: the one thing to do next as a full-width button, everything else in a menu.
+    private var compactActions: some View {
+        HStack(spacing: PB.s2) {
+            let suggested = lead.suggestedCount
+            Group {
+                if suggested > 0, [.ready, .needsYou].contains(lead.status), !lead.submitRequested {
+                    wide(suggested == 1 ? "Approve and apply" : "Approve \(suggested) and apply") {
+                        lead.approveSuggestions(); if lead.canSubmit { submit() }
+                    }
+                } else if [.ready, .needsYou].contains(lead.status), !lead.submitRequested {
+                    wide("Apply from my Mac", action: submit).disabled(!lead.canSubmit)
+                } else if lead.submitRequested {
+                    wide("Queued · tap to cancel") { lead.submitRequested = false; lead.updatedAt = .now }
+                } else if lead.status == .submitted, !lead.roleId.isEmpty {
+                    wide("Open role") { app.openRole(lead.roleId) }
+                } else if lead.status == .failed {
+                    wide("Try again") { rewrite() }
+                } else if pdfDoc != nil {
+                    wide("Review résumé") { showPDF = true }
+                } else {
+                    Spacer(minLength: 0)
+                }
+            }
+            .buttonStyle(PillButtonStyle())
+            Menu {
+                if pdfDoc != nil { Button("Review résumé", systemImage: "doc.text") { showPDF = true } }
+                if let url = URL(string: lead.link), !lead.link.isEmpty { Button("Open posting", systemImage: "safari") { openURL(url) } }
+                if ![.submitted, .submitting, .tailoring].contains(lead.status) {
+                    Button("Rewrite résumé on my Mac", systemImage: "arrow.clockwise") { rewrite() }
+                }
+                if ![.submitted, .submitting, .skipped].contains(lead.status) {
+                    Button("Skip", systemImage: "xmark", role: .destructive) {
+                        lead.status = .skipped; lead.reason = "Skipped by you"; lead.submitRequested = false; lead.updatedAt = .now
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis").font(.system(size: 17, weight: .semibold)).frame(width: 48, height: 48)
+                    .background(Circle().fill(PB.card)).overlay(Circle().strokeBorder(PB.line2))
+            }
+            .accessibilityLabel("More actions")
+        }
+        .padding(.top, PB.s1)
+    }
+
+    private func wide(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { Text(title).frame(maxWidth: .infinity) }
+    }
+
+    /// Sends the role back to the Mac to write its résumé again (Keep applying picks up new roles between searches).
+    private func rewrite() {
+        lead.status = .new; lead.submitRequested = false; lead.flagged = ""; lead.reason = "Waiting for your Mac to write the résumé"
+        lead.updatedAt = .now
+    }
+
     private var reviewHint: String? {
         guard [.ready, .needsYou].contains(lead.status) else { return nil }
         if lead.submitRequested { return "Your Mac will submit this when Claude is available. You can cancel while it’s queued." }
@@ -478,6 +610,18 @@ struct LeadCard: View {
         case .skipped: "Skipped"
         case .failed: "Failed"
         }
+    }
+}
+
+/// A résumé quality mark on a lead: green when it passes, orange when it needs a look.
+private struct QualityBadge: View {
+    let icon: String, text: String, good: Bool
+    var body: some View {
+        Label(text, systemImage: icon)
+            .font(.system(size: 11, weight: .semibold))
+            .padding(.horizontal, 10).padding(.vertical, 4)
+            .foregroundStyle(good ? PB.green : PB.sunInk)
+            .background(RoundedRectangle(cornerRadius: 8).fill(good ? PB.greenSoft : PB.sunSoft))
     }
 }
 
@@ -642,50 +786,82 @@ struct HuntSettingsSheet: View {
                               systemImage: "exclamationmark.circle")
                             .font(.system(size: 12)).foregroundStyle(PB.sunInk).fixedSize(horizontal: false, vertical: true)
                     }
-                    sponsorshipRow
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: PB.s3)], alignment: .leading, spacing: PB.s3) {
-                        PBTextField(label: "Full name", text: bank(\.fullName))
-                        PBTextField(label: "Email", text: bank(\.email))
-                        PBTextField(label: "Phone", text: bank(\.phone))
-                        PBTextField(label: "City", text: bank(\.city))
-                        PBTextField(label: "LinkedIn", text: bank(\.linkedin))
-                        PBTextField(label: "GitHub", text: bank(\.github))
-                        PBTextField(label: "Portfolio", text: bank(\.portfolio))
-                        PBTextField(label: "Résumé link (blank = portfolio)", text: bank(\.resumeLink))
-                        if settings.answerBank.status == nil || settings.answerBank.status == .other {
-                            PBTextField(label: "Work authorization", text: bank(\.workAuthorization))
-                            PBTextField(label: "Citizenship / immigration status", text: bank(\.citizenship))
+                    bankGroup("Contact", icon: "person.crop.circle") {
+                        grid {
+                            PBTextField(label: "Full name", text: bank(\.fullName))
+                            PBTextField(label: "Email", text: bank(\.email))
+                            PBTextField(label: "Phone", text: bank(\.phone))
+                            PBTextField(label: "LinkedIn", text: bank(\.linkedin))
+                            PBTextField(label: "GitHub", text: bank(\.github))
+                            PBTextField(label: "Portfolio", text: bank(\.portfolio))
+                            PBTextField(label: "Résumé link (blank = portfolio)", text: bank(\.resumeLink))
                         }
-                        if settings.answerBank.status != nil && settings.answerBank.status != .citizen {
-                            PBTextField(label: "Country of citizenship", text: bank(\.citizenshipCountry))
-                            PBTextField(label: "Work authorization valid until (EAD end)", text: bank(\.eadExpiry))
-                        }
-                        PBTextField(label: "Start date", text: bank(\.startDate))
-                        PBTextField(label: "Relocation (Yes / No / Open to it)", text: bank(\.relocation))
-                        PBTextField(label: "Salary expectation", text: bank(\.salary))
-                        PBTextField(label: "Gender", text: bank(\.gender))
-                        PBTextField(label: "Race / ethnicity", text: bank(\.race))
-                        PBTextField(label: "Veteran status", text: bank(\.veteran))
-                        PBTextField(label: "Disability status", text: bank(\.disability))
-                        PBTextField(label: "How did you hear about us", text: bank(\.referralSource))
                     }
-                    if [\AnswerBank.gender, \.race, \.veteran, \.disability].contains(where: { settings.answerBank[keyPath: $0].isEmpty }) {
-                        Text("Empty voluntary self-identification fields are answered \u{201C}Decline to self-identify\u{201D}. Fill them in to answer every form the same way.")
+                    bankGroup("Where you live", icon: "mappin.and.ellipse") {
+                        grid {
+                            PBTextField(label: "City (e.g. Jersey City)", text: bank(\.city))
+                            PBTextField(label: "State", text: bank(\.state))
+                            PBTextField(label: "Zip code", text: bank(\.zipCode))
+                            PBTextField(label: "Country (blank = United States)", text: bank(\.country))
+                            PBTextField(label: "Relocation (Yes / No / Open to it)", text: bank(\.relocation))
+                        }
+                    }
+                    bankGroup("Work status", icon: "checkmark.shield") {
+                        sponsorshipRow
+                        grid {
+                            if settings.answerBank.status == nil || settings.answerBank.status == .other {
+                                PBTextField(label: "Work authorization", text: bank(\.workAuthorization))
+                                PBTextField(label: "Citizenship / immigration status", text: bank(\.citizenship))
+                            }
+                            if settings.answerBank.status != nil && settings.answerBank.status != .citizen {
+                                PBTextField(label: "Country of citizenship", text: bank(\.citizenshipCountry))
+                                PBTextField(label: "Work authorization valid until (EAD end)", text: bank(\.eadExpiry))
+                            }
+                        }
+                    }
+                    bankGroup("Availability and pay", icon: "calendar") {
+                        grid {
+                            PBTextField(label: "Start date", text: bank(\.startDate))
+                            PBTextField(label: "Salary expectation (blank = leave blank)", text: bank(\.salary))
+                            PBTextField(label: "How did you hear about us", text: bank(\.referralSource))
+                        }
+                    }
+                    bankGroup("Screening questions", icon: "questionmark.bubble") {
+                        Text("Answered for you: privacy notices are acknowledged, SMS and marketing declined, \u{201C}18 or older\u{201D} and \u{201C}essential functions\u{201D} Yes, \u{201C}worked here before\u{201D} checked against your work history.")
+                            .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
+                        PBTextField(label: "Companies where a relative works, one per line (blank = none)", text: bank(\.relatives), axis: .vertical)
+                    }
+                    bankGroup("Voluntary self-identification", icon: "person.2") {
+                        grid {
+                            PBTextField(label: "Gender", text: bank(\.gender))
+                            PBTextField(label: "Pronouns", text: bank(\.pronouns))
+                            PBTextField(label: "Race / ethnicity", text: bank(\.race))
+                            PBTextField(label: "Veteran status", text: bank(\.veteran))
+                            PBTextField(label: "Disability status", text: bank(\.disability))
+                        }
+                        Text("Anything left empty, and questions on gender identity or sexual orientation, is answered \u{201C}Decline to self-identify\u{201D}.")
                             .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
                     }
-                    Text("Education and work").font(.system(size: 13, weight: .semibold)).padding(.top, PB.s2)
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: PB.s3)], alignment: .leading, spacing: PB.s3) {
-                        PBTextField(label: "School", text: bank(\.school))
-                        PBTextField(label: "Degree", text: bank(\.degree))
-                        PBTextField(label: "Major", text: bank(\.major))
-                        PBTextField(label: "Graduation", text: bank(\.graduation))
-                        PBTextField(label: "GPA", text: bank(\.gpa))
-                        PBTextField(label: "Current employer", text: bank(\.currentEmployer))
-                        PBTextField(label: "Current title", text: bank(\.currentTitle))
-                        PBTextField(label: "Years of experience", text: bank(\.yearsExperience))
+                    bankGroup("Education and work", icon: "graduationcap") {
+                        ForEach(settings.answerBank.historyConflicts, id: \.self) { issue in
+                            Label(issue, systemImage: "exclamationmark.triangle").font(.system(size: 12)).foregroundStyle(PB.sunInk)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        grid {
+                            PBTextField(label: "School", text: bank(\.school))
+                            PBTextField(label: "Degree", text: bank(\.degree))
+                            PBTextField(label: "Major", text: bank(\.major))
+                            PBTextField(label: "Graduation", text: bank(\.graduation))
+                            PBTextField(label: "GPA", text: bank(\.gpa))
+                            PBTextField(label: "Current employer", text: bank(\.currentEmployer))
+                            PBTextField(label: "Current title", text: bank(\.currentTitle))
+                            PBTextField(label: "Years of experience", text: bank(\.yearsExperience))
+                        }
+                        PBTextField(label: "Education history, one per line: School | Degree, Major | Start – End | GPA", text: bank(\.education), axis: .vertical)
+                        PBTextField(label: "Employment history, one per line: Company | Title | Location | Start – End", text: bank(\.employment), axis: .vertical)
+                        Text("Résumés use these titles and dates exactly, so keep them the way you want every application to read.")
+                            .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
                     }
-                    PBTextField(label: "Education history, one per line", text: bank(\.education), axis: .vertical)
-                    PBTextField(label: "Employment history, one per line", text: bank(\.employment), axis: .vertical)
                     if !settings.answerBank.saved.isEmpty {
                         Text("Saved answers (\(settings.answerBank.saved.count)): reused when a form asks the same question.")
                             .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
@@ -795,6 +971,22 @@ struct HuntSettingsSheet: View {
     private func bank(_ kp: WritableKeyPath<AnswerBank, String>) -> Binding<String> {
         Binding(get: { settings.answerBank[keyPath: kp] },
                 set: { value in var b = settings.answerBank; b[keyPath: kp] = value; settings.answerBank = b })
+    }
+
+    /// One labelled group inside the Answer Bank.
+    private func bankGroup<C: View>(_ title: String, icon: String, @ViewBuilder content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: PB.s3) {
+            Label(title, systemImage: icon).font(.system(size: 13, weight: .semibold)).foregroundStyle(PB.ink)
+            content()
+        }
+        .padding(PB.s4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: PB.rMD).fill(PB.surface))
+        .overlay(RoundedRectangle(cornerRadius: PB.rMD).strokeBorder(PB.line))
+    }
+
+    private func grid<C: View>(@ViewBuilder _ content: () -> C) -> some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: PB.s3)], alignment: .leading, spacing: PB.s3, content: content)
     }
 
     private func section<C: View>(_ title: String, @ViewBuilder content: () -> C) -> some View {
@@ -1192,6 +1384,8 @@ final class HuntWebViewContainer: NSView {
 /// Hunt status, the daily schedule and the manual controls (like JobSyncCard).
 struct HuntRunCard: View {
     @Bindable var settings: HuntSettings
+    let leads: [Lead]
+    var openSettings: () -> Void = {}
     @Environment(JobHunt.self) private var hunt
     @Environment(ClaudeCode.self) private var claude
     @AppStorage(HuntPrefs.keepApplyingKey) private var keepApplying = false
@@ -1201,21 +1395,29 @@ struct HuntRunCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: PB.s4) {
             HStack(alignment: .top, spacing: PB.s3) {
+                Circle().fill(stateColor).frame(width: 10, height: 10).padding(.top, 6)
+                    .overlay(Circle().stroke(stateColor.opacity(0.25), lineWidth: hunt.isRunning ? 6 : 0).padding(.top, 6))
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: PB.s1) {
-                    Text(keepApplying ? "Applying for you" : "Daily hunt")
-                        .font(.system(size: 16, weight: .semibold))
+                    Text(headline).font(.system(size: 17, weight: .semibold))
                     Text(status).font(.system(size: 13)).foregroundStyle(hunt.error == nil || hunt.isRunning ? PB.ink2 : PB.red)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 0)
                 if hunt.isRunning { ProgressView().controlSize(.small) }
             }
+            pipeline
+            if !setupIssues.isEmpty { setupChecklist }
+            HStack(spacing: PB.s4) {
+                meter("Résumés today", hunt.tailoredToday, settings.dailyTailorLimit)
+                meter("Applications today", hunt.submittedToday, settings.dailySubmitLimit)
+            }
             FlowLayout(spacing: PB.s2) {
                 if !claude.isReady {
                     Button("Connect Claude") { app.showProfile = true }.buttonStyle(PillButtonStyle(compact: true))
                 } else {
                     Button { Task { await hunt.run() } } label: {
-                        Label(hunt.isRunning ? "Hunt running…" : "Find roles", systemImage: "magnifyingglass")
+                        Label(hunt.isRunning ? "Hunt running…" : "Find roles now", systemImage: "magnifyingglass")
                     }
                     .buttonStyle(PillButtonStyle(compact: true))
                     .disabled(hunt.isRunning || claude.busy || hunt.isOpeningChrome)
@@ -1223,23 +1425,91 @@ struct HuntRunCard: View {
                 Button("Rescan résumés") { hunt.rescan() }.buttonStyle(PillButtonStyle(filled: false, compact: true))
                     .disabled(hunt.isRunning)
             }
-            FlowLayout(spacing: PB.s3) {
+            Divider()
+            FlowLayout(spacing: PB.s4) {
+                Toggle("Keep applying on its own", isOn: $keepApplying).toggleStyle(CheckboxToggleStyle(labeled: true))
+                    .onChange(of: keepApplying) { hunt.keepApplyingChanged() }
+                    .help("Searches every few hours, writes and checks résumés, answers routine questions, retries what failed for a passing reason and submits within your daily limits. PrepBoard opens at login so it keeps going.")
                 HStack(spacing: PB.s2) {
-                    Toggle("Daily search", isOn: $settings.auto).toggleStyle(CheckboxToggleStyle(labeled: true))
+                    Toggle("Daily search at", isOn: $settings.auto).toggleStyle(CheckboxToggleStyle(labeled: true))
                     Picker("Daily search time", selection: $settings.runHour) {
                         ForEach(0..<24, id: \.self) { Text(TimeFmt.hour($0)).tag($0) }
                     }
                     .labelsHidden().pickerStyle(.menu).fixedSize()
                 }
-                Toggle("Keep applying", isOn: $keepApplying).toggleStyle(CheckboxToggleStyle(labeled: true))
-                    .onChange(of: keepApplying) { hunt.keepApplyingChanged() }
-                Text("\(hunt.tailoredToday) / \(settings.dailyTailorLimit) prepared today")
-                    .font(.system(size: 12)).foregroundStyle(PB.muted)
-                Text("\(hunt.submittedToday) / \(settings.dailySubmitLimit) submitted today")
-                    .font(.system(size: 12)).foregroundStyle(PB.muted)
             }
         }
         .pbCard(padding: PB.s4)
+    }
+
+    private var stateColor: Color {
+        if hunt.isPaused { return PB.sun }
+        if hunt.error != nil && !hunt.isRunning { return PB.red }
+        if hunt.isRunning || keepApplying { return PB.green }
+        return PB.line2
+    }
+
+    private var headline: String {
+        if hunt.isPaused { return "Paused" }
+        if hunt.isRunning { return keepApplying ? "Applying for you" : "Working" }
+        return keepApplying ? "Applying for you" : "Daily hunt"
+    }
+
+    /// Where every role is, left to right in the order they move.
+    private var pipeline: some View {
+        let stages: [(String, Int, Color)] = [
+            ("Preparing", leads.filter { [.new, .tailoring].contains($0.status) }.count, PB.cobalt.opacity(0.5)),
+            ("Ready", leads.filter { $0.status == .ready && !$0.submitRequested }.count, PB.cobalt),
+            ("Applying", leads.filter { $0.status == .submitting || $0.status == .ready && $0.submitRequested }.count, PB.cobalt),
+            ("Applied", leads.filter { $0.status == .submitted }.count, PB.green),
+            ("Needs you", leads.filter { [.needsYou, .failed].contains($0.status) }.count, PB.sun),
+            ("By hand", leads.filter(\.isByHand).count, PB.muted),
+        ]
+        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: PB.s2)], alignment: .leading, spacing: PB.s2) {
+            ForEach(stages, id: \.0) { name, count, color in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(count)").font(.system(size: 22, weight: .bold, design: .rounded)).foregroundStyle(count == 0 ? PB.muted : PB.ink)
+                    HStack(spacing: 4) {
+                        Circle().fill(color).frame(width: 6, height: 6)
+                        Text(name).font(.system(size: 11, weight: .semibold)).foregroundStyle(PB.ink2).lineLimit(1)
+                    }
+                }
+                .padding(.horizontal, PB.s3).padding(.vertical, PB.s2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: PB.rMD).fill(PB.surface))
+                .accessibilityElement(children: .combine)
+            }
+        }
+    }
+
+    private var setupIssues: [String] { settings.answerBank.setupIssues }
+
+    private var setupChecklist: some View {
+        VStack(alignment: .leading, spacing: PB.s2) {
+            HStack {
+                Label("Finish setup so nothing stops for you", systemImage: "checklist").font(.system(size: 13, weight: .semibold))
+                Spacer(minLength: 0)
+                Button("Open Answer Bank", action: openSettings).buttonStyle(PillButtonStyle(filled: false, compact: true))
+            }
+            ForEach(setupIssues, id: \.self) { issue in
+                Label(issue, systemImage: "circle").font(.system(size: 12)).foregroundStyle(PB.ink2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(PB.s3)
+        .background(RoundedRectangle(cornerRadius: PB.rMD).fill(PB.sunSoft))
+    }
+
+    private func meter(_ label: String, _ done: Int, _ limit: Int) -> some View {
+        VStack(alignment: .leading, spacing: PB.s1) {
+            HStack {
+                Text(label).font(.system(size: 12, weight: .medium)).foregroundStyle(PB.ink2)
+                Spacer(minLength: 0)
+                Text("\(done) / \(limit)").font(.system(size: 12, weight: .semibold, design: .monospaced)).foregroundStyle(PB.muted)
+            }
+            ProgressBar(value: limit > 0 ? min(1, Double(done) / Double(limit)) : 0)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var status: String {
@@ -1261,6 +1531,140 @@ struct HuntRunCard: View {
         if claude.busy { return "Claude is working on another task. You can start a search when it finishes." }
         guard let last = hunt.lastRun else { return "Find matching roles and prepare a tailored résumé for each one." }
         return "Last run \(last.formatted(.relative(presentation: .named)))" + (hunt.lastSummary.map { " · \($0)" } ?? "")
+    }
+}
+#endif
+
+#if os(iOS)
+/// The phone's control panel for the Mac that applies: what the Mac is doing, where every role is, and the few things worth doing
+/// on the go. The Mac runs Claude Code; these buttons only send requests through sync, and the Mac picks them up within a minute.
+struct MacRemoteCard: View {
+    @Bindable var settings: HuntSettings
+    let leads: [Lead]
+    var openSettings: () -> Void = {}
+    @Environment(\.modelContext) private var context
+
+    var body: some View {
+        let remote = settings.answerBank.remote
+        let online = remote.macOnline()
+        VStack(alignment: .leading, spacing: PB.s4) {
+            HStack(alignment: .top, spacing: PB.s3) {
+                Image(systemName: "desktopcomputer").font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(online ? PB.cobalt : PB.muted)
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(online ? PB.cobaltSoft : PB.surface))
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Circle().fill(dot(remote, online)).frame(width: 8, height: 8)
+                        Text(online ? (remote.macKeepApplying ? "Your Mac is applying" : "Your Mac is connected") : "Your Mac is offline")
+                            .font(.system(size: 16, weight: .semibold))
+                    }
+                    Text(online ? remote.macStatus : offlineText(remote)).font(.system(size: 13)).foregroundStyle(PB.ink2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let seen = remote.macSeen {
+                        Text("Updated \(seen.formatted(.relative(presentation: .named)))").font(.system(size: 11)).foregroundStyle(PB.muted)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            counts
+            if !settings.answerBank.setupIssues.isEmpty {
+                Button(action: openSettings) {
+                    HStack {
+                        Label("\(settings.answerBank.setupIssues.count) thing\(settings.answerBank.setupIssues.count == 1 ? "" : "s") to finish in your Answer Bank",
+                              systemImage: "checklist")
+                            .font(.system(size: 13, weight: .semibold))
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundStyle(PB.sunInk)
+                    .padding(PB.s3).frame(minHeight: 44)
+                    .background(RoundedRectangle(cornerRadius: PB.rMD).fill(PB.sunSoft))
+                }
+                .buttonStyle(.plain)
+            }
+            let ready = leads.filter { $0.status == .ready && !$0.submitRequested && $0.canSubmit }
+            if !ready.isEmpty {
+                Button { applyAll(ready) } label: {
+                    Label(ready.count == 1 ? "Apply to the ready role from my Mac" : "Apply to all \(ready.count) ready roles from my Mac", systemImage: "paperplane.fill").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PillButtonStyle())
+            }
+            HStack(spacing: PB.s2) {
+                Button { requestRun() } label: {
+                    Label(runPending(remote) ? "Asked your Mac…" : "Find roles now", systemImage: "magnifyingglass").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PillButtonStyle(filled: false))
+                .disabled(runPending(remote))
+            }
+            Toggle(isOn: Binding(get: { remote.keepApplying ?? remote.macKeepApplying }, set: { setKeepApplying($0) })) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Keep applying on its own").font(.system(size: 15, weight: .semibold))
+                    let sending = remote.keepApplying != nil && remote.keepApplying != remote.macKeepApplying
+                    Text(sending ? "Sending to your Mac…" : "Your Mac finds roles, writes résumés and applies within your daily limits.")
+                        .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .tint(PB.cobalt)
+            .frame(minHeight: 44)
+        }
+        .pbCard(padding: PB.s4)
+    }
+
+    private var counts: some View {
+        let items: [(String, Int, Color)] = [
+            ("Preparing", leads.filter { [.new, .tailoring].contains($0.status) }.count, PB.cobalt.opacity(0.5)),
+            ("Applying", leads.filter { $0.status == .submitting || $0.status == .ready && $0.submitRequested }.count, PB.cobalt),
+            ("Applied", leads.filter { $0.status == .submitted }.count, PB.green),
+            ("Ready", leads.filter { $0.status == .ready && !$0.submitRequested }.count, PB.cobalt),
+            ("Needs you", leads.filter { [.needsYou, .failed].contains($0.status) }.count, PB.sun),
+            ("By hand", leads.filter(\.isByHand).count, PB.muted),
+        ]
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: PB.s2), count: 3), spacing: PB.s2) {
+            ForEach(items, id: \.0) { name, count, color in
+                VStack(spacing: 2) {
+                    Text("\(count)").font(.system(size: 22, weight: .bold, design: .rounded)).foregroundStyle(count == 0 ? PB.muted : PB.ink)
+                    HStack(spacing: 4) {
+                        Circle().fill(color).frame(width: 6, height: 6)
+                        Text(name).font(.system(size: 11, weight: .semibold)).foregroundStyle(PB.ink2).lineLimit(1).minimumScaleFactor(0.8)
+                    }
+                }
+                .frame(maxWidth: .infinity).padding(.vertical, PB.s2)
+                .background(RoundedRectangle(cornerRadius: PB.rMD).fill(PB.surface))
+                .accessibilityElement(children: .combine)
+            }
+        }
+    }
+
+    private func dot(_ r: HuntRemote, _ online: Bool) -> Color {
+        guard online else { return PB.line2 }
+        if let p = DateCoding.date(r.macPausedUntil), p > .now { return PB.sun }
+        return r.macKeepApplying ? PB.green : PB.cobalt
+    }
+
+    private func offlineText(_ r: HuntRemote) -> String {
+        "Open PrepBoard on your Mac (signed in to Claude Code) and it picks up everything you ask from here."
+            + (r.macSeen == nil ? "" : " Last seen: \(r.macStatus)")
+    }
+
+    private func runPending(_ r: HuntRemote) -> Bool {
+        guard let asked = DateCoding.date(r.runRequested) else { return false }
+        return Date.now.timeIntervalSince(asked) < 120 && (r.macSeen ?? .distantPast) < asked
+    }
+
+    private func update(_ change: (inout HuntRemote) -> Void) {
+        var bank = settings.answerBank
+        change(&bank.remote)
+        settings.answerBank = bank; settings.updatedAt = .now
+        try? context.save()
+    }
+
+    private func requestRun() { update { $0.runRequested = DateCoding.string(.now) } }
+    private func setKeepApplying(_ on: Bool) { update { $0.keepApplying = on } }
+
+    private func applyAll(_ ready: [Lead]) {
+        for lead in ready { lead.submitRequested = true; lead.updatedAt = .now }
+        try? context.save()
     }
 }
 #endif

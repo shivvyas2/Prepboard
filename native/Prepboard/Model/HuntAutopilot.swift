@@ -127,6 +127,33 @@ enum HuntAutopilot {
         return 1 - Double(missingKeywords(keywords, in: text).count) / Double(unique)
     }
 
+    /// What an applicant tracking system (Ashby, Greenhouse, Lever, Workday) would get wrong reading this résumé's text layer:
+    /// missing contact details, non-standard or missing section headings, characters that do not extract as plain text, dates in
+    /// mixed formats. Empty when it parses cleanly.
+    static func atsIssues(text: String, name: String, email: String, phone: String) -> [String] {
+        var issues: [String] = []
+        let head = String(text.prefix(400))
+        let lower = text.lowercased()
+        if !name.isEmpty, !head.localizedCaseInsensitiveContains(name.split(separator: " ").first.map(String.init) ?? name) {
+            issues.append("My name is not in the first lines of the extracted text, so a parser may take something else as the name.")
+        }
+        if !email.isEmpty, !lower.contains(email.lowercased()) { issues.append("My email \(email) does not extract as plain text.") }
+        let digits = phone.filter(\.isNumber)
+        if digits.count >= 10, !text.filter(\.isNumber).contains(String(digits.suffix(10))) {
+            issues.append("My phone number does not extract as one plain number.")
+        }
+        for heading in ["experience", "education", "skills"] where !lower.contains(heading) {
+            issues.append("No \u{201C}\(heading.capitalized)\u{201D} heading; parsers file sections by these standard names.")
+        }
+        if text.unicodeScalars.contains(where: { (0xE000...0xF8FF).contains($0.value) || (0xFB00...0xFB06).contains($0.value) || $0.value == 0xFFFD }) {
+            issues.append("Some characters extract as ligatures, icons or unknown glyphs; use plain letters and no icon fonts.")
+        }
+        let styles = [#"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\.? \d{4}"#, #"\b\d{1,2}/\d{4}\b"#, #"\b\d{4}-\d{2}\b"#]
+        let used = styles.filter { text.range(of: $0, options: .regularExpression) != nil }.count
+        if used > 1 { issues.append("Dates use more than one format; use \u{201C}Mon YYYY \u{2013} Mon YYYY\u{201D} everywhere.") }
+        return issues
+    }
+
     /// The text of every page of the PDF at `path`.
     static func text(ofPDFAt path: String) -> String {
         PDFDocument(url: URL(fileURLWithPath: path))?.string ?? ""

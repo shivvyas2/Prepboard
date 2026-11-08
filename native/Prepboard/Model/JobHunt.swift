@@ -76,6 +76,7 @@ struct ProfileFacts: Codable {
 #if os(macOS)
 import AppKit
 import UserNotifications
+import ServiceManagement
 import Observation
 
 /// Which browser the heavy runs (Discover, Submit) use. Mac only, not synced; the LinkedIn sync always uses the built-in browser.
@@ -116,7 +117,7 @@ final class JobHunt {
     static let submitSpacing: TimeInterval = 120
     static let cooldown: TimeInterval = 7 * 86400
 
-    private(set) var phase: Phase = .idle
+    private(set) var phase: Phase = .idle { didSet { updateKeepAwake(); if phase != oldValue { publishStatus() } } }
     private(set) var lastRun: Date? = UserDefaults.standard.object(forKey: "hunt.lastRun") as? Date {
         didSet { UserDefaults.standard.set(lastRun, forKey: "hunt.lastRun") }
     }
@@ -255,6 +256,7 @@ final class JobHunt {
             Task { @MainActor in self?.processSubmitQueue() }
         }
         recoverInterrupted(container.mainContext)
+        updateKeepAwake()
         rescan()
         runIfDue()
     }
@@ -287,6 +289,22 @@ final class JobHunt {
     }
 
     // MARK: autopilot
+
+    /// While keep applying is on, macOS must not nap the app (its timers would stop when the window is hidden); during a run the
+    /// Mac also stays awake. PrepBoard opens at login so applying resumes after a restart.
+    private var napActivity: NSObjectProtocol?
+    private var runActivity: NSObjectProtocol?
+
+    func updateKeepAwake() {
+        let on = HuntPrefs.keepApplying
+        if on, napActivity == nil {
+            napActivity = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep, .suddenTerminationDisabled],
+                                                                reason: "Keep applying")
+        } else if !on, let a = napActivity { ProcessInfo.processInfo.endActivity(a); napActivity = nil }
+        if isRunning, runActivity == nil {
+            runActivity = ProcessInfo.processInfo.beginActivity(options: [.idleSystemSleepDisabled, .userInitiated], reason: "Applying to a job")
+        } else if !isRunning, let a = runActivity { ProcessInfo.processInfo.endActivity(a); runActivity = nil }
+    }
 
     /// Keep applying: puts a lead that stopped for a passing reason back in line (or pauses everything until Claude's usage limit
     /// resets) instead of leaving it for the user. True when it took the lead back. Does not save.
@@ -464,6 +482,8 @@ final class JobHunt {
 
     /// Turning keep applying on queues what is already ready; turning it off empties the queue so nothing more goes out.
     func keepApplyingChanged() {
+        updateKeepAwake()
+        if HuntPrefs.keepApplying, SMAppService.mainApp.status != .enabled { try? SMAppService.mainApp.register() }
         guard let container else { return }
         let context = container.mainContext
         let ready = LeadStatus.ready.rawValue
@@ -475,8 +495,60 @@ final class JobHunt {
         runIfDue()
     }
 
+    // MARK: remote (the phone asks, the Mac does)
+
+    /// Applies what another device asked for through the synced settings: Keep applying on/off and "Find roles now".
+    func handleRemote() {
+        guard let container, let s = settings(in: container.mainContext) else { return }
+        let remote = s.answerBank.remote
+        if let wanted = remote.keepApplying, wanted != HuntPrefs.keepApplying {
+            UserDefaults.standard.set(wanted, forKey: HuntPrefs.keepApplyingKey)
+            keepApplyingChanged()
+        }
+        let handled = UserDefaults.standard.string(forKey: "hunt.remoteRunHandled") ?? ""
+        if !remote.runRequested.isEmpty, remote.runRequested != handled, phase == .idle, claude?.isReady == true, claude?.busy == false {
+            UserDefaults.standard.set(remote.runRequested, forKey: "hunt.remoteRunHandled")
+            Task { await run() }
+        }
+        publishStatus()
+    }
+
+    /// The Mac's one-line status for other devices, e.g. "Submitting to Affirm…" or "Paused until 12:31 PM: Claude's usage limit".
+    var statusLine: String {
+        switch phase {
+        case .discovering: return "Looking for roles…"
+        case .tailoring(let done, let total): return "Writing résumés, \(done) of \(total) done…"
+        case .submitting(let name): return "Applying to \(name)…"
+        case .honesty(let name): return "Checking the résumé for \(name)…"
+        case .editing(let name): return "Rebuilding the résumé for \(name)…"
+        case .readingProfile: return "Reading your history…"
+        case .drafting(let name): return "Drafting answers for \(name)…"
+        case .idle: break
+        }
+        if isPaused, let pausedUntil { return "Paused until \(Self.clock(pausedUntil)): Claude's usage limit" }
+        if claude?.isReady != true { return "Claude Code isn't connected on the Mac" }
+        if let error { return error }
+        return HuntPrefs.keepApplying ? "Waiting for the next role" : "Idle" + (lastSummary.map { " · last run: \($0)" } ?? "")
+    }
+
+    /// Writes the status into the synced settings when it changes, and at least every 5 minutes as a heartbeat.
+    private func publishStatus() {
+        guard let container, let s = settings(in: container.mainContext) else { return }
+        var bank = s.answerBank
+        let line = statusLine, paused = pausedUntil.map { DateCoding.string($0) } ?? ""
+        let stale = bank.remote.macSeen.map { Date.now.timeIntervalSince($0) > 300 } ?? true
+        guard stale || bank.remote.macStatus != line || bank.remote.macPausedUntil != paused
+                || bank.remote.macKeepApplying != HuntPrefs.keepApplying else { return }
+        bank.remote.macStatus = line; bank.remote.macPausedUntil = paused
+        bank.remote.macStatusAt = DateCoding.string(.now); bank.remote.macKeepApplying = HuntPrefs.keepApplying
+        if bank.remote.keepApplying == HuntPrefs.keepApplying { bank.remote.keepApplying = nil }   // request done
+        s.answerBank = bank
+        try? container.mainContext.save()
+    }
+
     /// Submits the oldest queued lead, one at a time, at least 2 minutes apart and within the daily limit.
     func processSubmitQueue() {
+        handleRemote()
         guard !isPaused, phase == .idle, !isOpeningChrome, let container, let claude, claude.isReady, !claude.busy else { return }
         if let lastSubmit, Date.now.timeIntervalSince(lastSubmit) < Self.submitSpacing { return }
         let context = container.mainContext
@@ -574,6 +646,26 @@ final class JobHunt {
         return filled
     }
 
+    /// Forms ask for each school's and job's dates; a bank whose histories have none fills them from the newest résumé variant
+    /// (never overwriting a field that already has dates). Call with `claude.busy` held. Quiet on failure: the next run tries again.
+    private func refreshHistoryIfThin(_ settings: HuntSettings) async {
+        var bank = settings.answerBank
+        guard bank.historyIsThin else { return }
+        let newest = variants.max { a, b in
+            let da = (try? FileManager.default.attributesOfItem(atPath: a.path))?[.modificationDate] as? Date ?? .distantPast
+            let db = (try? FileManager.default.attributesOfItem(atPath: b.path))?[.modificationDate] as? Date ?? .distantPast
+            return da < db
+        }
+        guard let newest, let tex = try? String(contentsOfFile: newest.path, encoding: .utf8),
+              let facts = try? await Self.check(ProfileFacts.self, prompt: Self.profilePrompt(tex: tex, linkedin: ""), schema: Self.profileSchema,
+                                                browserFlags: nil, tools: "", cwd: nil) else { return }
+        func dated(_ s: String) -> Bool { s.range(of: #"\d{4}"#, options: .regularExpression) != nil }
+        if !dated(bank.education), dated(facts.education) { bank.education = facts.education }
+        if !dated(bank.employment), dated(facts.employment) { bank.employment = facts.employment }
+        guard bank != settings.answerBank else { return }
+        settings.answerBank = bank; settings.updatedAt = .now
+    }
+
     /// The Draft button on a lead: drafts every open-ended question still waiting on the user. Returns how many it answered.
     func draftAnswers(_ lead: Lead) async -> Int {
         guard phase == .idle, let container, let claude, claude.isReady, !claude.busy else {
@@ -669,6 +761,7 @@ final class JobHunt {
             return
         }
         rescan()
+        await refreshHistoryIfThin(settings)
         let all = (try? context.fetch(FetchDescriptor<Lead>())) ?? []
         Lead.applyBank(settings.answerBank, to: all)   // answers saved since the last run
         if settings.answerBank.needsSponsorship == "Yes" { Lead.applySponsorship(true, to: all) }
@@ -832,7 +925,7 @@ final class JobHunt {
                 pdfPath = try await LatexBuild.build(texPath: texPath)
             }
             let keywords = result.keywords ?? []
-            result = await fitPage(result, prompt: prompt, texPath: texPath, pdfPath: &pdfPath, keywords: keywords, folder: folder)
+            result = await fitPage(result, prompt: prompt, texPath: texPath, pdfPath: &pdfPath, keywords: keywords, folder: folder, bank: bank)
             let sources = evidence.map(\.name).filter { $0 != name }
             phase = .honesty(lead.company)
             await checkHonesty(lead, tex: result.tex, sources: sources, github: githubContext, folder: folder, okReason: result.notes, note: "")
@@ -859,8 +952,12 @@ final class JobHunt {
             let uploadNote = await attachPDF(lead, pdfPath: pdfPath, context: context)   // a failed upload never fails a built variant
             if !uploadNote.isEmpty { lead.reason = [lead.reason, uploadNote].joined(separator: " ") }
             if let fit = HuntAutopilot.measure(pdfAt: pdfPath) {
-                let score = Int((HuntAutopilot.keywordScore(keywords, in: HuntAutopilot.text(ofPDFAt: pdfPath)) * 100).rounded())
-                lead.reason = [lead.reason, keywords.isEmpty ? nil : "Keywords: \(score)%.", fit.isGood ? nil : fit.summary]
+                let text = HuntAutopilot.text(ofPDFAt: pdfPath)
+                let score = Int((HuntAutopilot.keywordScore(keywords, in: text) * 100).rounded())
+                let ats = HuntAutopilot.atsIssues(text: text, name: bank.fullName, email: bank.email, phone: bank.phone)
+                // Quality notes go last, in this order: the card shows them as badges (Lead.keywordScore / atsIssues).
+                lead.reason = [lead.reason, fit.isGood ? nil : fit.summary, keywords.isEmpty ? nil : "Keywords: \(score)%.",
+                               ats.isEmpty ? "ATS: parses cleanly." : "ATS: " + ats.joined(separator: " ")]
                     .compactMap { $0 }.joined(separator: " ")
             }
             Self.bump("tailored")
@@ -881,13 +978,16 @@ final class JobHunt {
     /// Up to two revision passes that make the page full but not over (no blank band at the bottom, no one-word lines) and bring in
     /// the posting's own wording for terms my material supports. Each pass must compile; a pass that makes the page overflow is
     /// undone. Returns the result whose .tex is on disk; `pdfPath` is its PDF.
-    private func fitPage(_ start: TailorResult, prompt: String, texPath: String, pdfPath: inout String, keywords: [String], folder: String) async -> TailorResult {
+    private func fitPage(_ start: TailorResult, prompt: String, texPath: String, pdfPath: inout String, keywords: [String], folder: String,
+                         bank: AnswerBank) async -> TailorResult {
         var current = start
         for _ in 0..<2 {
             guard let fit = HuntAutopilot.measure(pdfAt: pdfPath) else { break }
-            let missing = HuntAutopilot.missingKeywords(keywords, in: HuntAutopilot.text(ofPDFAt: pdfPath))
-            guard !fit.isGood || !missing.isEmpty else { break }
-            let revise = prompt + "\n\n" + Self.fitInstructions(fit, missing: missing) + "\n<previous_tex>\n\(current.tex)\n</previous_tex>"
+            let text = HuntAutopilot.text(ofPDFAt: pdfPath)
+            let missing = HuntAutopilot.missingKeywords(keywords, in: text)
+            let ats = HuntAutopilot.atsIssues(text: text, name: bank.fullName, email: bank.email, phone: bank.phone)
+            guard !fit.isGood || !missing.isEmpty || !ats.isEmpty else { break }
+            let revise = prompt + "\n\n" + Self.fitInstructions(fit, missing: missing, ats: ats) + "\n<previous_tex>\n\(current.tex)\n</previous_tex>"
             guard let next = try? await Self.check(TailorResult.self, prompt: revise, schema: Self.tailorSchema, browserFlags: nil, tools: Self.fileTools, cwd: folder),
                   !next.tex.isEmpty, (try? next.tex.write(toFile: texPath, atomically: true, encoding: .utf8)) != nil,
                   let built = try? await LatexBuild.build(texPath: texPath) else {
@@ -909,8 +1009,8 @@ final class JobHunt {
     }
 
     /// What the revision pass is told about the page as built.
-    static func fitInstructions(_ fit: HuntAutopilot.PageFit, missing: [String]) -> String {
-        var asks: [String] = []
+    static func fitInstructions(_ fit: HuntAutopilot.PageFit, missing: [String], ats: [String] = []) -> String {
+        var asks: [String] = ats.map { "Applicant tracking systems will misread this: " + $0 }
         if fit.overflows {
             asks.append("The PDF does not fit: \(fit.summary) Cut the bullets that help this posting least, or merge two short ones, until it "
                 + "fits on one page. Never shrink fonts, margins or spacing.")
@@ -1111,6 +1211,13 @@ final class JobHunt {
                     // Nothing was touched: the lead stays ready to queue again once Chrome is connected.
                     lead.status = .ready; lead.flagged = Self.noChromeMessage; error = Self.noChromeMessage
                     chromeStatus = Self.noChromeMessage
+                case "needs_you" where autonomous && (result.reason.hasPrefix("ACCOUNT_REQUIRED") || result.reason.hasPrefix("ASSESSMENT")):
+                    // Nothing PrepBoard can do for me: it goes to the "apply by hand" list instead of waiting on me in Needs you.
+                    forgetForm(lead)
+                    let account = result.reason.hasPrefix("ACCOUNT_REQUIRED")
+                    lead.status = .skipped
+                    lead.reason = Lead.byHandPrefix + (account ? "the site needs an account. " : "it asks for an assessment. ")
+                        + result.reason.drop(while: { $0 != ":" }).dropFirst().trimmingCharacters(in: .whitespaces)
                 case "needs_you":
                     // The form stays as it was left (the next queued application gets its own page) and the next submit continues it.
                     holdStopped(result.page_url)
@@ -1339,6 +1446,9 @@ final class JobHunt {
         anything already in KNOWN below (same company and posting id, or same company and title). One entry per posting, no duplicates \
         across sources: if the same job appears on LinkedIn and the careers site, keep the careers-site link and the posting id.
 
+        Only return postings you score at least \(max(0, settings.minScore - 10)); leave weaker ones out entirely, so the run spends its \
+        time on real matches.
+
         SCORING (0-100): how well the posting matches my résumé variants, judged from its requirements against the JD MAP lines below. \
         90-100: nearly every requirement is covered by one variant. 70-89: most are. 50-69: about half. Below 50: a stretch. Subtract \
         heavily for a hard requirement none of my variants mention (a language, platform or clearance). `score_reason`: one line naming \
@@ -1397,6 +1507,21 @@ final class JobHunt {
         that help this posting least. Never shrink fonts, margins or spacing to make it fit, and never pad.
         - Avoid bullets whose last line holds only a few words: reword to end on a full line or a line shorter.
 
+        CANONICAL HISTORY: my employers, job titles and dates must match the EMPLOYMENT and EDUCATION history under ABOUT ME exactly \
+        when it is given. Where variants disagree with it or with each other, it wins; never mix two versions of a title or date.
+
+        APPLICANT TRACKING SYSTEMS (Ashby, Greenhouse, Lever, Workday and their AI screeners read the PDF's text, not its look):
+        - Standard section headings only: Summary, Experience, Projects, Skills, Education. One column of text; no text in images, \
+        icons, headers or footers; no icon fonts or emoji; contact details as plain text on the first lines (name, then city, phone, \
+        email, LinkedIn, GitHub).
+        - Every job line: title, employer, location, then dates as "Mon YYYY \u{2013} Mon YYYY" (or "Present"), the same format everywhere.
+        - The headline under my name uses the posting's exact role title when my history supports that title, then its top skills.
+        - Spell out an acronym once next to its short form where the posting uses both ("Continuous Integration (CI/CD)").
+        - Each bullet: strong verb, what I built, the tool, the measured result from my sources. Lead each role with the bullets that \
+        match the posting's top requirements.
+        - Never add hidden or white text, keyword lists outside the Skills section, or instructions aimed at AI screeners: screeners \
+        detect these and reject the application.
+
         KEYWORDS (applicant tracking systems match the posting's own words):
         - List the posting's 15 to 25 most important terms that my material supports (languages, frameworks, tools, platforms, domain \
         phrases such as "payments" or "real-time collaboration", practices such as "CI/CD" or "A/B testing"), spelled exactly as the posting \
@@ -1444,6 +1569,7 @@ final class JobHunt {
 
         ABOUT ME (for the contact header only):
         \(bullets(facts, empty: "(use the base's header unchanged)"))
+        \(bank.employment.isEmpty ? "" : "EMPLOYMENT HISTORY (canonical):\n" + bank.employment + "\n")\(bank.education.isEmpty ? "" : "EDUCATION HISTORY (canonical):\n" + bank.education + "\n")
 
         \(github.isEmpty ? "(No GitHub material loaded; the variants are the only evidence.)" : github)
         """
@@ -1642,6 +1768,8 @@ final class JobHunt {
         not covered by the answers below\(autonomous ? " or by ANSWERING ON YOUR OWN" : ""); the site asks you to create an account, sign in, or complete two-factor authentication; a CAPTCHA; \
         an assessment, test, video or coding exercise; a cover letter or other document you do not have; a request to pay; the posting is \
         closed or a different job opens; an error you cannot resolve; or anything else unexpected.
+        - When what stopped you is that the site needs me to create an account or sign in, begin `reason` with "ACCOUNT_REQUIRED:"; \
+        when it is an assessment, test, coding exercise or video, begin it with "ASSESSMENT:".
         - Return status "failed" with the reason only when the application page cannot be reached at all.
         - Before pressing Submit, re-read the whole form: every required field is filled, the PDF is attached, and nothing contradicts the \
         answers below. Press Submit once. Then read the confirmation (confirmation number, "application received" message or the email \

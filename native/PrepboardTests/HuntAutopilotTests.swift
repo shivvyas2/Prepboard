@@ -185,3 +185,92 @@ final class ImmigrationAnswerTests: XCTestCase {
         XCTAssertFalse(p.contains("Citizenship / immigration status: Yes"))
     }
 }
+
+/// The rest of the questions real forms stopped on, the ATS parse check and the card badges.
+final class ApplyGapsTests: XCTestCase {
+    private var bank: AnswerBank {
+        var b = AnswerBank(); b.fullName = "Shiv Vyas"; b.email = "shiv@example.com"; b.phone = "551-342-5622"
+        b.city = "Jersey City"; b.state = "New Jersey"; b.zipCode = "07302"; b.visaStatus = "f1stemopt"
+        return b
+    }
+
+    func testLocationAndEEOQuestions() {
+        let b = bank
+        func a(_ q: String) -> String? { b.answer(for: q)?.answer }
+        XCTAssertEqual(a("Zip Code*"), "07302")
+        XCTAssertEqual(a("Home zip code/postal code *"), "07302")
+        XCTAssertEqual(a("Which U.S. State or Canadian Province do you reside in?*"), "New Jersey")
+        XCTAssertEqual(a("State"), "New Jersey")
+        XCTAssertEqual(a("Country*"), "United States")
+        XCTAssertEqual(a("Discipline*"), b.major)
+        XCTAssertEqual(a("Do you identify as transgender?*"), "Decline to self-identify")
+        XCTAssertEqual(a("Are you able to complete the essential functions of this job, with or without reasonable accommodation?*"), "Yes")
+        XCTAssertEqual(a("To the best of your knowledge, do you have any relatives currently working at Opentrons or Neochromosome?"), "No")
+        var r = b; r.relatives = "Opentrons"
+        XCTAssertEqual(r.answer(for: "Do you have any relatives currently working at Opentrons?")?.answer, "Yes")
+        XCTAssertEqual(a("Country of citizenship"), "", "nationality still comes from the work status block, not Country")
+    }
+
+    func testHistoryConflictsAndThinness() {
+        var b = AnswerBank()
+        b.currentTitle = "Founding Software Engineer"; b.currentEmployer = "Contextual Intelligence (previously known as Clo)"
+        b.employment = "Contextual Intelligence (formerly Luna Social) | Founding Product Engineer | New York | December 2024 – Present"
+        b.education = "Pace University"
+        XCTAssertEqual(b.historyConflicts.count, 2)   // title differs; education has no dates
+        XCTAssertTrue(b.historyIsThin)
+        b.currentTitle = "Founding Product Engineer"; b.education = "Pace University | MS, Computer Science | 2023 – 2025"
+        XCTAssertTrue(b.historyConflicts.isEmpty)
+        XCTAssertFalse(b.historyIsThin)
+    }
+
+    func testATSCheck() {
+        let clean = "Shiv Vyas\nJersey City, NJ | 551-342-5622 | shiv@example.com\nSummary\nExperience\nEngineer Dec 2024 – Present\nSkills\nEducation\nMay 2025"
+        XCTAssertEqual(HuntAutopilot.atsIssues(text: clean, name: "Shiv Vyas", email: "shiv@example.com", phone: "551-342-5622"), [])
+        let broken = "Experience\nprofiling with \u{FB01}les 03/2024 and Dec 2024\n\u{E001} shiv at example"
+        let issues = HuntAutopilot.atsIssues(text: broken, name: "Shiv Vyas", email: "shiv@example.com", phone: "551-342-5622")
+        XCTAssertTrue(issues.contains { $0.contains("name") })
+        XCTAssertTrue(issues.contains { $0.contains("email") })
+        XCTAssertTrue(issues.contains { $0.contains("phone") })
+        XCTAssertTrue(issues.contains { $0.contains("Education") })
+        XCTAssertTrue(issues.contains { $0.contains("ligatures") })
+        XCTAssertTrue(issues.contains { $0.contains("one format") })
+    }
+
+    func testLeadBadgesReadReason() {
+        let lead = Lead(company: "Acme")
+        lead.reason = "Built from the Hebbia base. Keywords: 92%. ATS: parses cleanly."
+        XCTAssertEqual(lead.keywordScore, 92)
+        XCTAssertEqual(lead.atsIssues, [])
+        XCTAssertEqual(lead.displayReason, "Built from the Hebbia base.")
+        lead.reason = "Ok. ATS: Dates use more than one format. No “Skills” heading."
+        XCTAssertEqual(lead.atsIssues?.count, 2)
+        lead.status = .skipped; lead.reason = Lead.byHandPrefix + "the site needs an account."
+        XCTAssertTrue(lead.isByHand)
+    }
+
+    @MainActor func testPromptsCarryTheNewRules() {
+        let lead = Lead(company: "Acme", link: "https://jobs.example.com/1")
+        XCTAssertTrue(JobHunt.submitPrompt(lead: lead, pdfPath: "/tmp/r.pdf", bank: bank, autonomous: true).contains("ACCOUNT_REQUIRED"))
+        let ask = JobHunt.fitInstructions(HuntAutopilot.PageFit(pages: 1, bottomGap: 0.02, shortLines: 0), missing: [], ats: ["No “Skills” heading."])
+        XCTAssertTrue(ask.contains("Applicant tracking systems"))
+    }
+}
+
+final class HuntRemoteTests: XCTestCase {
+    func testRemoteRidesOnTheBankAndOldRowsDecode() throws {
+        var b = AnswerBank(); b.remote.keepApplying = true; b.remote.runRequested = "2026-11-07T20:00:00Z"
+        let back = try JSONDecoder().decode(AnswerBank.self, from: JSONEncoder().encode(b))
+        XCTAssertEqual(back.remote.keepApplying, true)
+        XCTAssertEqual(back.remote.runRequested, "2026-11-07T20:00:00Z")
+        let old = try JSONDecoder().decode(AnswerBank.self, from: Data(#"{"fullName":"A"}"#.utf8))
+        XCTAssertNil(old.remote.keepApplying)
+        XCTAssertFalse(old.remote.macOnline())
+    }
+
+    func testMacOnlineWindow() {
+        var r = HuntRemote(); r.macStatusAt = DateCoding.string(.now.addingTimeInterval(-120))
+        XCTAssertTrue(r.macOnline())
+        r.macStatusAt = DateCoding.string(.now.addingTimeInterval(-1200))
+        XCTAssertFalse(r.macOnline())
+    }
+}

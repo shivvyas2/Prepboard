@@ -302,6 +302,33 @@ final class Lead {
     }
 }
 
+/// Commands from any device to the Mac that applies, and the Mac's status back. The Mac runs Claude Code; a phone only asks.
+struct HuntRemote: Codable, Equatable {
+    /// Set by any device: the Mac turns Keep applying on or off to match. nil = no request.
+    var keepApplying: Bool?
+    /// When a device last pressed "Find roles now" (ISO time); the Mac runs once for each new value.
+    var runRequested = ""
+    /// Written by the Mac: one line on what it is doing, when, and its real Keep applying state.
+    var macStatus = "", macStatusAt = "", macPausedUntil = ""
+    var macKeepApplying = false
+
+    init() {}
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        keepApplying = try? c.decodeIfPresent(Bool.self, forKey: .keepApplying)
+        runRequested = (try? c.decodeIfPresent(String.self, forKey: .runRequested)) ?? ""
+        macStatus = (try? c.decodeIfPresent(String.self, forKey: .macStatus)) ?? ""
+        macStatusAt = (try? c.decodeIfPresent(String.self, forKey: .macStatusAt)) ?? ""
+        macPausedUntil = (try? c.decodeIfPresent(String.self, forKey: .macPausedUntil)) ?? ""
+        macKeepApplying = (try? c.decodeIfPresent(Bool.self, forKey: .macKeepApplying)) ?? false
+    }
+
+    /// When the Mac last reported; nil if never.
+    var macSeen: Date? { DateCoding.date(macStatusAt) }
+    /// The Mac reported within the last 10 minutes (it reports at least every 5 while PrepBoard is open).
+    func macOnline(now: Date = .now) -> Bool { macSeen.map { now.timeIntervalSince($0) < 600 } ?? false }
+}
+
 /// Facts the application forms ask for; legal answers come only from here, never drafted.
 struct AnswerBank: Codable, Equatable {
     var fullName = "", email = "", phone = "", city = ""
@@ -313,6 +340,12 @@ struct AnswerBank: Codable, Equatable {
     var visaStatus = ""             // VisaStatus raw value; once chosen, every immigration question is answered from it
     var citizenshipCountry = ""     // "Country of citizenship" / "Nationality"
     var eadExpiry = ""              // when the current work authorization (EAD) ends, e.g. "June 2028"
+    var zipCode = "", state = "", country = ""   // address parts forms ask for; country "" = United States
+    var pronouns = ""               // "" = leave blank / decline
+    var relatives = ""              // companies where a relative works, one per line; "" = none
+    var eeoExtra = ""               // transgender / sexual orientation questions; "" = decline to self-identify
+    /// The phone's remote control for the Mac's hunt, riding on this synced record (no extra table needed).
+    var remote = HuntRemote()
     var startDate = ""
     var relocation = ""             // "Yes" | "No" | "Open to it"
     var salary = ""                 // "" = decline / leave blank
@@ -432,6 +465,48 @@ struct AnswerBank: Codable, Equatable {
         ]
     }
 
+    /// Facts in the bank that disagree with each other, e.g. a current title that is not the title on the latest job in the
+    /// employment history. Forms and résumés trip over these, so the Hunt settings show them.
+    var historyConflicts: [String] {
+        var out: [String] = []
+        let latest = employment.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+        let parts = latest.split(separator: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+        if parts.count >= 2 {
+            let title = parts[1], company = parts[0]
+            if !currentTitle.isEmpty, Self.normalized(title) != Self.normalized(currentTitle) {
+                out.append("Current title says \u{201C}\(currentTitle)\u{201D} but your latest job in Employment history says \u{201C}\(title)\u{201D}.")
+            }
+            let cur = Self.normalized(currentEmployer), comp = Self.normalized(company)
+            if !cur.isEmpty, !comp.isEmpty, !comp.contains(cur), !cur.contains(comp),
+               cur.split(separator: " ").first != comp.split(separator: " ").first {
+                out.append("Current employer says \u{201C}\(currentEmployer)\u{201D} but Employment history starts with \u{201C}\(company)\u{201D}.")
+            }
+        }
+        if !education.isEmpty, education.range(of: #"\d{4}"#, options: .regularExpression) == nil {
+            out.append("Education history has no dates; forms that ask for start and end dates will stop.")
+        }
+        if !employment.isEmpty, employment.range(of: #"\d{4}"#, options: .regularExpression) == nil {
+            out.append("Employment history has no dates.")
+        }
+        return out
+    }
+
+    /// What still stops applications from going out on their own (shown on the Mac's run card and the phone's remote card).
+    var setupIssues: [String] {
+        var out: [String] = []
+        if status == nil { out.append("Choose your US work status, so visa questions answer themselves.") }
+        if status != nil, status != .citizen, citizenshipCountry.isEmpty { out.append("Add your country of citizenship.") }
+        if zipCode.isEmpty { out.append("Add your zip code; many forms require it.") }
+        let missing = missingStopping.filter { status == nil || !["work authorization", "sponsorship", "citizenship"].contains($0) }
+        if !missing.isEmpty { out.append("Fill in " + missing.joined(separator: ", ") + ".") }
+        return out + historyConflicts
+    }
+
+    /// Education or employment history too thin for forms that ask for each entry's dates (empty, or no year anywhere).
+    var historyIsThin: Bool {
+        [education, employment].contains { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || $0.range(of: #"\d{4}"#, options: .regularExpression) == nil }
+    }
+
     /// Routine screening questions with one honest everyday answer, so they never stop an application: privacy notices and
     /// declarations get acknowledged, marketing texts declined, "have you worked here" checked against my employment history.
     /// Saved answers win over these. Nil when the question is not one of them.
@@ -450,6 +525,11 @@ struct AnswerBank: Codable, Equatable {
             return named.contains { words.contains($0) && !generic.contains($0) } ? nil : "No"
         }
         if any("18 years", "at least 18", "over 18", "over the age of 18", "18 or older") { return "Yes" }
+        if any("essential functions") { return "Yes" }
+        if any("relative", "family member", "related to anyone", "related to an employee") {
+            let mine = Set(relatives.split(whereSeparator: \.isNewline).map { Self.normalized(String($0)) }.filter { !$0.isEmpty })
+            return mine.contains { q.contains(" " + $0 + " ") } ? "Yes" : "No"
+        }
         if any("background check", "drug test", "drug screen") { return "Yes" }
         if any("privacy", "i acknowledge", "acknowledge", "i agree", "i certify", "i confirm", "i have read", "i understand", "attest",
                "consent to the processing", "accurate and complete", "true and complete") {
@@ -468,6 +548,8 @@ struct AnswerBank: Codable, Equatable {
         linkedin = s(.linkedin); github = s(.github); portfolio = s(.portfolio); resumeLink = s(.resumeLink)
         workAuthorization = s(.workAuthorization); needsSponsorship = s(.needsSponsorship); citizenship = s(.citizenship)
         visaStatus = s(.visaStatus); citizenshipCountry = s(.citizenshipCountry); eadExpiry = s(.eadExpiry)
+        zipCode = s(.zipCode); state = s(.state); country = s(.country); pronouns = s(.pronouns); relatives = s(.relatives); eeoExtra = s(.eeoExtra)
+        remote = (try? c.decodeIfPresent(HuntRemote.self, forKey: .remote)) ?? HuntRemote()
         if visaStatus.isEmpty { visaStatus = Self.inferStatus(workAuthorization + " " + citizenship)?.rawValue ?? "" }
         startDate = s(.startDate); relocation = s(.relocation); salary = s(.salary)
         gender = s(.gender); race = s(.race); veteran = s(.veteran); disability = s(.disability)
@@ -486,7 +568,7 @@ struct AnswerBank: Codable, Equatable {
     // MARK: matching form questions
 
     /// What an empty bank field means for a question that asks for it.
-    enum WhenEmpty { case ask, decline, blank, portfolio }
+    enum WhenEmpty { case ask, decline, blank, portfolio, unitedStates }
     struct Rule {
         let field: WritableKeyPath<AnswerBank, String>
         let legal: Bool          // legal answers come only from the bank, never drafted
@@ -514,6 +596,8 @@ struct AnswerBank: Codable, Equatable {
         if has("race", "ethnic", "hispanic", "latino") { return legal(\.race, .decline) }
         if has("veteran", "military") { return legal(\.veteran, .decline) }
         if has("disabilit") { return legal(\.disability, .decline) }
+        if has("transgender", "sexual orientation", "lgbt", "gender identity") { return legal(\.eeoExtra, .decline) }
+        if has("pronoun") { return Rule(field: \.pronouns, legal: false, whenEmpty: .blank) }
         if has("relocat") { return legal(\.relocation) }
         if has("start date", "available to start", "availability", "earliest", "notice period") { return legal(\.startDate) }
         if has("hear about", "hear of", "how did you find", "referral source", "source of application") { return plain(\.referralSource) }
@@ -521,7 +605,12 @@ struct AnswerBank: Codable, Equatable {
         if has("education history", "educational background", "education background") { return plain(\.education) }
         if has("graduat") { return plain(\.graduation) }
         if has("gpa", "grade point") { return plain(\.gpa) }
-        if has("field of study", "area of study", "major"), !has("accomplish", "achievement", "project", "challenge") { return plain(\.major) }
+        if has("zip", "postal code", "postcode") { return plain(\.zipCode) }
+        if normalized(question) == "state" || normalized(question).hasPrefix("state of residence") { return plain(\.state) }
+        if has("state or province", "state/province", "which state", "what state", "u.s. state", "us state", "province"),
+           !has("statement") { return plain(\.state) }
+        if has("country"), !has("citizenship", "nationality", "country of birth") { return Rule(field: \.country, legal: false, whenEmpty: .unitedStates) }
+        if has("field of study", "area of study", "major", "discipline"), !has("accomplish", "achievement", "project", "challenge") { return plain(\.major) }
         if has("degree") { return plain(\.degree) }
         if has("school", "university", "college", "institution") { return plain(\.school) }
         if has("current employer", "current company", "most recent employer", "most recent company", "present employer") { return plain(\.currentEmployer) }
@@ -562,6 +651,7 @@ struct AnswerBank: Codable, Equatable {
             case .decline: return ("Decline to self-identify", "bank", rule.legal)
             case .blank: return ("", "bank", rule.legal)
             case .portfolio: return portfolio.isEmpty ? ("", "needs_you", rule.legal) : (portfolio, "bank", rule.legal)
+            case .unitedStates: return ("United States", "bank", rule.legal)
             case .ask: return ("", "needs_you", rule.legal)
             }
         }
@@ -686,6 +776,26 @@ extension Lead {
         return lines.allSatisfy(answered.contains)
     }
     static let fillAnswersReason = "Fill in the remaining answers first"
+    /// The keyword score Tailor recorded at the end of `reason` ("Keywords: 92%."), if any.
+    var keywordScore: Int? {
+        guard let r = reason.range(of: #"Keywords: (\d+)%\."#, options: .regularExpression) else { return nil }
+        return Int(reason[r].filter(\.isNumber))
+    }
+    /// What the ATS check found: [] when the PDF parses cleanly, nil when it never ran.
+    var atsIssues: [String]? {
+        guard let r = reason.range(of: "ATS: ") else { return nil }
+        let rest = String(reason[r.upperBound...])
+        return rest.hasPrefix("parses cleanly") ? [] : rest.components(separatedBy: ". ").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
+    /// `reason` without the quality notes the badges show.
+    var displayReason: String {
+        let cut = [reason.range(of: "Keywords: ")?.lowerBound, reason.range(of: "ATS: ")?.lowerBound].compactMap { $0 }.min()
+        return cut.map { String(reason[..<$0]).trimmingCharacters(in: .whitespaces) } ?? reason
+    }
+
+    /// Skipped leads with this reason need the user to apply themselves (an account to create, an assessment); Hunt lists them apart.
+    static let byHandPrefix = "Apply by hand: "
+    var isByHand: Bool { status == .skipped && reason.hasPrefix(Self.byHandPrefix) }
 
     /// Re-fills waiting applications from the bank after it changes. A needs-you lead that was only waiting on questions the bank
     /// now answers goes back to ready (so keep applying can queue it); anything else stays with the user. Returns how many went back.
