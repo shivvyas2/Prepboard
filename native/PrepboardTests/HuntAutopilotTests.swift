@@ -318,3 +318,17 @@ final class OfflineAndRemoteTests: XCTestCase {
         XCTAssertFalse(spoken.contains("https"))
     }
 }
+
+final class TitleConflictTests: XCTestCase {
+    func testUsingTitleFixesBothPlaces() {
+        var b = AnswerBank()
+        b.currentTitle = "Founding Software Engineer"
+        b.employment = "Acme (formerly Beta) | Founding Product Engineer | New York | December 2024 – Present\nOld Co | Intern | NY | 2023 – 2024"
+        XCTAssertEqual(b.titleConflict?.history, "Founding Product Engineer")
+        let fixed = b.usingTitle("Founding Software Engineer")
+        XCTAssertNil(fixed.titleConflict)
+        XCTAssertTrue(fixed.historyConflicts.isEmpty)
+        XCTAssertEqual(fixed.employment, "Acme (formerly Beta) | Founding Software Engineer | New York | December 2024 – Present\nOld Co | Intern | NY | 2023 – 2024")
+        XCTAssertEqual(b.usingTitle("Founding Product Engineer").currentTitle, "Founding Product Engineer")
+    }
+}

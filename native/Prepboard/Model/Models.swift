@@ -516,6 +516,33 @@ struct AnswerBank: Codable, Equatable {
         return out
     }
 
+    /// The two titles when Current title and the latest job in Employment history disagree, so the Answer Bank can offer
+    /// to use one of them in both places. Nil when they agree or either is missing.
+    var titleConflict: (current: String, history: String)? {
+        let latest = employment.split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+        let parts = latest.split(separator: "|", omittingEmptySubsequences: false).map { $0.trimmingCharacters(in: .whitespaces) }
+        guard parts.count >= 2, !parts[1].isEmpty, !currentTitle.isEmpty,
+              Self.normalized(parts[1]) != Self.normalized(currentTitle) else { return nil }
+        return (currentTitle, parts[1])
+    }
+
+    /// The bank with `title` as both Current title and the latest job's title in Employment history.
+    func usingTitle(_ title: String) -> AnswerBank {
+        var b = self
+        b.currentTitle = title
+        var lines = employment.components(separatedBy: "\n")
+        if let first = lines.first {
+            var parts = first.components(separatedBy: "|")
+            if parts.count >= 2 {
+                let lead = parts[1].prefix(while: \.isWhitespace), trail = parts[1].reversed().prefix(while: \.isWhitespace)
+                parts[1] = String(lead) + title + String(trail.reversed())
+                lines[0] = parts.joined(separator: "|")
+            }
+        }
+        b.employment = lines.joined(separator: "\n")
+        return b
+    }
+
     /// What still stops applications from going out on their own (shown on the Mac's run card and the phone's remote card).
     var setupIssues: [String] {
         var out: [String] = []

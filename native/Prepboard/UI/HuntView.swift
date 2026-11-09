@@ -847,6 +847,12 @@ struct HuntSettingsSheet: View {
                             Label(issue, systemImage: "exclamationmark.triangle").font(.system(size: 12)).foregroundStyle(PB.sunInk)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
+                        if let titles = settings.answerBank.titleConflict {
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: PB.s2) { titleFixButtons(titles) }
+                                VStack(alignment: .leading, spacing: PB.s2) { titleFixButtons(titles) }
+                            }
+                        }
                         grid {
                             PBTextField(label: "School", text: bank(\.school))
                             PBTextField(label: "Degree", text: bank(\.degree))
@@ -971,6 +977,14 @@ struct HuntSettingsSheet: View {
     private func bank(_ kp: WritableKeyPath<AnswerBank, String>) -> Binding<String> {
         Binding(get: { settings.answerBank[keyPath: kp] },
                 set: { value in var b = settings.answerBank; b[keyPath: kp] = value; settings.answerBank = b })
+    }
+
+    /// "Use X everywhere" for each side of a title mismatch between Current title and Employment history.
+    @ViewBuilder private func titleFixButtons(_ titles: (current: String, history: String)) -> some View {
+        ForEach([titles.current, titles.history], id: \.self) { title in
+            Button("Use \u{201C}\(title)\u{201D} everywhere") { settings.answerBank = settings.answerBank.usingTitle(title) }
+                .buttonStyle(PillButtonStyle(filled: false, compact: true))
+        }
     }
 
     /// One labelled group inside the Answer Bank.
