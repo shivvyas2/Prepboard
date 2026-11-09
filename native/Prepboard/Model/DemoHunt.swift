@@ -24,7 +24,16 @@ enum DemoHunt {
         lead("Figma", "Software Engineer, Mobile", .ready, score: 88, reason: "Built from the iOS base. Keywords: 94%. ATS: parses cleanly.")
         lead("Robinhood", "iOS Engineer II", .ready, score: 84, reason: "Keywords: 81%. ATS: parses cleanly.", queued: true)
         lead("Yuzu", "Fullstack Engineer", .needsYou, score: 76, reason: "Claude suggested 2 answers. Keywords: 72%. ATS: Dates use more than one format.")
-        lead("Hebbia", "Frontend Engineer", .submitted, score: 82, reason: "Application received.")
+        lead("Hebbia", "Frontend Engineer", .submitted, score: 82, reason: "Application received.\n" + Lead.accountPrefix + "No account needed")
+        lead("Datadog", "Software Engineer, iOS", .submitted, score: 86,
+             reason: "Thank you for applying (ref 48213)\n" + Lead.accountPrefix + "Signed in to datadog.wd5.myworkdayjobs.com as alex@example.com (new account)")
+        for (i, company) in ["Hebbia", "Datadog"].enumerated() {
+            let role = Role(company: company, title: company == "Hebbia" ? "Frontend Engineer" : "Software Engineer, iOS", location: "New York, NY",
+                            roleNumber: "", link: "https://jobs.example.com/\(company)", stage: .applied)
+            role.source = "hunt"; role.appliedAt = .now.addingTimeInterval(Double(-3600 * (i * 3 + 1))); role.resumeVariant = "Alex-Rivera-\(company)"
+            context.insert(role)
+            if let l = try? context.fetch(FetchDescriptor<Lead>()).first(where: { $0.company == company }) { l.roleId = role.id }
+        }
         lead("iBegin", "Software Engineer", .skipped, score: 74, reason: Lead.byHandPrefix + "the site needs an account.")
         let task = PrepTask(roleId: "", title: "Two pointers and sliding window", start: .now, end: .now.addingTimeInterval(3600))
         task.videos = [Video(id: "jzZsG8n2R9A", title: "Two Pointers Explained", channel: "NeetCode", why: "Clear patterns",

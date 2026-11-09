@@ -15,12 +15,21 @@ struct RootView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
 
+    /// Debug screenshots of the sign-in screen: `-PrepboardPreview YES -PrepboardShowAuth YES`.
+    private static var previewAuth: Bool {
+        #if DEBUG
+        CloudConfig.isPreview && UserDefaults.standard.bool(forKey: "PrepboardShowAuth")
+        #else
+        false
+        #endif
+    }
+
     var body: some View {
         @Bindable var app = app
         Group {
             if cloud.configured && !cloud.ready {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if cloud.configured && cloud.user == nil {
+            } else if (cloud.configured && cloud.user == nil) || Self.previewAuth {
                 AuthView()
             } else {
                 VStack(spacing: 0) {

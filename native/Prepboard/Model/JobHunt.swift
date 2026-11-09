@@ -368,6 +368,55 @@ final class JobHunt {
         if changed { try? context.save() }
     }
 
+    private var reportSending = false
+    /// What the last daily report did ("Sent to …", or why it could not), for Hunt settings.
+    private(set) var lastReport = UserDefaults.standard.string(forKey: "hunt.dailyReport.last") ?? ""
+
+    /// Writes today's report as a PDF in Documents and emails it to my Answer Bank address through the Gmail connector.
+    /// Runs once a day after 9 PM (and from "Send today's report now"); a failed email is retried on the next check.
+    func sendDailyReport(day: Date = .now) async -> String {
+        guard let container, !reportSending else { return lastReport }
+        reportSending = true
+        defer { reportSending = false }
+        let context = container.mainContext
+        let entries = DailyReport.entries(on: day, context: context)
+        let waiting = DailyReport.waiting(context: context)
+        var outcome: [String] = []
+        do {
+            let data = try await DailyReport.pdf(DailyReport.html(entries, waiting: waiting, day: day))
+            try FileManager.default.createDirectory(at: DailyReport.folder, withIntermediateDirectories: true)
+            let file = DailyReport.folder.appendingPathComponent("PrepBoard \(DateCoding.dayString(day)).pdf")
+            try data.write(to: file, options: .atomic)
+            outcome.append("PDF saved to Documents/Career/Applications/Daily reports")
+        } catch { outcome.append("The PDF could not be saved (\(error.localizedDescription))") }
+        let address = settings(in: context)?.answerBank.email ?? ""
+        var emailed = false
+        if address.isEmpty {
+            outcome.append("no email in your Answer Bank, so nothing was sent")
+            emailed = true   // nothing to retry
+        } else if let claude, claude.isReady {
+            let subject = DailyReport.subject(entries, day: day)
+            let body = DailyReport.text(entries, waiting: waiting, day: day) + "\n\nThe PDF is in Documents/Career/Applications/Daily reports on your Mac."
+            do {
+                let r = try await Self.check(DailyReport.EmailResult.self, prompt: DailyReport.emailPrompt(to: address, subject: subject, body: body),
+                                             schema: DailyReport.emailSchema, browserFlags: "--allowedTools mcp__claude_ai_Gmail__send_message",
+                                             tools: "", cwd: nil)
+                emailed = r.sent
+                outcome.append(r.sent ? "emailed to \(address)" : "the email was not sent: \(r.note)")
+            } catch { outcome.append("the email was not sent: \(error.localizedDescription)") }
+        } else {
+            outcome.append("Claude Code isn't ready, so the email waits for the next check")
+        }
+        if emailed { UserDefaults.standard.set(DateCoding.dayString(day), forKey: DailyReport.lastDayKey) }
+        lastReport = "\(day.formatted(date: .abbreviated, time: .shortened)): " + outcome.joined(separator: "; ") + "."
+        UserDefaults.standard.set(lastReport, forKey: "hunt.dailyReport.last")
+        let content = UNMutableNotificationContent()
+        content.title = DailyReport.subject(entries, day: day)
+        content.body = outcome.joined(separator: "; ")
+        try? await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "daily-report-\(DateCoding.dayString(day))", content: content, trigger: nil))
+        return lastReport
+    }
+
     /// New leads waiting for a résumé (retried ones included) while today's tailoring has room.
     private func hasPendingTailoring(_ context: ModelContext, settings: HuntSettings) -> Bool {
         guard HuntPrefs.resumePDF.isEmpty, Self.dailyCount("tailored") < settings.dailyTailorLimit else { return false }
@@ -444,6 +493,7 @@ final class JobHunt {
     func runIfDue() {
         let keepApplying = HuntPrefs.keepApplying
         if let pausedUntil, pausedUntil <= .now { self.pausedUntil = nil }
+        if DailyReport.isDue(), !reportSending { Task { _ = await sendDailyReport() } }
         guard !isPaused else { return }
         autoHeal()
         guard phase == .idle, !isOpeningChrome, let container, let claude, claude.isReady, !claude.busy,
@@ -1252,9 +1302,14 @@ final class JobHunt {
                                     roleNumber: lead.roleNumber, link: lead.link, stage: .applied)
                     let sent = lead.variantName.isEmpty ? ((pdfPath as NSString).lastPathComponent as NSString).deletingPathExtension : lead.variantName
                     role.source = "hunt"; role.appliedAt = .now; role.resumeVariant = sent
-                    role.activity = "- \(DateCoding.dayString(.now)) · Hunt · Applied with \(sent)"
+                    // Which account the application went in under, for the tracker and the daily report.
+                    let used = chrome ? [] : (browser?.accountsUsed ?? [])
+                    let account = !used.isEmpty ? "Signed in to " + used.joined(separator: ", ")
+                        : Self.isLinkedIn(lead.link) ? "Your LinkedIn account" : "No account needed"
+                    role.activity = "- \(DateCoding.dayString(.now)) · Hunt · Applied with \(sent) · \(account)"
                     context.insert(role)
-                    lead.roleId = role.id; lead.status = .submitted; lead.reason = result.confirmation
+                    lead.roleId = role.id; lead.status = .submitted
+                    lead.reason = result.confirmation.trimmingCharacters(in: .whitespacesAndNewlines) + "\n" + Lead.accountPrefix + account
                     forgetForm(lead)
                     Self.bump("submitted")
                     Self.notifySubmitted(lead)

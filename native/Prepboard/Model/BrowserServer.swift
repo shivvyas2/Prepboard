@@ -100,7 +100,13 @@ final class BrowserServer {
     private(set) var port: UInt16?
     let token: String
     /// The email for job-site accounts, set only while a submit run is going; nil switches login_info and fill_password off.
-    var accountEmail: String?
+    var accountEmail: String? { didSet { if accountEmail != nil { accountsUsed = [] } } }
+    /// The job-site accounts this submit run signed in to or made ("acme.wd5.myworkdayjobs.com as me@x.com (new account)").
+    private(set) var accountsUsed: [String] = []
+    private func used(_ host: String, new: Bool) {
+        let line = "\(host) as \(SiteLogins.login(for: host)?.email ?? accountEmail ?? "")\(new ? " (new account)" : "")"
+        if !accountsUsed.contains(line) { accountsUsed.append(line) }
+    }
     var minNavigationGap: TimeInterval = 1.5
     var navigationCap = 400
     private(set) var navigations = 0
@@ -369,12 +375,14 @@ final class BrowserServer {
                 let secret = existing.flatMap { SiteLogins.password(for: $0.host) } ?? SiteLogins.newPassword()
                 try await browser.fillPassword(ref: ref, secret: secret)
                 if existing == nil { SiteLogins.save(host: host, email: accountEmail ?? "", password: secret, madeByPrepBoard: true) }
+                used(host, new: true)
                 return .text("\(browser.lastAction). A new password for \(host) is saved in PrepBoard's Keychain.")
             }
             guard SiteLogins.login(for: host) != nil, let secret = SiteLogins.password(for: host) else {
                 throw BrowserError.message("No login is saved for \(host). On a create-account or reset-password form use new: true; otherwise stop and report ACCOUNT_REQUIRED.")
             }
             try await browser.fillPassword(ref: ref, secret: secret)
+            if !accountsUsed.contains(where: { $0.hasPrefix(host + " as ") }) { used(host, new: false) }
             return .text(browser.lastAction)
         case "screenshot":
             return .image(Self.scaledPNG(try await browser.screenshot(), maxWidth: 1280), mime: "image/png")

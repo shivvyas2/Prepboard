@@ -847,6 +847,16 @@ extension Lead {
 
     /// Skipped leads with this reason need the user to apply themselves (an account to create, an assessment); Hunt lists them apart.
     static let byHandPrefix = "Apply by hand: "
+    /// The last line of a submitted lead's reason: which account the application used.
+    static let accountPrefix = "Account: "
+    /// For a submitted lead: (confirmation, account), split from `reason`.
+    var appliedDetails: (confirmation: String, account: String) {
+        let lines = reason.components(separatedBy: "\n")
+        if let last = lines.last, last.hasPrefix(Self.accountPrefix) {
+            return (lines.dropLast().joined(separator: "\n"), String(last.dropFirst(Self.accountPrefix.count)))
+        }
+        return (reason, "")
+    }
     var isByHand: Bool { status == .skipped && reason.hasPrefix(Self.byHandPrefix) }
 
     /// Re-fills waiting applications from the bank after it changes. A needs-you lead that was only waiting on questions the bank

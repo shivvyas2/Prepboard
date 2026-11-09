@@ -9,6 +9,7 @@ struct HuntView: View {
     @Query(sort: [SortDescriptor(\Lead.score, order: .reverse), SortDescriptor(\Lead.foundAt, order: .reverse)]) private var leads: [Lead]
     @Query(filter: #Predicate<Doc> { $0.fileType == "pdf" }) private var pdfs: [Doc]
     @Query private var settingsRows: [HuntSettings]
+    @Query(filter: #Predicate<Role> { $0.source == "hunt" }) private var huntRoles: [Role]
     @State private var showSettings = false
     @State private var showSkipped = false
     @State private var filter: HuntFilter = .all
@@ -37,17 +38,22 @@ struct HuntView: View {
                         }
                         .pbCard(padding: PB.s4)
                     }
+                    if filter == .submitted, leads.contains(where: filter.includes) {
+                        AppliedTimeline(leads: leads, roles: huntRoles)
+                    }
+                    if filter != .submitted {
                     group("Ready to review", items(.ready))
                     group("Needs your input", items(.needsYou))
                     group("Needs another try", items(.failed))
                     group("In progress", leads.filter { filter.includes($0) && [.new, .tailoring, .submitting].contains($0.status) })
-                    group("Submitted", items(.submitted))
+                    group("Applied", items(.submitted))
                     group("Apply by hand", leads.filter { $0.isByHand && filter.includes($0) })
                     group("Skipped", items(.skipped).filter { !$0.isByHand }, collapsed: filter == .all && !showSkipped) {
                         if filter == .all {
                             Button(showSkipped ? "Hide" : "Show") { showSkipped.toggle() }
                                 .buttonStyle(PillButtonStyle(filled: false, compact: true))
                         }
+                    }
                     }
                 }
             }
@@ -57,6 +63,9 @@ struct HuntView: View {
         .scrollIndicators(.hidden)
         .task { if settingsRows.isEmpty { _ = HuntSettings.current(context) } }
         .onAppear(perform: openFromHome)
+        #if DEBUG
+        .onAppear { if UserDefaults.standard.string(forKey: "PrepboardHuntFilter") == "applied" { filter = .submitted } }
+        #endif
         .onChange(of: app.huntShowNeedsYou) { openFromHome() }
         .onChange(of: app.huntShowSettings) { openFromHome() }
         .sheet(isPresented: $showSettings) { if let settings { HuntSettingsSheet(settings: settings) } }
@@ -164,7 +173,7 @@ struct HuntView: View {
 }
 
 private enum HuntFilter: String, CaseIterable, Identifiable {
-    case all = "All", review = "Review", needsYou = "Needs you", active = "In progress", submitted = "Submitted", byHand = "By hand", skipped = "Skipped"
+    case all = "All", review = "Review", needsYou = "Needs you", active = "In progress", submitted = "Applied", byHand = "By hand", skipped = "Skipped"
     var id: String { rawValue }
 
     func includes(_ lead: Lead) -> Bool {
@@ -699,6 +708,8 @@ struct HuntSettingsSheet: View {
     @AppStorage(HuntPrefs.resumePDFKey) private var resumePDF = ""
     @AppStorage(HuntPrefs.siteAccountsKey) private var siteAccounts = true
     @State private var siteLogins = SiteLogins.all
+    @AppStorage(DailyReport.enabledKey) private var dailyReport = true
+    @State private var reportSending = false
     @State private var newLoginSite = ""
     @State private var newLoginEmail = ""
     @State private var newLoginPassword = ""
@@ -889,6 +900,7 @@ struct HuntSettingsSheet: View {
                     }
                 }
                 #if os(macOS)
+                dailyReportSection
                 siteLoginsSection
                 variantsSection
                 #endif
@@ -1108,6 +1120,32 @@ struct HuntSettingsSheet: View {
             defer { fillingHistory = false }
             do { fillOutcome = outcome(contact + (try await hunt.fillHistory(tex: tex, settings: settings))) }
             catch { fillOutcome = outcome(contact) + " Couldn't read history: \(error.localizedDescription)" }
+        }
+    }
+
+    /// The end-of-day email and PDF of what was applied.
+    private var dailyReportSection: some View {
+        section("Daily report") {
+            Toggle(isOn: $dailyReport) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Email me what was applied each day").font(.system(size: 13, weight: .medium))
+                    Text("At 9 PM your Mac sends \(settings.answerBank.email.isEmpty ? "your Answer Bank email" : settings.answerBank.email) every application of the day "
+                         + "(role, time, résumé, the account it used, the confirmation) and saves the same report as a PDF in Documents/Career/Applications/Daily reports.")
+                        .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .toggleStyle(.switch)
+            HStack(spacing: PB.s3) {
+                Button(reportSending ? "Sending…" : "Send today's report now") {
+                    reportSending = true
+                    Task { _ = await hunt.sendDailyReport(); reportSending = false }
+                }
+                .buttonStyle(PillButtonStyle(filled: false, compact: true))
+                .disabled(reportSending)
+                if !hunt.lastReport.isEmpty {
+                    Text(hunt.lastReport).font(.system(size: 11)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 

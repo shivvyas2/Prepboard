@@ -365,3 +365,26 @@ final class SiteLoginTests: XCTestCase {
         XCTAssertTrue(off.contains("the site asks you to create an account, sign in"))
     }
 }
+
+final class DailyReportTests: XCTestCase {
+    func testAppliedDetailsSplitsAccount() {
+        let lead = Lead(company: "Acme", link: "https://x")
+        lead.reason = "Application received #123\nAccount: Signed in to acme.wd5.myworkdayjobs.com as me@x.com (new account)"
+        XCTAssertEqual(lead.appliedDetails.confirmation, "Application received #123")
+        XCTAssertEqual(lead.appliedDetails.account, "Signed in to acme.wd5.myworkdayjobs.com as me@x.com (new account)")
+        lead.reason = "Thanks for applying"
+        XCTAssertEqual(lead.appliedDetails.account, "")
+    }
+
+    @MainActor func testTextListsEveryApplication() {
+        let e = DailyReport.Entry(time: .now, company: "Acme", title: "iOS Engineer", location: "NYC", link: "https://acme.com/1",
+                                  resume: "Acme-iOS", account: "No account needed", confirmation: "Received")
+        let text = DailyReport.text([e], waiting: ["2 need your input"], day: .now)
+        XCTAssertTrue(text.contains("1 application sent"))
+        XCTAssertTrue(text.contains("Acme: iOS Engineer (NYC)"))
+        XCTAssertTrue(text.contains("Account: No account needed"))
+        XCTAssertTrue(text.contains("Still waiting: 2 need your input."))
+        XCTAssertTrue(DailyReport.text([], waiting: [], day: .now).contains("Nothing went out today."))
+        XCTAssertTrue(DailyReport.html([e], waiting: [], day: .now).contains("<b>Acme</b>"))
+    }
+}

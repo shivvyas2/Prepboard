@@ -185,6 +185,8 @@ final class Cloud {
     var needsOnboarding = false                  // new, empty account → open "Start something new"
     var status: Status = .local
     var lastError: String?
+    /// Runs after every successful pull (the iPhone posts alerts for what the Mac did).
+    @ObservationIgnored var onPulled: (@MainActor () -> Void)?
 
     private var container: ModelContainer?
     private weak var profile: Profile?
@@ -244,6 +246,13 @@ final class Cloud {
         try await client?.auth.signIn(email: email, password: password)
     }
 
+    /// A new email + password account. Returns false when the project wants the email confirmed first (no session yet).
+    @discardableResult
+    func signUp(email: String, password: String) async throws -> Bool {
+        guard let client else { return false }
+        return try await client.auth.signUp(email: email, password: password).session != nil
+    }
+
     /// Emails a 6-digit code. Works for new and existing accounts (the account is created on first verify).
     func sendCode(email: String) async throws {
         try await client?.auth.signInWithOTP(email: email, shouldCreateUser: true)
@@ -299,6 +308,7 @@ final class Cloud {
             }
             lastPull = .now
             UserDefaults.standard.set(CloudConfig.url, forKey: Self.serverKey)
+            onPulled?()
         } catch {
             applyingRemote = false
             report(error)
@@ -387,6 +397,7 @@ final class Cloud {
             if DocOrder.normalize(context) > 0 { schedulePush() }   // older apps numbered documents in shared bands
             lastError = nil
             lastPull = .now
+            onPulled?()
         } catch { applyingRemote = false; report(error) }
     }
 

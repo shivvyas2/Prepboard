@@ -72,6 +72,10 @@ struct PrepboardApp: App {
                 // Bring in other devices' changes whenever the app comes back to the front.
                 .onChange(of: scenePhase) { if scenePhase == .active { cloud.refreshIfStale() } }
                 #if os(iOS)
+                // Alerts for what the Mac did, checked after every sync; permission is asked once signed in.
+                .task { cloud.onPulled = { [container] in PhoneAlerts.check(container.mainContext) } }
+                .task(id: cloud.user?.id) { if cloud.user != nil, !CloudConfig.isPreview { await PhoneAlerts.requestPermission() } }
+                .onChange(of: scenePhase) { if scenePhase == .background { PhoneAlerts.scheduleRefresh() } }
                 // Re-check the paired Mac when the app comes back, so AI requests go to the right place.
                 .onChange(of: scenePhase) { if scenePhase == .active, claude.paired { Task { await claude.checkConnection() } } }
                 #if DEBUG
@@ -143,6 +147,13 @@ struct PrepboardApp: App {
                 #endif
         }
         .modelContainer(container)
+        #if os(iOS)
+        // A background sync now and then, so "Applied" alerts arrive while the app is closed.
+        .backgroundTask(.appRefresh(PhoneAlerts.refreshID)) {
+            await cloud.refresh()
+            await MainActor.run { PhoneAlerts.scheduleRefresh() }
+        }
+        #endif
         #if os(macOS)
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1440, height: 920)

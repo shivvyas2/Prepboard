@@ -1,15 +1,18 @@
 import SwiftUI
 
-/// Sign in, iPhone-first and modeled on LifeOS: email first, then the 6-digit code from the email
-/// (works for new and returning accounts), with password sign-in and a reset link as options.
-/// Keyboard-safe: the form scrolls, the primary button rides above the keyboard, and Return moves focus.
+/// Sign in, in the same look as the rest of the app: one card on the app background, sans-serif type, pill buttons.
+/// Password first (the project sends no custom emails yet, so 6-digit codes stay off until `emailCodes` is true),
+/// with account creation and a reset link. Keyboard-safe: the form scrolls and Return moves focus.
 struct AuthView: View {
     @Environment(Cloud.self) private var cloud
 
-    enum Step: Equatable { case email, code, password, forgot }
+    /// 6-digit email codes need a custom SMTP provider on the Supabase project; turn on once one is set up.
+    static let emailCodes = false
+
+    enum Step: Equatable { case password, create, forgot, email, code }
     enum Field: Hashable { case email, password }
 
-    @State private var step: Step = .email
+    @State private var step: Step = .password
     @State private var email = ""
     @State private var password = ""
     @State private var code = ""
@@ -20,98 +23,63 @@ struct AuthView: View {
     @FocusState private var codeFocused: Bool
 
     var body: some View {
-        GeometryReader { geo in
-            if geo.size.width >= 700 {
-                // iPad / Mac: brand panel left, form right.
-                HStack(spacing: 0) {
-                    brandPanel.frame(width: geo.size.width * 0.5).frame(maxHeight: .infinity)
-                    formScroll(maxWidth: 420).background(PB.card)
+        ZStack {
+            PB.background
+            ScrollView {
+                VStack(spacing: PB.s6) {
+                    VStack(alignment: .leading, spacing: PB.s6) {
+                        header
+                        fields
+                        if let message { banner(message) }
+                        primaryButton
+                        secondaryActions
+                    }
+                    .pbCard(padding: PB.s8)
+                    Text("Your roles, notes and applications stay in sync on your Mac, iPhone and the web.")
+                        .font(.system(size: 12)).foregroundStyle(PB.muted).multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .ignoresSafeArea(.container)
-            } else {
-                formScroll(maxWidth: .infinity).background(PB.background)
+                .frame(maxWidth: 440)
+                .padding(.horizontal, PB.s4)
+                .padding(.vertical, PB.s12)
+                .frame(maxWidth: .infinity)
             }
+            .scrollDismissesKeyboard(.interactively)
         }
     }
 
     // MARK: layout
 
-    private func formScroll(maxWidth: CGFloat) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                header
-                fields
-                if let message { banner(message) }
-                secondaryActions
-            }
-            .frame(maxWidth: maxWidth, alignment: .leading)
-            .padding(.horizontal, 24)
-            .padding(.top, 32)
-            .frame(maxWidth: .infinity)
-        }
-        .scrollDismissesKeyboard(.interactively)
-        .safeAreaInset(edge: .bottom) {
-            primaryButton
-                .frame(maxWidth: maxWidth)
-                .padding(.horizontal, 24).padding(.top, 12).padding(.bottom, 12)
-                .frame(maxWidth: .infinity)
-        }
-    }
-
-    private var brandPanel: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            HStack(spacing: 12) {
-                PrepBoardLogo(size: 52)
-                Text("PrepBoard").font(.system(size: 22, weight: .bold)).kerning(-0.5).foregroundStyle(.white)
-            }
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Prepare for the job you want, one session at a time.")
-                    .font(.system(size: 44, weight: .bold)).kerning(-1.6).foregroundStyle(.white)
-                    .minimumScaleFactor(0.6)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("Plan every interview on a timeline, keep your notes next to the hour you'll use them, and pick up on any device.")
-                    .foregroundStyle(.white.opacity(0.85)).fixedSize(horizontal: false, vertical: true)
-            }
-            HStack(spacing: -10) {
-                ForEach(0..<5) { i in
-                    IllustratedAvatar(index: i).frame(width: 50, height: 50).clipShape(Circle())
-                        .overlay(Circle().strokeBorder(PB.cobalt, lineWidth: 3))
-                }
-            }
-        }
-        .padding(.horizontal, 48).padding(.vertical, 56)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .background(PB.cobalt)
-    }
-
     private var header: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                PrepBoardLogo(size: 36)
-                Text("PrepBoard").font(.system(size: 17, weight: .bold)).kerning(-0.3)
+        VStack(alignment: .leading, spacing: PB.s2) {
+            HStack(spacing: PB.s2) {
+                PrepBoardLogo(size: 28)
+                Text("PrepBoard").font(.system(size: 15, weight: .semibold)).kerning(-0.2).foregroundStyle(PB.ink)
             }
-            .padding(.bottom, 8)
-            Text(title).font(.system(size: 32, weight: .bold, design: .serif)).kerning(-0.6)
+            .padding(.bottom, PB.s3)
+            Text(title).font(.system(size: 26, weight: .bold)).kerning(-0.6).foregroundStyle(PB.ink)
                 .fixedSize(horizontal: false, vertical: true)
-            Text(subtitle).font(.system(size: 15)).foregroundStyle(PB.ink2).fixedSize(horizontal: false, vertical: true)
+            Text(subtitle).font(.system(size: 14)).foregroundStyle(PB.ink2).fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private var title: String {
         switch step {
-        case .email: "Sign in or create an account"
-        case .code: "Check your email"
-        case .password: "Sign in with password"
+        case .password: "Sign in"
+        case .create: "Create your account"
         case .forgot: "Reset your password"
+        case .email: "Sign in with a code"
+        case .code: "Check your email"
         }
     }
 
     private var subtitle: String {
         switch step {
-        case .email: "Enter your email and we'll send a 6-digit code. No password needed."
-        case .code: "Enter the 6-digit code we sent to \(email). It can take a minute; check spam too."
-        case .password: "Use the password you set for PrepBoard or LifeOS."
-        case .forgot: "We'll email you a reset link. Open it on any device to choose a new password, then sign in here."
+        case .password: "Welcome back. Use your PrepBoard email and password."
+        case .create: "Choose an email and a password of at least 8 characters. You'll use them on every device."
+        case .forgot: "We'll email you a link to choose a new password. Then come back and sign in."
+        case .email: "We'll email you a 6-digit code. No password needed."
+        case .code: "Enter the 6-digit code sent to \(email). It can take a minute, so check spam too."
         }
     }
 
@@ -121,33 +89,13 @@ struct AuthView: View {
     private var fields: some View {
         switch step {
         case .email, .forgot:
-            field("Email") {
-                TextField("you@example.com", text: $email)
-                    .textContentType(.emailAddress)
-                    #if os(iOS)
-                    .keyboardType(.emailAddress).textInputAutocapitalization(.never)
-                    #endif
-                    .autocorrectionDisabled()
-                    .focused($focus, equals: .email)
-                    .submitLabel(.continue)
-                    .onSubmit(primaryAction)
-            }
-            .onAppear { focus = .email }
-        case .password:
-            field("Email") {
-                TextField("you@example.com", text: $email)
-                    .textContentType(.username)
-                    #if os(iOS)
-                    .keyboardType(.emailAddress).textInputAutocapitalization(.never)
-                    #endif
-                    .autocorrectionDisabled()
-                    .focused($focus, equals: .email)
-                    .submitLabel(.next)
-                    .onSubmit { focus = .password }
-            }
+            emailField(submit: .continue) { primaryAction() }
+                .onAppear { focus = .email }
+        case .password, .create:
+            emailField(submit: .next) { focus = .password }
             field("Password") {
-                SecureField("Your password", text: $password)
-                    .textContentType(.password)
+                SecureField(step == .create ? "At least 8 characters" : "Your password", text: $password)
+                    .textContentType(step == .create ? .newPassword : .password)
                     .focused($focus, equals: .password)
                     .submitLabel(.go)
                     .onSubmit(primaryAction)
@@ -159,34 +107,50 @@ struct AuthView: View {
         }
     }
 
+    private func emailField(submit: SubmitLabel, onSubmit: @escaping () -> Void) -> some View {
+        field("Email") {
+            TextField("you@example.com", text: $email)
+                .textContentType(step == .password ? .username : .emailAddress)
+                #if os(iOS)
+                .keyboardType(.emailAddress).textInputAutocapitalization(.never)
+                #endif
+                .autocorrectionDisabled()
+                .focused($focus, equals: .email)
+                .submitLabel(submit)
+                .onSubmit(onSubmit)
+        }
+    }
+
     private func field<Content: View>(_ label: String, @ViewBuilder _ content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(label).pbLabelStyle()
             content()
                 .textFieldStyle(.plain)
-                .font(.system(size: 17))
-                .padding(.horizontal, 16).frame(minHeight: 52)
-                .background(RoundedRectangle(cornerRadius: PB.rMD, style: .continuous).fill(PB.card))
+                .font(.system(size: 15))
+                .padding(.horizontal, 14).frame(minHeight: 44)
+                .background(RoundedRectangle(cornerRadius: PB.rMD, style: .continuous).fill(PB.surface))
                 .overlay(RoundedRectangle(cornerRadius: PB.rMD, style: .continuous).strokeBorder(PB.line2))
         }
     }
 
     private func banner(_ m: (ok: Bool, text: String)) -> some View {
-        Text(m.text).font(.system(size: 14))
+        Label(m.text, systemImage: m.ok ? "checkmark.circle" : "exclamationmark.circle")
+            .font(.system(size: 13))
             .foregroundStyle(m.ok ? PB.cobalt : PB.red)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(12).frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 12).fill(m.ok ? PB.cobaltSoft : PB.redSoft))
+            .padding(PB.s3).frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: PB.rMD, style: .continuous).fill(m.ok ? PB.cobaltSoft : PB.redSoft))
     }
 
     // MARK: actions
 
     private var primaryTitle: String {
         switch step {
-        case .email: "Continue"
-        case .code: "Verify"
         case .password: "Sign in"
+        case .create: "Create account"
         case .forgot: "Email me a reset link"
+        case .email: "Email me a code"
+        case .code: "Verify"
         }
     }
 
@@ -195,29 +159,34 @@ struct AuthView: View {
         case .email, .forgot: !email.contains("@")
         case .code: code.count != 6
         case .password: !email.contains("@") || password.isEmpty
+        case .create: !email.contains("@") || password.count < 8
         }
     }
 
     private var primaryButton: some View {
         Button(action: primaryAction) {
             Group {
-                if busy { ProgressView().tint(.white) } else { Text(primaryTitle) }
+                if busy { ProgressView().controlSize(.small).tint(.white) } else { Text(primaryTitle) }
             }
-            .font(.system(size: 17, weight: .semibold))
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity, minHeight: 54)
-            .background(Capsule().fill(PB.cobalt.opacity(primaryDisabled ? 0.45 : 1)))
-            .contentShape(Capsule())
+            .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PillButtonStyle())
         .disabled(busy || primaryDisabled)
         .keyboardShortcut(.defaultAction)
     }
 
     @ViewBuilder
     private var secondaryActions: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: PB.s3) {
             switch step {
+            case .password:
+                link("Forgot password?") { go(.forgot) }
+                prompt("New to PrepBoard?", "Create an account") { go(.create) }
+                if Self.emailCodes { link("Email me a code instead") { go(.email) } }
+            case .create:
+                prompt("Already have an account?", "Sign in") { go(.password) }
+            case .forgot:
+                link("Back to sign in") { go(.password) }
             case .email:
                 link("Use password instead") { go(.password) }
             case .code:
@@ -226,20 +195,23 @@ struct AuthView: View {
                     link(wait > 0 ? "Resend code in \(wait)s" : "Resend code") { resend() }.disabled(wait > 0)
                 }
                 link("Use a different email") { code = ""; go(.email) }
-            case .password:
-                link("Forgot password?") { go(.forgot) }
-                link("Email me a code instead") { go(.email) }
-            case .forgot:
-                link("Back to sign in") { go(.password) }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func link(_ title: String, action: @escaping () -> Void) -> some View {
         Button(title, action: action)
             .buttonStyle(.plain)
-            .font(.system(size: 15, weight: .semibold))
+            .font(.system(size: 13, weight: .semibold))
             .foregroundStyle(PB.cobalt)
+    }
+
+    private func prompt(_ text: String, _ action: String, perform: @escaping () -> Void) -> some View {
+        HStack(spacing: 4) {
+            Text(text).font(.system(size: 13)).foregroundStyle(PB.muted)
+            link(action, action: perform)
+        }
     }
 
     private func go(_ s: Step) { message = nil; step = s }
@@ -264,10 +236,15 @@ struct AuthView: View {
                     try await cloud.verifyCode(email: e, code: code)
                 case .password:
                     try await cloud.signIn(email: e, password: password)
+                case .create:
+                    if try await !cloud.signUp(email: e, password: password) {
+                        step = .password
+                        message = (true, "Account created. Open the confirmation email we sent to \(e), then sign in here.")
+                    }
                 case .forgot:
                     try await cloud.sendResetLink(email: e)
                     step = .password
-                    message = (true, "Check your email for a reset link. Open it on any device, choose a new password, then sign in here.")
+                    message = (true, "Check your email for a reset link. Choose a new password there, then sign in here.")
                 }
             } catch {
                 if step == .code { code = "" }
@@ -292,10 +269,13 @@ struct AuthView: View {
     static func friendly(_ error: Error) -> String {
         let m = error.localizedDescription
         func has(_ s: String) -> Bool { m.localizedCaseInsensitiveContains(s) }
-        if has("rate limit") || has("security purposes") { return "Please wait a minute before asking for another email." }
+        if has("rate limit") || has("security purposes") { return "Too many tries. Wait a minute and try again." }
         if has("expired") || (has("invalid") && has("token")) { return "That code is wrong or has expired. Check the latest email, or resend." }
-        if has("invalid login") { return "That email and password don't match. Try a code instead." }
-        if has("email not confirmed") { return "Confirm your email first: use “Email me a code instead”." }
+        if has("invalid login") { return "That email and password don't match. Check them, or reset your password." }
+        if has("already registered") || has("already exists") { return "There's already an account with this email. Sign in instead." }
+        if has("email not confirmed") { return "This account isn't confirmed yet. Reset your password to confirm it." }
+        if has("password") && (has("short") || has("at least") || has("weak")) { return "Choose a longer password: at least 8 characters." }
+        if has("network") || has("offline") || has("internet") { return "You're offline. Connect to the internet and try again." }
         return m
     }
 }
