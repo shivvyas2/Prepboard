@@ -220,6 +220,23 @@ enum BrowserScripts {
     })
     """
 
+    /// fillPassword(ref, secret) → the field's label; only an <input type=password> is accepted, so a saved password can never
+    /// land in a visible text field (and from there in a read_page result).
+    static let fillPassword = """
+    (function (ref, secret) {
+        \(prelude)
+        const el = find(ref);
+        if (el.tagName !== 'INPUT' || el.type !== 'password') throw new Error('Element ' + ref + ' is not a password field');
+        el.scrollIntoView({block: 'center', inline: 'nearest'});
+        el.focus();
+        const d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+        if (d && d.set) d.set.call(el, secret); else el.value = secret;
+        fire(el, 'input', {inputType: 'insertText'});
+        fire(el, 'change');
+        return JSON.stringify(labelOf(el));
+    })
+    """
+
     /// selectOption(ref, value) → chosen option text; matches by value, then exact visible text, then contains.
     static let selectOption = """
     (function (ref, value) {

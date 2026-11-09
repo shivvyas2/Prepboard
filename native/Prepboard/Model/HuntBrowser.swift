@@ -254,6 +254,13 @@ final class HuntBrowser: NSObject, WKNavigationDelegate, WKUIDelegate {
         log("Typed into \(Self.short(label))\(submit ? " and pressed Enter" : "")")
     }
 
+    /// Puts a password into a password field; the log (and so Claude) only ever sees the field's label.
+    func fillPassword(ref: String, secret: String) async throws {
+        try requirePage()
+        let label = try await string(BrowserScripts.fillPassword, ref, secret)
+        log("Filled the saved password into \(Self.short(label))")
+    }
+
     func select(ref: String, value: String) async throws {
         try requirePage()
         let chosen = try await string(BrowserScripts.selectOption, ref, value)

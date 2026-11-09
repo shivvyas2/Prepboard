@@ -99,6 +99,8 @@ final class BrowserServer {
     static let name = "prepboard"
     private(set) var port: UInt16?
     let token: String
+    /// The email for job-site accounts, set only while a submit run is going; nil switches login_info and fill_password off.
+    var accountEmail: String?
     var minNavigationGap: TimeInterval = 1.5
     var navigationCap = 400
     private(set) var navigations = 0
@@ -223,7 +225,13 @@ final class BrowserServer {
         tool("upload_file", "Attach a file to a file input. ref is the file input itself or the label/button that opens the file picker; path is an absolute path inside the home folder to a .pdf, .docx, .txt or .png file. Returns the attached file name; call read_page or screenshot to confirm the page shows it.",
              ["ref": ["type": "string"], "path": ["type": "string", "description": "Absolute path, e.g. /Users/me/Resumes/Resume.pdf"]], required: ["ref", "path"]),
         tool("screenshot", "A PNG screenshot of the page as it looks now. Use it when read_page is unclear: layout, modals, CAPTCHAs, whether a click took effect.", [:]),
+        tool("login_info", "Whether PrepBoard has a saved login for the site now open, and the email to sign in or sign up with. Never returns the password.", [:]),
+        tool("fill_password", "Put the saved password for the site now open into a password field (an <input type=password>; read_page shows its value as ••••). new: true on a sign-up / create-account form creates and saves a new strong password for this site first (also for its \"confirm password\" field: call again with new false). You never see the password.",
+             ["ref": ["type": "string"], "new": ["type": "boolean", "description": "Create and save a new password for this site (sign-up forms only); default false"]], required: ["ref"]),
     ]
+
+    /// Tools only the submit run gets (they sign in or create accounts); never in a read-only run.
+    static let accountTools: Set<String> = ["login_info", "fill_password"]
 
     private static func tool(_ name: String, _ description: String, _ properties: [String: Any], required: [String] = []) -> MCPTool {
         MCPTool(name: name, description: description, inputSchema: ["type": "object", "properties": properties, "required": required])
@@ -234,13 +242,14 @@ final class BrowserServer {
 
     var allowedTools: String { Self.allowedTools(readOnly: false) }
 
-    static func allowedTools(readOnly: Bool) -> String {
-        tools.filter { !readOnly || readOnlyTools.contains($0.name) }.map { "mcp__\(name)__\($0.name)" }.joined(separator: " ")
+    static func allowedTools(readOnly: Bool, accounts: Bool = false) -> String {
+        tools.filter { (!readOnly || readOnlyTools.contains($0.name)) && (accounts || !accountTools.contains($0.name)) }
+            .map { "mcp__\(name)__\($0.name)" }.joined(separator: " ")
     }
 
     /// The `claude -p` flags for a run that uses the browser: --mcp-config <file> [--strict-mcp-config] --allowedTools <tools + extra>.
     /// `readOnly` leaves out type, select, press and upload_file; `strict: false` keeps the user's other MCP servers (the Gmail and Calendar connectors).
-    func claudeFlags(extraTools: String, readOnly: Bool = false, strict: Bool = true) -> String {
+    func claudeFlags(extraTools: String, readOnly: Bool = false, strict: Bool = true, accounts: Bool = false) -> String {
         let fm = FileManager.default
         let dir = fm.temporaryDirectory.appendingPathComponent("prepboard-hunt", isDirectory: true)
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
@@ -257,7 +266,7 @@ final class BrowserServer {
         fm.createFile(atPath: file.path, contents: Data(mcpConfigJSON.utf8), attributes: [.posixPermissions: 0o600])
         configFile = file
         let extra = extraTools.trimmingCharacters(in: .whitespaces)
-        return "--mcp-config '\(file.path)'\(strict ? " --strict-mcp-config" : "") --allowedTools \(Self.allowedTools(readOnly: readOnly))\(extra.isEmpty ? "" : " " + extra)"
+        return "--mcp-config '\(file.path)'\(strict ? " --strict-mcp-config" : "") --allowedTools \(Self.allowedTools(readOnly: readOnly, accounts: accounts))\(extra.isEmpty ? "" : " " + extra)"
     }
 
     // MARK: Tools
@@ -339,6 +348,33 @@ final class BrowserServer {
                 throw BrowserError.blocked("upload_file only accepts .pdf, .docx, .txt or .png files inside your home folder (got \(path))")
             }
             try await browser.uploadFile(ref: try str("ref"), path: (path as NSString).expandingTildeInPath)
+            return .text(browser.lastAction)
+        case _ where Self.accountTools.contains(name) && accountEmail == nil:
+            throw BrowserError.blocked("\(name) is only available while PrepBoard is submitting an application")
+        case "login_info":
+            let email = accountEmail ?? ""
+            guard let host = SiteLogins.key(for: browser.url) else { throw BrowserError.message("No page is open") }
+            if let login = SiteLogins.login(for: host) {
+                return .text("A login is saved for \(host). Sign in with email \(login.email) and fill_password(ref) for the password.")
+            }
+            return .text("No login saved for \(host). Sign in or sign up with email \(email.isEmpty ? "(none on file: stop and report it)" : email); "
+                + "on a create-account form use fill_password(ref, new: true) for the password. If the site says an account already exists for "
+                + "this email, use its \"Forgot password\" link: reset it via the email, with fill_password(ref, new: true) on the new-password form.")
+        case "fill_password":
+            guard let host = SiteLogins.key(for: browser.url) else { throw BrowserError.message("No page is open") }
+            let ref = try str("ref")
+            if args["new"] as? Bool == true {
+                // A second new:true on the same form (a confirm field) reuses the password just made, so both fields match.
+                let existing = SiteLogins.login(for: host).flatMap { Date.now.timeIntervalSince($0.created) < 1800 && $0.madeByPrepBoard ? $0 : nil }
+                let secret = existing.flatMap { SiteLogins.password(for: $0.host) } ?? SiteLogins.newPassword()
+                try await browser.fillPassword(ref: ref, secret: secret)
+                if existing == nil { SiteLogins.save(host: host, email: accountEmail ?? "", password: secret, madeByPrepBoard: true) }
+                return .text("\(browser.lastAction). A new password for \(host) is saved in PrepBoard's Keychain.")
+            }
+            guard SiteLogins.login(for: host) != nil, let secret = SiteLogins.password(for: host) else {
+                throw BrowserError.message("No login is saved for \(host). On a create-account or reset-password form use new: true; otherwise stop and report ACCOUNT_REQUIRED.")
+            }
+            try await browser.fillPassword(ref: ref, secret: secret)
             return .text(browser.lastAction)
         case "screenshot":
             return .image(Self.scaledPNG(try await browser.screenshot(), maxWidth: 1280), mime: "image/png")

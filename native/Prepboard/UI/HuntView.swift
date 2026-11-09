@@ -697,6 +697,12 @@ struct HuntSettingsSheet: View {
     @State private var signingIn = false
     @AppStorage(HuntPrefs.keepApplyingKey) private var keepApplying = false
     @AppStorage(HuntPrefs.resumePDFKey) private var resumePDF = ""
+    @AppStorage(HuntPrefs.siteAccountsKey) private var siteAccounts = true
+    @State private var siteLogins = SiteLogins.all
+    @State private var newLoginSite = ""
+    @State private var newLoginEmail = ""
+    @State private var newLoginPassword = ""
+    @State private var copiedLogin = ""
     @State private var fillOutcome = ""
     @State private var fillingHistory = false
     #endif
@@ -883,6 +889,7 @@ struct HuntSettingsSheet: View {
                     }
                 }
                 #if os(macOS)
+                siteLoginsSection
                 variantsSection
                 #endif
                 HStack {
@@ -1102,6 +1109,66 @@ struct HuntSettingsSheet: View {
             do { fillOutcome = outcome(contact + (try await hunt.fillHistory(tex: tex, settings: settings))) }
             catch { fillOutcome = outcome(contact) + " Couldn't read history: \(error.localizedDescription)" }
         }
+    }
+
+    /// Job-site accounts Keep applying signs in to or makes (Workday, iCIMS, …): one Keychain password per site, never shown to Claude.
+    private var siteLoginsSection: some View {
+        section("Job-site logins") {
+            Toggle(isOn: $siteAccounts) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Sign in and create accounts for me").font(.system(size: 13, weight: .medium))
+                    Text("Keep applying signs in to sites like Workday and iCIMS, or makes an account with \(settings.answerBank.email.isEmpty ? "your email" : settings.answerBank.email) "
+                         + "and a new password for each site, kept in this Mac's Keychain. Claude never sees the passwords; it reads only that site's "
+                         + "verification email from your Gmail. Phone codes and CAPTCHAs still come to you.")
+                        .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .toggleStyle(.switch)
+            ForEach(siteLogins) { login in
+                HStack(spacing: PB.s3) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(login.host).font(.system(size: 13, weight: .medium)).lineLimit(1).truncationMode(.middle)
+                        Text("\(login.email) · \(login.madeByPrepBoard ? "made by PrepBoard" : "added by you") \(login.created.formatted(date: .abbreviated, time: .omitted))")
+                            .font(.system(size: 11)).foregroundStyle(PB.muted)
+                    }
+                    Spacer(minLength: PB.s2)
+                    Button(copiedLogin == login.host ? "Copied" : "Copy password") {
+                        guard let p = SiteLogins.password(for: login.host) else { return }
+                        NSPasteboard.general.clearContents(); NSPasteboard.general.setString(p, forType: .string)
+                        copiedLogin = login.host
+                    }
+                    .buttonStyle(PillButtonStyle(filled: false, compact: true))
+                    CircleIconButton(systemImage: "trash", size: 28, label: "Remove this login") {
+                        SiteLogins.remove(login.host); siteLogins = SiteLogins.all
+                    }
+                }
+            }
+            Text("Already have an account somewhere? Add it so PrepBoard signs in instead of making a new one. Site is the address's host, e.g. acme.wd5.myworkdayjobs.com.")
+                .font(.system(size: 12)).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: PB.s3)], alignment: .leading, spacing: PB.s3) {
+                PBTextField(label: "Site", text: $newLoginSite)
+                PBTextField(label: "Email", text: $newLoginEmail)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Password").pbLabelStyle()
+                    SecureField("Password", text: $newLoginPassword)
+                        .textFieldStyle(.plain)
+                        .padding(.horizontal, 12).padding(.vertical, 12)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(PB.surface))
+                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(PB.line))
+                }
+            }
+            Button("Add login") {
+                let site = newLoginSite.trimmingCharacters(in: .whitespacesAndNewlines)
+                let host = SiteLogins.key(for: URL(string: site.contains("://") ? site : "https://" + site)) ?? site
+                let email = newLoginEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+                SiteLogins.save(host: host, email: email.isEmpty ? settings.answerBank.email : email, password: newLoginPassword, madeByPrepBoard: false)
+                newLoginSite = ""; newLoginEmail = ""; newLoginPassword = ""
+                siteLogins = SiteLogins.all
+            }
+            .buttonStyle(PillButtonStyle(compact: true))
+            .disabled(newLoginSite.trimmingCharacters(in: .whitespaces).isEmpty || newLoginPassword.isEmpty)
+        }
+        .onAppear { siteLogins = SiteLogins.all }
     }
 
     /// The stored LinkedIn sign-in: Keychain only, typed into LinkedIn's page by PrepBoard itself, never shown to Claude.

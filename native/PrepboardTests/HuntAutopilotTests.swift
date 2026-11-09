@@ -332,3 +332,36 @@ final class TitleConflictTests: XCTestCase {
         XCTAssertEqual(b.usingTitle("Founding Product Engineer").currentTitle, "Founding Product Engineer")
     }
 }
+
+final class SiteLoginTests: XCTestCase {
+    func testKeyKeepsCompanySubdomain() {
+        XCTAssertEqual(SiteLogins.key(for: URL(string: "https://Acme.wd5.myworkdayjobs.com/en-US/careers/login")), "acme.wd5.myworkdayjobs.com")
+        XCTAssertEqual(SiteLogins.key(for: URL(string: "https://www.example.com/jobs")), "example.com")
+        XCTAssertNil(SiteLogins.key(for: nil))
+    }
+
+    func testNewPasswordIsStrongAndUnique() {
+        let a = SiteLogins.newPassword(), b = SiteLogins.newPassword()
+        XCTAssertNotEqual(a, b)
+        XCTAssertEqual(a.count, 21)
+        XCTAssertTrue(a.contains { $0.isUppercase } && a.contains { $0.isLowercase } && a.contains { $0.isNumber })
+        XCTAssertTrue(a.contains("!") && a.contains("#"))
+    }
+
+    @MainActor func testAccountToolsOnlyWhenAsked() {
+        XCTAssertFalse(BrowserServer.allowedTools(readOnly: false).contains("fill_password"))
+        XCTAssertFalse(BrowserServer.allowedTools(readOnly: true, accounts: true).contains("fill_password"))
+        XCTAssertTrue(BrowserServer.allowedTools(readOnly: false, accounts: true).contains("mcp__prepboard__fill_password"))
+    }
+
+    @MainActor func testSubmitPromptAccountRule() {
+        let lead = Lead(company: "Acme", title: "iOS Engineer", link: "https://acme.wd5.myworkdayjobs.com/job/1")
+        var bank = AnswerBank(); bank.email = "me@example.com"
+        let on = JobHunt.submitPrompt(lead: lead, pdfPath: "/tmp/r.pdf", bank: bank, autonomous: true, accounts: true)
+        XCTAssertTrue(on.contains("SIGNING IN AND ACCOUNTS"))
+        XCTAssertFalse(on.contains("the site asks you to create an account, sign in"))
+        let off = JobHunt.submitPrompt(lead: lead, pdfPath: "/tmp/r.pdf", bank: bank, autonomous: true)
+        XCTAssertFalse(off.contains("SIGNING IN AND ACCOUNTS"))
+        XCTAssertTrue(off.contains("the site asks you to create an account, sign in"))
+    }
+}

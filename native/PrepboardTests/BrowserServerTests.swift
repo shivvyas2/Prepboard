@@ -53,7 +53,7 @@ final class BrowserServerTests: XCTestCase {
         let tools = (r.json?["result"] as? [String: Any])?["tools"] as? [[String: Any]] ?? []
         XCTAssertEqual(tools.map { $0["name"] as? String }, BrowserServer.tools.map { $0.name })
         XCTAssertEqual(Set(tools.compactMap { $0["name"] as? String }),
-                       ["navigate", "back", "wait", "page_text", "read_page", "click", "type", "select", "press", "scroll", "upload_file", "screenshot"])
+                       ["navigate", "back", "wait", "page_text", "read_page", "click", "type", "select", "press", "scroll", "upload_file", "screenshot", "login_info", "fill_password"])
         for t in tools {
             let schema = t["inputSchema"] as? [String: Any]
             XCTAssertEqual(schema?["type"] as? String, "object", "\(t["name"] ?? "")")
@@ -339,6 +339,21 @@ final class BrowserServerTests: XCTestCase {
         let b = HuntBrowser()
         try await b.loadHTML(Self.page)
         return b
+    }
+
+    /// fill_password's script only writes into a real password field, and read_page never shows what it wrote.
+    func testFillPasswordOnlyIntoPasswordFields() async throws {
+        let b = HuntBrowser()
+        try await b.loadHTML("<form><label>Email <input id=e type=email></label><label>Password <input id=p type=password></label></form>")
+        let page = try await b.readPage(interactiveOnly: true)
+        guard let email = ref(page, "textbox \"Email\""), let pass = ref(page, "textbox \"Password\"") else { return XCTFail(page) }
+        do { try await b.fillPassword(ref: email, secret: "s3cret-Value!"); XCTFail("should refuse a text field") } catch {}
+        try await b.fillPassword(ref: pass, secret: "s3cret-Value!")
+        let after = try await b.readPage(interactiveOnly: true)
+        XCTAssertFalse(after.contains("s3cret"), after)
+        XCTAssertFalse(b.lastAction.contains("s3cret"))
+        let value = try await b.run("(function(){ return JSON.stringify(document.getElementById('p').value) })")
+        XCTAssertEqual(value as? String, "s3cret-Value!")
     }
 
     func testReadPageAssignsRefsAndLabels() async throws {

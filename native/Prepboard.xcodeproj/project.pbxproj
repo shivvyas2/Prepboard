@@ -44,6 +44,7 @@
 		3C5B9054EDAA0792B3B4504A /* ResumeEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5655B19D65046930196F5019 /* ResumeEditorSheet.swift */; };
 		3F545C9EF30B20F10DE87FBD /* BrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD39A0E9AB7F074D92994A4A /* BrowserView.swift */; };
 		4198975AD42D832B998694DF /* PracticeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C570E7B529A79775F8DB3F03 /* PracticeView.swift */; };
+		41D294B7AE2718DB6C84997E /* SiteLogins.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D241F72ACEBECD15C8C0A7 /* SiteLogins.swift */; };
 		4513445ECEA3A2A37875B3E4 /* ClaudeMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 022B1F5544DC07FF847C9C04 /* ClaudeMark.swift */; };
 		454D906927D158A44AAF2099 /* TimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6FC5742992DC2E095BDEF27 /* TimelineView.swift */; };
 		4D283A845401B746B8700E39 /* MarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 854854AA1F340A335592DD89 /* MarkdownView.swift */; };
@@ -115,6 +116,7 @@
 		C98654A8D565DC7AF0ED768D /* RunResultTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17B3B3595BEDAAFB0AE256F /* RunResultTests.swift */; };
 		CA8659DC0A096365222A099D /* Learning.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB9073FEB4AD369E9018B0DD /* Learning.swift */; };
 		CBAF4E46FA6085154FF96B96 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6835F58BDD8C6B80BFB23B64 /* RootView.swift */; };
+		D12DA07F132169297225C4F7 /* SiteLogins.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D241F72ACEBECD15C8C0A7 /* SiteLogins.swift */; };
 		D1D13F5B11A8D252E719D4B5 /* MacBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC34C8528365ECCD58D9852 /* MacBridge.swift */; };
 		D2530C4765BECF97608E75D9 /* PracticeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C570E7B529A79775F8DB3F03 /* PracticeView.swift */; };
 		D603F61B60BDA4622982A67E /* RolesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E02443C80B213288CCA76C4 /* RolesView.swift */; };
@@ -196,6 +198,7 @@
 		A4E1D6952B06D2384BCBEBBD /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		B73BFD19624466AB957B8B72 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		B775CA86BBD798B97BB27256 /* BrowserServerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserServerTests.swift; sourceTree = "<group>"; };
+		B7D241F72ACEBECD15C8C0A7 /* SiteLogins.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiteLogins.swift; sourceTree = "<group>"; };
 		BB8E4C959CF417900DFFC346 /* LearnViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearnViews.swift; sourceTree = "<group>"; };
 		BC0CFBC3448067B5F781BF89 /* Transfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transfer.swift; sourceTree = "<group>"; };
 		BC113D5260E8E466AEA9A6A6 /* ResumeLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResumeLibrary.swift; sourceTree = "<group>"; };
@@ -221,7 +224,7 @@
 		F7B5CB664515303BCC5236AE /* Offline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Offline.swift; sourceTree = "<group>"; };
 		FA38C9ECC0EA87B9053226FD /* WorkspaceViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceViews.swift; sourceTree = "<group>"; };
 		FAC34C8528365ECCD58D9852 /* MacBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacBridge.swift; sourceTree = "<group>"; };
-		"TEMP_7EB17713-EAF7-4399-B807-811AD7278662" /* Prepboard.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Prepboard.xcconfig; sourceTree = "<group>"; };
+		"TEMP_120C146E-0B6D-4B10-824A-C50FDEE5609B" /* Prepboard.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Prepboard.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -355,6 +358,7 @@
 				1B209C3AE9C59D4538BB7F70 /* Practice.swift */,
 				E1B82D09FE3A4A14E8019D81 /* ResumeFolders.swift */,
 				BC113D5260E8E466AEA9A6A6 /* ResumeLibrary.swift */,
+				B7D241F72ACEBECD15C8C0A7 /* SiteLogins.swift */,
 				7F3F85AEB7443FD9579A22E0 /* TextClean.swift */,
 				BC0CFBC3448067B5F781BF89 /* Transfer.swift */,
 				6FABD1561F8F6E3CB78CB3FD /* Workspace.swift */,
@@ -362,10 +366,10 @@
 			path = Model;
 			sourceTree = "<group>";
 		};
-		"TEMP_DF59CD90-EFF8-45A2-B914-D65E15731DCD" /* native */ = {
+		"TEMP_20140407-DFEB-4CFC-98BF-72DCF38E2A9D" /* native */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_7EB17713-EAF7-4399-B807-811AD7278662" /* Prepboard.xcconfig */,
+				"TEMP_120C146E-0B6D-4B10-824A-C50FDEE5609B" /* Prepboard.xcconfig */,
 			);
 			path = native;
 			sourceTree = "<group>";
@@ -554,6 +558,7 @@
 				CBAF4E46FA6085154FF96B96 /* RootView.swift in Sources */,
 				30872CC70DC4F2CE2EC7D48E /* RunConsole.swift in Sources */,
 				1A3EBEF4782C9479A7053560 /* SearchView.swift in Sources */,
+				41D294B7AE2718DB6C84997E /* SiteLogins.swift in Sources */,
 				88297BEE959A45436DE8FED8 /* SyntaxHighlighter.swift in Sources */,
 				C65E7E59B27C42246189F8D6 /* TextClean.swift in Sources */,
 				A4D59312DF82A1E45270AD98 /* Theme.swift in Sources */,
@@ -619,6 +624,7 @@
 				15EF66572198B463544C9213 /* RootView.swift in Sources */,
 				1F76FDF88D3924E666D8BBE0 /* RunConsole.swift in Sources */,
 				5589EF6DC5389E19055FFD28 /* SearchView.swift in Sources */,
+				D12DA07F132169297225C4F7 /* SiteLogins.swift in Sources */,
 				B04F4A74080410999B6320DB /* SyntaxHighlighter.swift in Sources */,
 				A9E40F7AD888D8D86D8283E9 /* TextClean.swift in Sources */,
 				2785839BA6299D47FC207CCC /* Theme.swift in Sources */,
@@ -659,7 +665,7 @@
 /* Begin XCBuildConfiguration section */
 		10744D7376C93E547E6FC5D0 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_7EB17713-EAF7-4399-B807-811AD7278662" /* Prepboard.xcconfig */;
+			baseConfigurationReference = "TEMP_120C146E-0B6D-4B10-824A-C50FDEE5609B" /* Prepboard.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -694,7 +700,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 20;
+				CURRENT_PROJECT_VERSION = 21;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -711,7 +717,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = PrepBoard;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.16;
+				MARKETING_VERSION = 1.17;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -841,7 +847,7 @@
 		};
 		DFD456A3EE378308373DEC56 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_7EB17713-EAF7-4399-B807-811AD7278662" /* Prepboard.xcconfig */;
+			baseConfigurationReference = "TEMP_120C146E-0B6D-4B10-824A-C50FDEE5609B" /* Prepboard.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -876,7 +882,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 20;
+				CURRENT_PROJECT_VERSION = 21;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -899,7 +905,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = PrepBoard;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.16;
+				MARKETING_VERSION = 1.17;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

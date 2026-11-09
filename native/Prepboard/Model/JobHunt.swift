@@ -97,6 +97,9 @@ enum HuntPrefs {
     static var keepApplying: Bool { UserDefaults.standard.bool(forKey: keepApplyingKey) }
     /// "" tailors a résumé for each job; otherwise this PDF is sent to every application.
     static var resumePDF: String { UserDefaults.standard.string(forKey: resumePDFKey) ?? "" }
+    static let siteAccountsKey = "hunt.siteAccounts"
+    /// Keep applying signs in to job sites and creates accounts on them (passwords in the Keychain, codes from Gmail). On unless turned off.
+    static var siteAccounts: Bool { UserDefaults.standard.object(forKey: siteAccountsKey) as? Bool ?? true }
     /// While keep applying is on, the search runs again this long after the last one if the queue has emptied.
     static let rerunGap: TimeInterval = 3 * 3600
 
@@ -1225,9 +1228,14 @@ final class JobHunt {
                 stoppedPages[lead.id] = here.isEmpty ? (chrome ? "" : huntBrowser?.url?.absoluteString ?? "") : here
             }
             do {
-                let flags = chrome ? Self.chromeFlags(tools: Self.chromeSubmitTools) : browser?.claudeFlags(extraTools: "")
+                // Keep applying in the built-in browser may sign in and make accounts: the password tools and Gmail (for codes) come along.
+                let accounts = !chrome && autonomous && HuntPrefs.siteAccounts && !settings.answerBank.email.isEmpty
+                browser?.accountEmail = accounts ? settings.answerBank.email : nil
+                defer { browser?.accountEmail = nil }
+                let flags = chrome ? Self.chromeFlags(tools: Self.chromeSubmitTools)
+                    : browser?.claudeFlags(extraTools: accounts ? Self.gmailReadTools : "", strict: !accounts, accounts: accounts)
                 let result = try await Self.check(SubmitResult.self, prompt: Self.submitPrompt(lead: lead, pdfPath: pdfPath, bank: settings.answerBank, chrome: chrome,
-                                                                                              resume: resume, autonomous: autonomous),
+                                                                                              resume: resume, autonomous: autonomous, accounts: accounts),
                                                   schema: Self.submitSchema, browserFlags: flags, tools: "", cwd: settings.resumeFolder)
                 // What Claude answered on its own (autonomous mode) is kept on the lead, so the user can see what was sent.
                 let selfAnswered = (result.self_answered ?? []).filter { !$0.answer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -1262,7 +1270,8 @@ final class JobHunt {
                     forgetForm(lead)
                     let account = result.reason.hasPrefix("ACCOUNT_REQUIRED")
                     lead.status = .skipped
-                    lead.reason = Lead.byHandPrefix + (account ? "the site needs an account. " : "it asks for an assessment. ")
+                    lead.reason = Lead.byHandPrefix + (!account ? "it asks for an assessment. "
+                            : accounts ? "signing in needs you; any login PrepBoard made is in Hunt settings → Job-site logins. " : "the site needs an account. ")
                         + result.reason.drop(while: { $0 != ":" }).dropFirst().trimmingCharacters(in: .whitespaces)
                 case "needs_you":
                     // The form stays as it was left (the next queued application gets its own page) and the next submit continues it.
@@ -1749,7 +1758,7 @@ final class JobHunt {
     }
 
     static func submitPrompt(lead: Lead, pdfPath: String, bank base: AnswerBank, chrome: Bool = false, resume: SubmitResume = .none,
-                             autonomous: Bool = false) -> String {
+                             autonomous: Bool = false, accounts: Bool = false) -> String {
         let bank = lead.bank(base)
         var notes = ATS.formNotes(ATS.kind(lead.link))
         if chrome { notes = notes.replacingOccurrences(of: "upload_file", with: "file_upload") }   // the Chrome tool's name
@@ -1809,9 +1818,10 @@ final class JobHunt {
         "You've already applied", an application status or confirmation page). If so, do not apply again: return status "submitted" with \
         what the page shows as `confirmation`.
         \(autonomous ? Self.autonomousRule : "")
+        \(accounts ? Self.accountRule : "")
         - STOP CONDITIONS. Do not submit, leave the page exactly where you stopped, and return status "needs_you" with the reason and every \
         question you could not answer in `unknown_questions` (the question text as shown), when any of these happens: a required question is \
-        not covered by the answers below\(autonomous ? " or by ANSWERING ON YOUR OWN" : ""); the site asks you to create an account, sign in, or complete two-factor authentication; a CAPTCHA; \
+        not covered by the answers below\(autonomous ? " or by ANSWERING ON YOUR OWN" : ""); \(accounts ? "signing in or making an account fails as SIGNING IN AND ACCOUNTS describes" : "the site asks you to create an account, sign in, or complete two-factor authentication"); a CAPTCHA; \
         an assessment, test, video or coding exercise; a cover letter or other document you do not have; a request to pay; the posting is \
         closed or a different job opens; an error you cannot resolve; or anything else unexpected.
         - When what stopped you is that the site needs me to create an account or sign in, begin `reason` with "ACCOUNT_REQUIRED:"; \
@@ -1849,6 +1859,26 @@ final class JobHunt {
     }
 
     /// Keep applying's extra submit rule: the screening questions a person would answer from their own facts without thinking.
+    /// Read-only Gmail tools a submit run gets for verification codes and links (the claude.ai Gmail connector).
+    static let gmailReadTools = "mcp__claude_ai_Gmail__search_threads mcp__claude_ai_Gmail__get_thread mcp__claude_ai_Gmail__get_message"
+
+    /// How a submit run signs in to a job site or makes an account there (Workday, iCIMS, Taleo, SuccessFactors, a company portal).
+    static let accountRule = """
+    - SIGNING IN AND ACCOUNTS: when the site needs me signed in or asks me to create an account before applying, do it: call \
+    login_info. With a saved login, sign in with that email and fill_password(ref) in the password field. With none, create the \
+    account: that email, my name and the other facts below, fill_password(ref, new: true) in the password field and again with new: true \
+    in a "confirm password" field (it reuses the same password); accept the site's terms only when the account cannot be made without \
+    it; decline marketing emails. When an account already exists for my email and no login is saved (or the saved one is rejected), \
+    use "Forgot password", and fill_password(ref, new: true) on the new-password form. Never type a password with `type`.
+    - EMAIL CODES AND LINKS: when the site emails a verification code, sign-in link or password-reset link, find it in my Gmail: \
+    search_threads with a query like `newer_than:1h <company or site name>` (try again after a wait if it has not arrived; up to 3 \
+    tries over about 2 minutes), open the newest matching message with get_thread, then type the code or navigate to the link. Read \
+    only that site's verification, sign-in or reset messages from the last hour; never read anything else in my mailbox.
+    - Still stop with reason "ACCOUNT_REQUIRED: …" for: a code sent to my phone or an authenticator app, a CAPTCHA or "verify you \
+    are human", a security question, a sign-in that is rejected twice (never try a third time: sites lock accounts), or no email \
+    arriving after 3 tries.
+    """
+
     static let autonomousRule = """
     - ANSWERING ON YOUR OWN (I asked you to apply without me): a required question that is not legal and that the lists below do not \
     cover word for word may still be answered when my facts, history, saved answers or the uploaded résumé clearly support exactly one \
