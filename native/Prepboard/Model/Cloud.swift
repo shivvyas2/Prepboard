@@ -316,6 +316,35 @@ final class Cloud {
         }
     }
 
+    /// Three-way merge of the Answer Bank by field (one level into nested objects such as `remote`): a field this device changed
+    /// since `base` keeps its local value, every other field takes the server's.
+    static func merged(local: AnswerBank, base: AnswerBank, remote: AnswerBank) -> AnswerBank {
+        func dict(_ b: AnswerBank) -> [String: Any] {
+            (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(b))) as? [String: Any] ?? [:]
+        }
+        func same(_ a: Any?, _ b: Any?) -> Bool {
+            switch (a, b) {
+            case (nil, nil): return true
+            case let (a?, b?): return (a as AnyObject).isEqual(b)
+            default: return false
+            }
+        }
+        func merge(_ l: [String: Any], _ b: [String: Any], _ r: [String: Any], depth: Int) -> [String: Any] {
+            var out = r
+            for key in Set(l.keys).union(b.keys) {
+                if depth == 0, let ld = l[key] as? [String: Any], let bd = b[key] as? [String: Any], let rd = r[key] as? [String: Any] {
+                    out[key] = merge(ld, bd, rd, depth: 1)
+                } else if !same(l[key], b[key]) {
+                    out[key] = l[key]
+                }
+            }
+            return out
+        }
+        let m = merge(dict(local), dict(base), dict(remote), depth: 0)
+        guard let data = try? JSONSerialization.data(withJSONObject: m), let bank = try? JSONDecoder().decode(AnswerBank.self, from: data) else { return local }
+        return bank
+    }
+
     /// The server this device's data last synced with. Before 1.18 there was only the project PrepBoard shared with LifeOS.
     private static let serverKey = "cloud.server"
     static let legacyServer = "https://abxwxpwhkcqtotjqsmxb.supabase.co"
@@ -464,6 +493,13 @@ final class Cloud {
                 try await client.from("pb_profiles").upsert(p).execute()
             }
             if now.huntJSON != base.huntJSON, var h = now.huntRow {
+                // Another device (or the phone's remote) may have changed the Answer Bank since the last pull: keep its fields
+                // unless this device changed the same ones, so the Mac's status updates never wipe an edit made elsewhere.
+                if let baseRow = base.huntRow,
+                   let remote: [HuntSettingsRow] = try? await client.from("pb_hunt_settings").select().eq("user_id", value: user.id).execute().value,
+                   let r = remote.first {
+                    h.answers = Self.merged(local: h.answers, base: baseRow.answers, remote: r.answers)
+                }
                 h.user_id = user.id; h.updated_at = stamp
                 try await client.from("pb_hunt_settings").upsert(h).execute()
             }

@@ -388,3 +388,17 @@ final class DailyReportTests: XCTestCase {
         XCTAssertTrue(DailyReport.html([e], waiting: [], day: .now).contains("<b>Acme</b>"))
     }
 }
+
+final class AnswerBankMergeTests: XCTestCase {
+    @MainActor func testStatusUpdateKeepsEditFromAnotherDevice() {
+        var base = AnswerBank(); base.zipCode = ""; base.currentTitle = "Old"
+        var remote = base; remote.zipCode = "07302"; remote.remote.keepApplying = true          // the phone's edit
+        var local = base; local.remote.macStatus = "Applying"; local.remote.macStatusAt = "now"  // the Mac's status update
+        let m = Cloud.merged(local: local, base: base, remote: remote)
+        XCTAssertEqual(m.zipCode, "07302")
+        XCTAssertEqual(m.remote.keepApplying, true)
+        XCTAssertEqual(m.remote.macStatus, "Applying")
+        var mine = base; mine.currentTitle = "New"
+        XCTAssertEqual(Cloud.merged(local: mine, base: base, remote: remote).currentTitle, "New")
+    }
+}

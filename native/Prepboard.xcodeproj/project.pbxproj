@@ -233,7 +233,7 @@
 		F7B5CB664515303BCC5236AE /* Offline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Offline.swift; sourceTree = "<group>"; };
 		FA38C9ECC0EA87B9053226FD /* WorkspaceViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceViews.swift; sourceTree = "<group>"; };
 		FAC34C8528365ECCD58D9852 /* MacBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacBridge.swift; sourceTree = "<group>"; };
-		"TEMP_DEF868F1-E5D6-49AE-ACBC-0DBE517E7D07" /* Prepboard.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Prepboard.xcconfig; sourceTree = "<group>"; };
+		"TEMP_C8F73DE0-A39A-4E08-B001-6F21B09D28D8" /* Prepboard.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Prepboard.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -378,10 +378,10 @@
 			path = Model;
 			sourceTree = "<group>";
 		};
-		"TEMP_875E3D5E-CCFD-4260-9205-51097834236E" /* native */ = {
+		"TEMP_9CA310C5-BA1F-4AB1-A2DC-9FB63CE8C043" /* native */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_DEF868F1-E5D6-49AE-ACBC-0DBE517E7D07" /* Prepboard.xcconfig */,
+				"TEMP_C8F73DE0-A39A-4E08-B001-6F21B09D28D8" /* Prepboard.xcconfig */,
 			);
 			path = native;
 			sourceTree = "<group>";
@@ -683,7 +683,7 @@
 /* Begin XCBuildConfiguration section */
 		10744D7376C93E547E6FC5D0 /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_DEF868F1-E5D6-49AE-ACBC-0DBE517E7D07" /* Prepboard.xcconfig */;
+			baseConfigurationReference = "TEMP_C8F73DE0-A39A-4E08-B001-6F21B09D28D8" /* Prepboard.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -718,7 +718,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 24;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -735,7 +735,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = PrepBoard;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.19;
+				MARKETING_VERSION = 1.20;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -865,7 +865,7 @@
 		};
 		DFD456A3EE378308373DEC56 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_DEF868F1-E5D6-49AE-ACBC-0DBE517E7D07" /* Prepboard.xcconfig */;
+			baseConfigurationReference = "TEMP_C8F73DE0-A39A-4E08-B001-6F21B09D28D8" /* Prepboard.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -900,7 +900,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 24;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -923,7 +923,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = PrepBoard;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.19;
+				MARKETING_VERSION = 1.20;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
