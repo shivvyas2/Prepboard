@@ -1,0 +1,16 @@
+# PrepBoard's own Supabase project (moved off the shared LifeOS project on 2026-11-09).
+project_id = "hcmktqjkwsbzfndkflkc"
+
+[auth]
+site_url = "https://prepboard.shivvyas.com"
+additional_redirect_urls = ["https://prepboard.shivvyas.com", "https://prepboard.shivvyas.com/**"]
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = true
+otp_length = 6
+otp_expiry = 3600
+
+# Custom email templates (6-digit codes instead of links) need a custom SMTP provider on the free plan.
+# Until one is set up, sign in with a password; add [auth.email.smtp] here and restore the templates in ./templates.

@@ -277,7 +277,10 @@ final class Cloud {
         guard let context = container?.mainContext else { return }
         do {
             let remote = try await pull()
-            if remote.isEmpty {
+            if remote.isEmpty, Self.localServer != CloudConfig.url, Self.hasLocalData(context) {
+                // The account moved to a new server: this device's copy is the data, so it goes up instead of being cleared.
+                try await moveHere(context: context, user: u)
+            } else if remote.isEmpty {
                 // New account: start empty (nothing from other accounts or earlier sessions) and open the planner.
                 applyingRemote = true
                 try remote.apply(to: context, profile: nil)
@@ -295,11 +298,46 @@ final class Cloud {
                 if DocOrder.normalize(context) > 0 { schedulePush() }   // older apps numbered documents in shared bands
             }
             lastPull = .now
+            UserDefaults.standard.set(CloudConfig.url, forKey: Self.serverKey)
         } catch {
             applyingRemote = false
             report(error)
             if let ctx = container?.mainContext { synced = synced ?? SyncSnapshot(context: ctx, profile: profile) }
         }
+    }
+
+    /// The server this device's data last synced with. Before 1.18 there was only the project PrepBoard shared with LifeOS.
+    private static let serverKey = "cloud.server"
+    static let legacyServer = "https://abxwxpwhkcqtotjqsmxb.supabase.co"
+    static var localServer: String { UserDefaults.standard.string(forKey: serverKey) ?? legacyServer }
+
+    @MainActor static func hasLocalData(_ context: ModelContext) -> Bool {
+        ((try? context.fetchCount(FetchDescriptor<Role>())) ?? 0) + ((try? context.fetchCount(FetchDescriptor<Doc>())) ?? 0)
+            + ((try? context.fetchCount(FetchDescriptor<Lead>())) ?? 0) > 0
+    }
+
+    /// Moves this device's copy into the (empty) account on the new server: PDFs are uploaded again from the device under the new
+    /// account's folder, then everything is pushed as if new. A PDF this device never downloaded keeps its row without a file.
+    private func moveHere(context: ModelContext, user u: User) async throws {
+        guard let client else { return }
+        applyingRemote = true
+        defer { applyingRemote = false }
+        let folder = u.id.uuidString.lowercased()
+        for doc in (try? context.fetch(FetchDescriptor<Doc>())) ?? [] where doc.isPDF {
+            if let data = try? Data(contentsOf: Self.cacheURL(doc.id)) {
+                let path = "\(folder)/\(doc.id).pdf"
+                _ = try await client.storage.from(Self.bucket).upload(path, data: data, options: FileOptions(contentType: "application/pdf", upsert: true))
+                doc.filePath = path
+            } else {
+                doc.filePath = ""
+            }
+        }
+        try context.save()
+        synced = SyncSnapshot()   // nothing on the server yet: the next push sends every row
+        applyingRemote = false
+        await push()
+        // Only a complete upload counts as moved; otherwise the empty baseline stays and the next push sends everything again.
+        if let lastError { throw Learning.Failure.message("Moving your data to the new server stopped: \(lastError)") }
     }
 
     private func stop() {
