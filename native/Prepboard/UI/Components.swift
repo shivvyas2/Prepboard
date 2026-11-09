@@ -327,7 +327,9 @@ struct SessionEditorSheet: View {
             }
         }
         .padding(24)
+        #if os(macOS)
         .frame(minWidth: 420)
+        #endif
         .background(PB.card)
         .presentationDetents([.large])
     }
@@ -458,7 +460,11 @@ struct PipelineScreen: View {
     private var filterBar: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: PB.s3) { searchField.frame(maxWidth: 320); chips; Spacer(minLength: 0) }
-            VStack(alignment: .leading, spacing: PB.s3) { searchField; chips }
+            VStack(alignment: .leading, spacing: PB.s3) {
+                searchField
+                // On a phone the chips scroll sideways instead of stretching the whole screen past its edges.
+                ScrollView(.horizontal, showsIndicators: false) { chips.padding(.vertical, 1) }
+            }
         }
     }
 

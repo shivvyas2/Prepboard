@@ -141,18 +141,41 @@ struct RoleDetailView: View {
     }
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 12) {
-            CircleIconButton(systemImage: "arrow.left", label: "Back") { app.selectedRoleID = nil }
-            VStack(alignment: .leading, spacing: 4) {
-                Text(role.team.isEmpty ? "Role" : role.team).pbLabelStyle()
-                Text(role.company).font(.pbDisplay).kerning(-1.4).lineLimit(1)
-                Text(role.title).foregroundStyle(PB.muted)
+        // Wide: one row. Phone: back button, then the name and title at full width, then the actions, so nothing gets squeezed.
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 12) {
+                back
+                titles.frame(minWidth: 280, alignment: .leading)
+                Spacer(minLength: 0)
+                actions
             }
-            Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: PB.s3) {
+                back
+                titles
+                actions
+            }
+        }
+    }
+
+    private var back: some View {
+        CircleIconButton(systemImage: "arrow.left", label: "Back") { app.selectedRoleID = nil }
+    }
+
+    private var titles: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(role.team.isEmpty ? "Role" : role.team).pbLabelStyle()
+            Text(role.company).font(.pbDisplay).kerning(-1.4).lineLimit(1).minimumScaleFactor(0.6)
+            Text(role.title).foregroundStyle(PB.muted).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var actions: some View {
+        HStack(spacing: PB.s2) {
             Button("Delete") { confirmDelete = true }.buttonStyle(PillButtonStyle(filled: false, compact: true))
             Button("+ Document") { app.newDoc(context, roleId: role.id) }.buttonStyle(PillButtonStyle(filled: false, compact: true))
             Button("Timeline") { app.timelineRoleID = role.id; app.section = .timeline }.buttonStyle(PillButtonStyle())
         }
+        .fixedSize()
     }
 
     private func stageCard(_ progress: Double) -> some View {

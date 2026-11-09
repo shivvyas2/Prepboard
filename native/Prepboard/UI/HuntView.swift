@@ -64,7 +64,10 @@ struct HuntView: View {
         .task { if settingsRows.isEmpty { _ = HuntSettings.current(context) } }
         .onAppear(perform: openFromHome)
         #if DEBUG
-        .onAppear { if UserDefaults.standard.string(forKey: "PrepboardHuntFilter") == "applied" { filter = .submitted } }
+        .onAppear {
+            if UserDefaults.standard.string(forKey: "PrepboardHuntFilter") == "applied" { filter = .submitted }
+            if UserDefaults.standard.bool(forKey: "PrepboardHuntSettings") { showSettings = true }
+        }
         #endif
         .onChange(of: app.huntShowNeedsYou) { openFromHome() }
         .onChange(of: app.huntShowSettings) { openFromHome() }

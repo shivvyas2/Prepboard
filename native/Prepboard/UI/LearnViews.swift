@@ -368,7 +368,8 @@ struct ScoresView: View {
     }
 
     private func stats(quizzes: Int, accuracy: Double, answered: Int, weak: Int) -> some View {
-        HStack(spacing: 12) {
+        // Two per row on a phone, four on wider screens; a fixed row of four broke the labels mid-word.
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
             cell("Quizzes taken", "\(quizzes)")
             VStack(alignment: .leading, spacing: 4) {
                 Text("Accuracy").pbLabelStyle()
@@ -390,6 +391,7 @@ struct ScoresView: View {
             }
             Text(value).font(.system(size: 26, weight: .bold)).foregroundStyle(highlight ? PB.onSun : PB.ink)
         }
+        .frame(maxHeight: .infinity, alignment: .topLeading)
         .pbCard(padding: 16, fill: highlight ? PB.sun : PB.surface, radius: PB.rLG)
     }
 
@@ -399,21 +401,39 @@ struct ScoresView: View {
                 Text("Ranked by how often you get them right").font(.system(size: 13)).foregroundStyle(PB.muted)
             }
             ForEach(Array(board.enumerated()), id: \.element.id) { i, t in
-                HStack(spacing: 12) {
-                    Text("\(i + 1)").font(.system(size: 12, weight: .bold, design: .monospaced))
-                        .frame(width: 30, height: 30)
-                        .foregroundStyle(i == 0 ? PB.onSun : i == 1 ? .white : i == 2 ? PB.cobalt : PB.ink)
-                        .background(Circle().fill(i == 0 ? PB.sun : i == 1 ? PB.cobalt : i == 2 ? PB.cobaltSoft : PB.surface))
-                    Text(t.topic).font(.system(size: 14, weight: .semibold)).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                    GeometryReader { g in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(PB.surface)
-                            Capsule().fill(t.pct < 70 ? PB.red : PB.cobalt).frame(width: g.size.width * CGFloat(t.pct) / 100)
+                let rank = Text("\(i + 1)").font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .frame(width: 30, height: 30)
+                    .foregroundStyle(i == 0 ? PB.onSun : i == 1 ? .white : i == 2 ? PB.cobalt : PB.ink)
+                    .background(Circle().fill(i == 0 ? PB.sun : i == 1 ? PB.cobalt : i == 2 ? PB.cobaltSoft : PB.surface))
+                let bar = GeometryReader { g in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(PB.surface)
+                        Capsule().fill(t.pct < 70 ? PB.red : PB.cobalt).frame(width: g.size.width * CGFloat(t.pct) / 100)
+                    }
+                }
+                let score = HStack(spacing: 8) {
+                    Text("\(t.pct)%").font(.system(size: 13, weight: .bold, design: .monospaced))
+                    Text("\(t.right)/\(t.total)").font(.system(size: 12)).foregroundStyle(PB.muted)
+                }
+                // Wide: one line. Narrow (phone): the topic and score on top, the bar underneath, so the name always shows.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) {
+                        rank
+                        Text(t.topic).font(.system(size: 14, weight: .semibold)).lineLimit(1).frame(minWidth: 180, maxWidth: .infinity, alignment: .leading)
+                        bar.frame(width: 160, height: 8)
+                        score.frame(width: 100, alignment: .trailing)
+                    }
+                    HStack(alignment: .top, spacing: 12) {
+                        rank
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(t.topic).font(.system(size: 14, weight: .semibold)).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 8)
+                                score
+                            }
+                            bar.frame(height: 8)
                         }
                     }
-                    .frame(width: 160, height: 8)
-                    Text("\(t.pct)%").font(.system(size: 13, weight: .bold, design: .monospaced)).frame(width: 50, alignment: .trailing)
-                    Text("\(t.right)/\(t.total)").font(.system(size: 12)).foregroundStyle(PB.muted).frame(width: 44, alignment: .trailing)
                 }
                 .padding(.vertical, 12)
                 .overlay(alignment: .bottom) { if i < board.count - 1 { Rectangle().fill(PB.line).frame(height: 1) } }

@@ -26,7 +26,7 @@ enum Section: String, CaseIterable, Identifiable {
 final class AppState {
     /// `-PrepboardSection timeline` opens a specific section at launch (handy for testing).
     var section: Section = UserDefaults.standard.string(forKey: "PrepboardSection").flatMap { k in Section.allCases.first { "\($0)" == k } } ?? .dashboard
-    var selectedRoleID: String?
+    var selectedRoleID: String? = UserDefaults.standard.string(forKey: "PrepboardOpenRole")   // launch flag for screenshots
     /// `-PrepboardOpenDoc <id>` opens a document at launch (testing).
     var selectedDocID: String? = UserDefaults.standard.string(forKey: "PrepboardOpenDoc")
     var docEditing = false
@@ -42,7 +42,7 @@ final class AppState {
     var claudeTerminal = false          // Claude panel: chat (false) or the real Claude Code terminal (true)
     var showProfile = UserDefaults.standard.bool(forKey: "PrepboardOpenProfile")   // launch flag for screenshots
     var showNewPrep = false
-    var showPipeline = false             // the full-screen pipeline board
+    var showPipeline = UserDefaults.standard.bool(forKey: "PrepboardOpenBoard")             // the full-screen pipeline board
     var huntShowNeedsYou = false         // Hunt opens on its "Needs you" filter (from the Home alerts card)
     var huntShowSettings = false         // Hunt opens its settings sheet (from the Home alerts card)
     var newPrepRoleID: String?           // planner builds the plan for this existing role (e.g. one found by job sync)
